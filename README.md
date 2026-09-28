@@ -2,7 +2,7 @@
 
 > **Đề tài tốt nghiệp:** Tối ưu Slow Query và Chỉ mục CSDL bằng LLM thông qua kiến trúc MCP (Model Context Protocol).
 
----
+---HHHHHHHHHHHHH
 
 ## 📖 Dự án này làm gì? (Đọc 30 giây là hiểu)
 
