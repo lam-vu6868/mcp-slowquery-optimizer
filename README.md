@@ -77,7 +77,7 @@ flowchart TD
 
 **Chú thích:** ✅ Done | 🟡 Đang làm | ⬜ Chưa làm | 🔴 Trễ hạn
 
-> Xem chi tiết tiến độ tại [PROGRESS.md](PROGRESS.md)
+> Xem chi tiết tiến độ tại [PROGRESS.md](project-management/PROGRESS.md)
 
 ---
 
@@ -175,4 +175,4 @@ pytest tests/test_validation.py -v
 
 - **Nhóm trưởng:** Lý Lâm Vũ — 23050102@student.bdu.edu.vn
 - **GVHD:** Dương Quang Sinh — dqsinh@bdu.edu.vn
-"# mcp-slowquery-optimizer" 
+  "# mcp-slowquery-optimizer"
