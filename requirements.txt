@@ -1,0 +1,8 @@
+mcp>=1.0.0
+pymysql>=1.1.0
+sqlglot>=25.0.0
+anthropic>=0.40.0
+streamlit>=1.40.0
+faker>=30.0.0
+python-dotenv>=1.0.0
+pytest>=8.0.0
