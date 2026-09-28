@@ -175,4 +175,3 @@ pytest tests/test_validation.py -v
 
 - **Nhóm trưởng:** Lý Lâm Vũ — 23050102@student.bdu.edu.vn
 - **GVHD:** Dương Quang Sinh — dqsinh@bdu.edu.vn
-  "# mcp-slowquery-optimizer"
