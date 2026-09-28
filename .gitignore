@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+
+# Môi trường
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Dữ liệu lớn (KHÔNG push lên Git)
+data/outputs/
+*.csv
+*.log
+db/data/
+*.sql.gz
+
+# Cache / model
+.cache/
+models/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+mysql-data/
+
+# Report tạm
+~$*.docx
+~$*.pptx
