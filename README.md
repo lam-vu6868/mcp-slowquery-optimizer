@@ -59,7 +59,7 @@ flowchart TD
 | **Tình**   | 🛡️ Security + Frontend       | AST whitelist, 20 injection test, Dashboard        |
 | **Tường**  | 📊 Data Analyst + Metrics    | Ground truth, đo metrics, biểu đồ                  |
 
-> Xem chi tiết phân công tại [TEAM.md](TEAM.md)
+> 📖 Xem chi tiết phân công tại [project-management/TEAM.md](project-management/TEAM.md)
 
 ---
 
@@ -77,7 +77,7 @@ flowchart TD
 
 **Chú thích:** ✅ Done | 🟡 Đang làm | ⬜ Chưa làm | 🔴 Trễ hạn
 
-> Xem chi tiết tiến độ tại [PROGRESS.md](project-management/PROGRESS.md)
+> 📖 Xem chi tiết tiến độ tại [project-management/PROGRESS.md](project-management/PROGRESS.md)
 
 ---
 
@@ -93,7 +93,7 @@ flowchart TD
 
 ```bash
 # 1. Clone repo
-git clone https://github.com/<username>/mcp-slowquery-optimizer.git
+git clone https://github.com/lam-vu6868/mcp-slowquery-optimizer.git
 cd mcp-slowquery-optimizer
 
 # 2. Tạo môi trường ảo
@@ -127,20 +127,23 @@ streamlit run dashboard/app.py
 
 ```
 mcp-slowquery-optimizer/
-├── mcp_server/         # ⭐ MCP Server + 6 tool      (Vũ + Hải)
-├── db/                 # 🗄️ Schema + MySQL config    (Hải)
-├── data/               # 📊 Seed data + queries      (Hải + Tường)
-├── security/           # 🛡️ AST + 20 injection       (Tình)
-├── dashboard/          # 🖥️ Streamlit 4 tab          (Tình)
-├── tests/              # 🧪 Unit tests               (Cả nhóm)
-├── docs/               # 📚 Tài liệu                 (Vũ)
-├── reports/            # 📝 Báo cáo + slide          (Vũ)
-├── scripts/            # 🔧 Script setup             (Vũ)
-├── README.md           # 📄 File này
-├── PROGRESS.md         # 📊 Tiến độ
-├── TEAM.md             # 👥 Phân công
-├── ROADMAP.md          # 🗺️ Lộ trình
-└── CONTRIBUTING.md     # 📝 Quy định contribute
+├── project-management/  # 📊 Quản lý dự án
+│   ├── PROGRESS.md      #    Tiến độ theo tuần
+│   ├── TEAM.md          #    Phân công 4 thành viên
+│   ├── ROADMAP.md       #    Lộ trình 12 tuần
+│   ├── CONTRIBUTING.md  #    Quy định contribute
+│   └── GIT-WORKFLOW.md  #    Hướng dẫn Git cho nhóm
+│
+├── mcp_server/          # ⭐ MCP Server + 6 tool      (Vũ + Hải)
+├── db/                  # 🗄️ Schema + MySQL config    (Hải)
+├── data/                # 📊 Seed data + queries      (Hải + Tường)
+├── security/            # 🛡️ AST + 20 injection       (Tình)
+├── dashboard/           # 🖥️ Streamlit 4 tab          (Tình)
+├── tests/               # 🧪 Unit tests               (Cả nhóm)
+├── docs/                # 📚 Tài liệu kỹ thuật        (Vũ)
+├── reports/             # 📝 Báo cáo + slide          (Vũ)
+├── scripts/             # 🔧 Script setup             (Vũ)
+└── README.md            # 📄 File này
 ```
 
 ---
@@ -160,14 +163,16 @@ pytest tests/test_validation.py -v
 
 ## 📚 Tài liệu liên quan
 
-| File                                                  | Mô tả                      |
-| ----------------------------------------------------- | -------------------------- |
-| [PROGRESS.md](project-management/PROGRESS.md)         | Tiến độ chi tiết theo tuần |
-| [TEAM.md](project-management/TEAM.md)                 | Phân công 4 thành viên     |
-| [ROADMAP.md](project-management/ROADMAP.md)           | Lộ trình 12 tuần           |
-| [CONTRIBUTING.md](project-management/CONTRIBUTING.md) | Quy định Git flow, commit  |
-| [docs/architecture.md](docs/architecture.md)          | Kiến trúc chi tiết         |
-| [docs/api-contract.md](docs/api-contract.md)          | Input/output 6 tool        |
+| File                                                                     | Mô tả                      |
+| ------------------------------------------------------------------------ | -------------------------- |
+| [project-management/PROGRESS.md](project-management/PROGRESS.md)         | Tiến độ chi tiết theo tuần |
+| [project-management/TEAM.md](project-management/TEAM.md)                 | Phân công 4 thành viên     |
+| [project-management/ROADMAP.md](project-management/ROADMAP.md)           | Lộ trình 12 tuần           |
+| [project-management/CONTRIBUTING.md](project-management/CONTRIBUTING.md) | Quy định Git flow, commit  |
+| [project-management/GIT-WORKFLOW.md](project-management/GIT-WORKFLOW.md) | Hướng dẫn Git chi tiết     |
+| [docs/architecture.md](docs/architecture.md)                             | Kiến trúc chi tiết         |
+| [docs/api-contract.md](docs/api-contract.md)                             | Input/output 6 tool        |
+| [docs/setup-guide.md](docs/setup-guide.md)                               | Hướng dẫn cài đặt từ A-Z   |
 
 ---
 
