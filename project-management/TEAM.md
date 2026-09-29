@@ -2,307 +2,220 @@
 
 > **Nhóm 4 người:** Vũ – Hải – Tình – Tường
 > **GVHD:** Dương Quang Sinh
-> **Thời gian:** 12 tuần (23/09/2025 → 15/12/2025)
+> **Thời gian:** 12 tuần (23/09 → 15/12)
+> ⚠️ **Deadline và tiêu chí Done chỉ ghi ở [ROADMAP.md](ROADMAP.md) (mục 5).** File này chỉ nói về _ai làm gì_, để không bị lệch số liệu giữa các file.
 
 ---
 
 ## 🎯 TỔNG QUAN VAI TRÒ
 
-| Thành viên | Vai trò                      | Chuyên môn phụ trách                               |
-| ---------- | ---------------------------- | -------------------------------------------------- |
-| **Vũ** ⭐  | 🧠 Team Lead + MCP Architect | Điều phối, MCP Server core, tích hợp LLM, báo cáo  |
-| **Hải**    | 🗄️ DB Engineer + Backend     | CSDL 12M records, 6 tool backend, Validation Layer |
-| **Tình**   | 🛡️ Security + Frontend       | AST whitelist, 20 injection test, Dashboard        |
-| **Tường**  | 📊 Data Analyst + Metrics    | Ground truth, đo metrics, biểu đồ                  |
+| Thành viên | Vai trò                      | Phụ trách chính                                                                  |
+| ---------- | ---------------------------- | -------------------------------------------------------------------------------- |
+| **Vũ** ⭐  | 🧠 Team Lead + MCP Architect | Điều phối, `server.py`, Tool 1–3, tích hợp LLM, docs, báo cáo chương 1–3         |
+| **Hải**    | 🗄️ DB Engineer + Validation  | CSDL 12M, Tool 4 (`explain`), Validation Layer + rollback, verify ground truth   |
+| **Tình**   | 🛡️ Security + Frontend       | AST whitelist, **Tool 6 + approval token**, 20 injection, Dashboard, video demo  |
+| **Tường**  | 📊 Data Analyst + Metrics    | 30 query, ground truth, **Tool 5 (`benchmark`)**, metrics, **baseline**, biểu đồ |
+
+### Thay đổi so với bản trước
+
+| Việc                                           | Trước                  | Nay                                 | Lý do                                                                   |
+| ---------------------------------------------- | ---------------------- | ----------------------------------- | ----------------------------------------------------------------------- |
+| `apply.py` (Tool 6)                            | Vũ                     | **Tình**                            | Code bảo mật trọng yếu, hợp với vai Security; giảm tải cho Vũ           |
+| `benchmark.py` (Tool 5)                        | Hải                    | **Tường**                           | Tường ít việc dev đầu dự án; Hải đang giữ đường găng (seed, validation) |
+| Baseline (pt-query-digest, greedy, rule-based) | Hải                    | **Tường** (Hải hỗ trợ)              | Cân tải, gắn liền với việc đo metrics                                   |
+| Verify ground truth                            | Tường tự làm           | **Tường soạn, Hải verify, GVHD ký** | Tường mới học EXPLAIN, cần người kiểm chéo                              |
+| Quy tắc sửa file                               | "Chỉ 1 người được sửa" | **CODEOWNERS + bắt buộc review**    | Tránh nghẽn khi người chính bận                                         |
 
 ---
 
 ## 👤 CHI TIẾT TỪNG NGƯỜI
 
-### 🧠 VŨ — Team Lead + MCP Architect ⭐
+### 🧠 VŨ — Team Lead + MCP Architect
 
-**Trách nhiệm chính:**
+**Trách nhiệm:**
 
-- Điều phối tiến độ nhóm, chủ trì standup hàng ngày
-- Viết MCP Server core (entry point + 3 tool đầu)
-- Tích hợp LLM (Claude/GPT/Qwen)
-- Viết báo cáo chương 1–3 + tổng hợp cuối
-- Liên hệ GVHD, gửi weekly report
+- Điều phối tiến độ, chủ trì standup, gửi weekly report GVHD
+- `server.py` + Tool 1 `get_slow_queries`, Tool 2 `get_schema`, Tool 3 `get_table_stats`
+- Tích hợp LLM (`agent.py`, `prompts.py`, `parsers.py`), sanitize dữ liệu đưa vào LLM
+- Giữ `api-contract.md`, `architecture.md`
+- Báo cáo chương 1–3, Kết luận, tổng hợp cuối
 
-**File/thư mục phụ trách:**
+**File phụ trách:**
 
 ```
-mcp_server/server.py              ⭐ Chỉ Vũ sửa
-mcp_server/tools/slow_queries.py  # Tool 1
-mcp_server/tools/schema.py        # Tool 2
-mcp_server/tools/stats.py         # Tool 3
-mcp_server/llm/agent.py           # Tích hợp LLM
-mcp_server/llm/prompts.py         # System prompt
-mcp_server/llm/parsers.py         # Parse JSON
-docs/                             # Tài liệu
-reports/                          # Báo cáo + slide
-README.md, TEAM.md, PROGRESS.md, ROADMAP.md
+mcp_server/server.py
+mcp_server/tools/slow_queries.py   # Tool 1
+mcp_server/tools/schema.py         # Tool 2
+mcp_server/tools/stats.py          # Tool 3
+mcp_server/llm/                    # agent, prompts, parsers
+docs/                              # api-contract, architecture, handover
+reports/
 ```
 
-**Deliverable chịu trách nhiệm:**
-
-- MCP Server hoàn chỉnh (entry + 3 tool core)
-- LLM tích hợp chạy được, trả JSON hợp lệ
-- Chương 1-3 báo cáo + tổng hợp cuối
-
-**Deadline chính:**
-
-- 15/10: Xong 3 tool core
-- 18/10: LLM tích hợp xong
-- 09/12: Báo cáo hoàn chỉnh
-
-**Hỗ trợ từ nhóm:**
-
-- Tình (cựu Lead) hỗ trợ MCP protocol 2 tuần đầu
-- Hải hỗ trợ test tích hợp tool
+**Hỗ trợ:** Tình (cựu MCP) hỗ trợ MCP protocol 2 tuần đầu · Vũ pair với Hải seed dữ liệu tuần 2.
+**Lưu ý rủi ro:** Vũ là điểm nghẽn lớn nhất. Nếu bận, ưu tiên theo thứ tự: chốt contract → review PR chặn người khác → LLM → báo cáo.
 
 ---
 
-### 🗄️ HẢI — DB Engineer + Backend
+### 🗄️ HẢI — DB Engineer + Validation
 
-**Trách nhiệm chính:**
+**Trách nhiệm:**
 
-- Xây CSDL 12M records (users, orders, order_items, products, payments)
-- Viết 2 tool backend (`explain_query`, `benchmark_query`)
-- Xây Validation Layer (đo trước/sau + rollback)
-- Chạy baseline pt-query-digest, so sánh với LLM
-- Viết README + tài liệu kỹ thuật
+- CSDL 12M orders + 20M items, **phân bố lệch** (Zipf, status lệch, đỉnh Black Friday)
+- Cấu hình `log_output = FILE,TABLE`, slow log 0.5s
+- Tool 4 `explain_query`
+- **Validation Layer:** INVISIBLE INDEX, đo trước/sau, hash so sánh kết quả, rollback, đo write overhead
+- Verify ground truth cùng Tường (EXPLAIN + benchmark)
+- Đo trade-off dung lượng index
+- Chương "Cài đặt"
 
-**File/thư mục phụ trách:**
+**File phụ trách:**
 
 ```
-db/schema.sql                     # Schema 5 bảng
-db/init.sql                       # Config + users readonly/admin
-db/conf/my.cnf                    # MySQL config
-data/seed/                        # Toàn bộ script seed
-mcp_server/tools/explain.py       # Tool 4
-mcp_server/tools/benchmark.py     # Tool 5
-mcp_server/validation/            # Cả thư mục
-mcp_server/utils/db.py            # Kết nối DB
+db/                                # schema.sql, init.sql, conf/
+data/seed/
+mcp_server/tools/explain.py        # Tool 4
+mcp_server/validation/
+mcp_server/utils/db.py
 ```
 
-**Deliverable chịu trách nhiệm:**
-
-- CSDL 12M orders + 20M items, có slow log
-- 2 tool backend chạy được (EXPLAIN + benchmark)
-- Validation Layer tự rollback khi đề xuất fail
-- Bảng so sánh LLM vs pt-query-digest
-
-**Deadline chính:**
-
-- 05/10: Seed xong 12M records
-- 15/10: Xong 2 tool backend
-- 22/10: Validation Layer chạy được
-- 29/10: Baseline pt-query-digest xong
-
-**Hỗ trợ từ nhóm:**
-
-- Vũ hỗ trợ MySQL setup 1 tuần đầu
-- Tường hỗ trợ verify phân bố dữ liệu
+**Hỗ trợ:** Vũ pair seed tuần 2 · Tường hỗ trợ verify phân bố dữ liệu.
+**Lưu ý rủi ro:** đang nằm trên đường găng (seed → tool → validation). Có phương án 5M nếu 04/10 chưa seed xong.
 
 ---
 
 ### 🛡️ TÌNH — Security + Frontend
 
-**Trách nhiệm chính:**
+**Trách nhiệm:**
 
-- Viết AST whitelist chặn DDL/DML nguy hiểm (dùng `sqlglot`)
-- 20 kịch bản prompt injection + test tự động
-- Xây Dashboard Streamlit 4 tab
-- Quay video demo 5–10 phút
-- Viết báo cáo chương "Bảo mật"
+- AST whitelist bằng `sqlglot` (theo bộ quy tắc ROADMAP mục 2.2), **fail-closed**
+- **Tool 6 `apply_optimization` + approval token + audit log**
+- 20 kịch bản injection (4 nhóm × 5, gồm cả injection gián tiếp), test tự động, báo cáo có phần "giới hạn"
+- Dashboard Streamlit 4 tab (nút Approve sinh token)
+- Video demo 5–10 phút + video dự phòng
+- Chương "Bảo mật"
 
-**File/thư mục phụ trách:**
+**File phụ trách:**
 
 ```
-security/ast_whitelist.py         # ⭐ Chỉ Tình sửa
-security/injection_tests/         # 20 payload
-security/injection_report.md      # Báo cáo bảo mật
-dashboard/app.py                  # Entry point
-dashboard/pages/                  # 4 tab
-dashboard/assets/style.css
+security/ast_whitelist.py
+security/approval.py               # sinh/kiểm tra token
+security/injection_tests/
+security/injection_report.md
+mcp_server/tools/apply.py          # Tool 6
+dashboard/
 ```
 
-**Deliverable chịu trách nhiệm:**
-
-- AST whitelist chặn 100% DDL/DML nguy hiểm
-- 20/20 injection test pass
-- Dashboard 4 tab chạy được, có nút Approve
-- Video demo 5–10 phút
-
-**Deadline chính:**
-
-- 15/10: AST whitelist chạy được
-- 25/10: 20/20 injection pass
-- 02/11: Dashboard xong
-- 05/12: Video demo xong
-
-**Hỗ trợ từ nhóm:**
-
-- Vũ bàn giao code mẫu AST 2 tuần đầu
-- Tường hỗ trợ đổ data vào dashboard
+**Hỗ trợ:** Vũ bàn giao code mẫu `sqlglot` **kèm test** trong 2 tuần đầu.
+**Lưu ý:** `apply.py` và `approval.py` cần **2 người review (Vũ + Hải)** trước khi merge.
 
 ---
 
 ### 📊 TƯỜNG — Data Analyst + Metrics
 
-**Trách nhiệm chính:**
+**Trách nhiệm:**
 
-- Soạn 30 query chậm theo 5 nhóm lỗi
-- Viết `ground_truth.json` + xin chữ ký GVHD
-- Đo metrics: Precision/Recall/Consistency Rate/FPR
-- Vẽ biểu đồ matplotlib (trước/sau, trade-off index)
-- Viết báo cáo chương "Thực nghiệm"
+- 30 query chậm (6 query/nhóm × 5 nhóm), **xác nhận cả 30 đều > 0.5s** trên máy nhóm
+- `ground_truth.json` dạng _tập đáp án chấp nhận được_, xin chữ ký GVHD
+- Tool 5 `benchmark_query` (warm-up, ≥ 20 lần, P50/P95, hash kết quả)
+- Metrics: Precision / Recall / Consistency Rate / FPR / metric rewrite (theo ROADMAP mục 2.4)
+- Baseline: greedy, rule-based (đề xuất index) + `pt-query-digest` (phát hiện query chậm)
+- Biểu đồ matplotlib, chương "Thực nghiệm"
 
-**File/thư mục phụ trách:**
+**File phụ trách:**
 
 ```
-data/queries/queries.py           # 30 query
-data/queries/ground_truth.json    # ⭐ Đáp án chuẩn (GVHD ký)
-data/metrics/metrics.py           # Tính chỉ số
-data/metrics/comparison.csv       # So sánh
-data/metrics/charts/              # Biểu đồ
+data/queries/queries.py
+data/queries/ground_truth.json     # GVHD ký + Hải verify
+data/metrics/                      # metrics.py, comparison.csv, charts/
+data/baseline/
+mcp_server/tools/benchmark.py      # Tool 5
 ```
 
-**Deliverable chịu trách nhiệm:**
-
-- 30 query chia 5 nhóm + EXPLAIN gốc mỗi câu
-- `ground_truth.json` có chữ ký GVHD ⚠️ bắt buộc
-- Bộ metrics đầy đủ + biểu đồ trước/sau
-- Chương "Thực nghiệm" báo cáo
-
-**Deadline chính:**
-
-- 08/10: Xong draft 30 query
-- 10/10: Ground truth có chữ ký GVHD
-- 29/10: Xong metrics + biểu đồ
-- 05/12: Chương "Thực nghiệm" xong
-
-**Hỗ trợ từ nhóm:**
-
-- Vũ hỗ trợ EXPLAIN 1 tuần đầu
-- Hải verify số liệu benchmark
+**Hỗ trợ:** Hải cùng chạy EXPLAIN cho 10 query đầu · Tình (cựu Metrics) dạy EXPLAIN/P50/P95 trong buổi bàn giao.
+**Lưu ý:** không chỉnh ground truth cho vừa kết quả LLM; báo cáo trung thực.
 
 ---
 
-## 📋 BẢNG PHÂN CÔNG THEO TUẦN
+## 🔒 QUY TẮC FILE (CODEOWNERS)
 
-|  Tuần  | Vũ (Lead + MCP)                                | Hải (DB + Backend)              | Tình (Security + UI)              | Tường (Metrics)            |
-| :----: | ---------------------------------------------- | ------------------------------- | --------------------------------- | -------------------------- |
-| **1**  | Setup repo, docker-compose, đọc MCP spec       | Config MySQL, tạo user readonly | Test readonly, Streamlit skeleton | Draft 30 query             |
-| **2**  | Khung 6 tool rỗng, bàn giao từ Tình            | **Seed 12M records**            | Draft AST whitelist               | Hoàn thành 30 query        |
-| **3**  | Code 3 tool core (slow_queries, schema, stats) | Code explain + benchmark        | Test AST với payload đơn giản     | Đo phân bố dữ liệu         |
-| **4**  | Tích hợp Claude API                            | Validation Layer                | **Test 20 injection**             | Ground truth + chữ ký GVHD |
-| **5**  | Prompt engineering LLM                         | Rollback mechanism              | Hoàn thiện injection report       | Tính Precision/Recall      |
-| **6**  | Fix bug tích hợp                               | Baseline pt-query-digest        | Dashboard skeleton                | Consistency Rate           |
-| **7**  | Review code                                    | Trade-off index size            | **Dashboard 4 tab**               | Biểu đồ matplotlib         |
-| **8**  | Viết chương 1–3                                | Deploy MCP lên VM               | Test dashboard với data thật      | Viết chương "Thực nghiệm"  |
-| **9**  | Viết chương "Kết luận"                         | README + tài liệu               | Quay video demo                   | Rà soát số liệu            |
-| **10** | **Tổng hợp báo cáo + slide**                   | Q&A kỹ thuật                    | Q&A bảo mật                       | Q&A số liệu                |
-| **11** | Diễn tập thuyết trình                          | Backup source code              | Test demo 3 lần                   | In ấn báo cáo              |
-| **12** | **Bảo vệ trước hội đồng**                      | —                               | —                                 | —                          |
+| File / thư mục                                                           | Người chính  | Reviewer bắt buộc        |
+| ------------------------------------------------------------------------ | ------------ | ------------------------ |
+| `mcp_server/server.py`, `tools/slow_queries.py`, `schema.py`, `stats.py` | Vũ           | Hải                      |
+| `mcp_server/tools/explain.py`                                            | Hải          | Vũ                       |
+| `mcp_server/tools/benchmark.py`                                          | Tường        | Hải                      |
+| `mcp_server/tools/apply.py`, `security/approval.py`                      | Tình         | **Vũ + Hải**             |
+| `mcp_server/llm/`                                                        | Vũ           | Tường                    |
+| `mcp_server/validation/`                                                 | Hải          | Vũ                       |
+| `security/ast_whitelist.py`, `security/injection_tests/`                 | Tình         | Vũ                       |
+| `db/`, `data/seed/`                                                      | Hải          | Tường                    |
+| `data/queries/queries.py`                                                | Tường        | Hải                      |
+| `data/queries/ground_truth.json`                                         | Tường        | **Hải verify + GVHD ký** |
+| `data/metrics/`, `data/baseline/`                                        | Tường        | Hải                      |
+| `dashboard/`                                                             | Tình         | Tường                    |
+| `tests/`                                                                 | Ai cũng viết | Người review PR          |
+| `docs/`, `reports/`                                                      | Vũ           | Cả nhóm                  |
 
----
+**Nguyên tắc:**
 
-## 🔒 QUY TẮC FILE — AI SỬA FILE NÀO
-
-| Thư mục/File                       | Người CHÍNH  |  Người REVIEW   | Người KHÁC được sửa? |
-| ---------------------------------- | ------------ | :-------------: | :------------------: |
-| `mcp_server/server.py`             | **Vũ**       |      Tình       |       ❌ Không       |
-| `mcp_server/tools/slow_queries.py` | **Vũ**       |       Hải       |          ❌          |
-| `mcp_server/tools/schema.py`       | **Vũ**       |       Hải       |          ❌          |
-| `mcp_server/tools/stats.py`        | **Vũ**       |       Hải       |          ❌          |
-| `mcp_server/tools/explain.py`      | **Hải**      |       Vũ        |          ❌          |
-| `mcp_server/tools/benchmark.py`    | **Hải**      |       Vũ        |          ❌          |
-| `mcp_server/tools/apply.py`        | **Vũ**       |   **Tình** ⚠️   |          ❌          |
-| `mcp_server/llm/`                  | **Vũ**       |      Tường      |          ❌          |
-| `mcp_server/validation/`           | **Hải**      |       Vũ        |          ❌          |
-| `db/schema.sql`                    | **Hải**      |      Tường      |          ❌          |
-| `data/seed/`                       | **Hải**      |      Tường      |          ❌          |
-| `data/queries/queries.py`          | **Tường**    |       Hải       |          ❌          |
-| `data/queries/ground_truth.json`   | **Tường**    | **GVHD ký** ⚠️  |          ❌          |
-| `data/metrics/`                    | **Tường**    |       Hải       |          ❌          |
-| `security/ast_whitelist.py`        | **Tình**     |       Vũ        |          ❌          |
-| `security/injection_tests/`        | **Tình**     |       Vũ        |          ❌          |
-| `dashboard/`                       | **Tình**     |      Tường      |          ❌          |
-| `tests/`                           | Ai cũng viết | Người review PR |          ✅          |
-| `docs/`, `reports/`                | **Vũ**       |     Cả nhóm     |     ✅ (qua PR)      |
-
-⚠️ **Nguyên tắc vàng:** Muốn sửa file của người khác → tạo Pull Request, nhờ review. Không sửa trực tiếp trên branch của người đó.
+1. Mọi thay đổi vào `main`/`dev` đi qua Pull Request, ≥ 1 approve (file bảo mật: 2 approve).
+2. Người khác **được phép** sửa file của người chính qua PR (ví dụ sửa bug gấp), nhưng phải tag người chính review.
+3. Tuyệt đối không commit trực tiếp lên branch của người khác.
+4. Không commit API key, mật khẩu DB, `approval secret` (dùng `.env`, đã có trong `.gitignore`).
 
 ---
 
-## 🔄 LỊCH BÀN GIAO KIẾN THỨC (TUẦN 1-2)
+## 🔄 LỊCH BÀN GIAO KIẾN THỨC (TUẦN 1–2)
 
-Vì có đổi vai trò, cần **bàn giao kiến thức** giữa các thành viên:
+|  #  | Người dạy          | Người học | Nội dung                                                                             | Thời lượng |
+| :-: | ------------------ | --------- | ------------------------------------------------------------------------------------ | ---------- |
+|  1  | Tình (cựu MCP)     | Vũ        | MCP protocol, cách viết tool, kiến trúc server                                       | 3h         |
+|  2  | Vũ (cựu DB)        | Hải       | MySQL setup, `LOAD DATA INFILE`, tối ưu insert, INVISIBLE INDEX                      | 3h         |
+|  3  | Vũ (cựu Security)  | Tình      | `sqlglot`, các bypass phổ biến (`/*!…*/`, multi-statement), 20 payload, test tự động | 3h         |
+|  4  | Tình (cựu Metrics) | Tường     | EXPLAIN MySQL, P50/P95, định dạng ground truth                                       | 3h         |
 
-|  #  | Người dạy          | Người học | Nội dung                                                                | Thời lượng |
-| :-: | ------------------ | --------- | ----------------------------------------------------------------------- | ---------- |
-|  1  | Tình (cựu MCP)     | Vũ        | • MCP protocol<br>• Cách viết tool<br>• Kiến trúc server                | 3h         |
-|  2  | Vũ (cựu DB)        | Hải       | • MySQL setup<br>• Seed data với LOAD DATA<br>• Tối ưu insert           | 3h         |
-|  3  | Vũ (cựu Security)  | Tình      | • AST whitelist với sqlglot<br>• 20 payload injection<br>• Test tự động | 3h         |
-|  4  | Tình (cựu Metrics) | Tường     | • EXPLAIN MySQL<br>• Đo P50/P95<br>• Ground truth format                | 3h         |
-
-**Nguyên tắc bàn giao:**
-
-- Mỗi buổi có **demo code cụ thể**, không lý thuyết suông
-- Người học phải **tự viết lại được** sau buổi học
-- Có **note lại** vào file `docs/handover.md` (nếu cần)
+**Nguyên tắc:** mỗi buổi có demo code cụ thể · người học phải **tự viết lại được** · ghi chú vào `docs/handover.md` · buổi 3 người dạy giao **code mẫu có test** cho người học.
 
 ---
 
-## 📞 LIÊN HỆ NHANH
+## 📋 PHÂN CÔNG THEO TUẦN (tóm tắt)
 
-| Việc                          | Liên hệ                  |
-| ----------------------------- | ------------------------ |
-| Điều phối, deadline, kế hoạch | **Vũ** (Lead)            |
-| MCP protocol, LLM API         | **Vũ** (MCP Architect)   |
-| MySQL, Docker, seed data      | **Hải** (DB Engineer)    |
-| Validation Layer, baseline    | **Hải** (Backend)        |
-| Bảo mật, injection, dashboard | **Tình** (Security)      |
-| Metrics, số liệu, biểu đồ     | **Tường** (Data Analyst) |
-| Không biết hỏi ai             | **Nhóm chat chung**      |
+Chi tiết từng việc và deadline xem [ROADMAP.md](ROADMAP.md) mục 4–5.
 
----
-
-## 🗣️ KÊNH LIÊN LẠC
-
-- **Daily standup:** Discord/Zoom 21h mỗi ngày (15 phút)
-- **Chat chính:** Group Zalo/Messenger nhóm
-- **Tài liệu chung:** Repo GitHub (xem file này)
-- **Weekly report:** Gửi GVHD qua email mỗi Chủ nhật — **Vũ** phụ trách
+| Tuần | Vũ                                           | Hải                         | Tình                                  | Tường                                               |
+| :--: | -------------------------------------------- | --------------------------- | ------------------------------------- | --------------------------------------------------- |
+|  1   | Setup repo, docker, đọc MCP spec             | Config MySQL, user readonly | Test readonly, Streamlit skeleton     | Draft 30 query                                      |
+|  2   | Chốt contract + architecture, khung tool     | **Seed 12M** (Vũ pair)      | AST whitelist v1 + test               | Hoàn thành draft 30 query                           |
+|  3   | Tool 1–3                                     | Tool 4                      | AST v1 pass test cơ bản               | Tool 5, xác nhận 30 query > 0.5s, ground truth nháp |
+|  4   | LLM agent + sanitize                         | **Validation Layer**        | Bổ sung quy tắc AST                   | **Ground truth có chữ ký** (Hải verify)             |
+|  5   | Prompt engineering                           | Rollback                    | **Tool 6 + token + 20 injection**     | Precision/Recall lần 1                              |
+|  6   | Chương 1–3 đầy đủ                            | Trade-off write overhead    | Dashboard tab 1–2, injection report   | Consistency, FPR, baseline                          |
+|  7   | Review, **code freeze 10/11**                | Buffer / hỗ trợ             | Dashboard tab 3–4                     | Biểu đồ matplotlib                                  |
+|  8   | Chương Mở đầu/Kiến trúc/Kết luận             | Chương Cài đặt              | Chương Bảo mật                        | Chương Thực nghiệm                                  |
+| 9–10 | Slide (phần mở đầu/kiến trúc), chỉnh báo cáo | Slide (DB/validation), Q&A  | Video demo, slide (bảo mật/dashboard) | Slide (kết quả), rà số liệu                         |
+|  11  | Nộp báo cáo, diễn tập                        | Backup source/data          | Test máy demo                         | In báo cáo                                          |
+|  12  | **Bảo vệ 15/12**                             | —                           | —                                     | —                                                   |
 
 ---
+
+## 🗣️ KÊNH LIÊN LẠC & NHỊP LÀM VIỆC
+
+- **Standup:** 21h mỗi ngày (Discord/Zoom), 15 phút
+- **Chat chính:** group Zalo/Messenger
+- **Tài liệu:** repo GitHub
+- **Weekly report GVHD:** email mỗi Chủ nhật, **Vũ** phụ trách
 
 ## ✅ CAM KẾT CHUNG
 
-1. **Daily standup** — không vắng mặt trừ trường hợp bất khả kháng
-2. **Deadline mềm** — trước deadline cứng 3 ngày
-3. **Pair programming** — khi bí > 2h thì nhờ người khác
-4. **Code review** — mọi PR phải có 1 người approve
-5. **Backup video** — demo phải có video dự phòng
-6. **Bàn giao kiến thức** — trong tuần 1-2, ai cũ vai trò cũ dạy người mới
+1. Standup đầy đủ, không vắng trừ bất khả kháng
+2. Deadline mềm = trước deadline cứng 3 ngày
+3. Bí > 2 giờ thì nhờ người khác pair
+4. Mọi PR có ≥ 1 approve
+5. Backup: source, dump dữ liệu, `ground_truth.json` bản ký, video demo, ở ≥ 2 nơi
+6. Nói sớm khi trễ: báo ngay trong standup, đừng đợi cuối tuần
 
----
+## 🔑 3 ĐIỀU NHÓM CẦN NHỚ
 
-## 🎯 ĐIỂM MẠNH TỪNG NGƯỜI (GỢI Ý KHAI THÁC)
-
-| Thành viên | Thế mạnh nên phát huy                                 |
-| ---------- | ----------------------------------------------------- |
-| **Vũ**     | Tổng hợp, viết tài liệu, kết nối nhóm, điều phối      |
-| **Hải**    | Code backend, xử lý dữ liệu lớn, tối ưu hiệu năng     |
-| **Tình**   | Bảo mật, kiểm thử, UX/UI, quay video                  |
-| **Tường**  | Phân tích số liệu, vẽ biểu đồ, viết báo cáo học thuật |
-
----
-
-## 📌 3 ĐIỀU NHÓM CẦN NHỚ
-
-1. **Vũ là Lead** — mọi quyết định cuối cùng Vũ chốt
-2. **Hải là người làm DB chính** — đừng ai đụng vào `db/` mà không báo
-3. **Tình là người giữ bảo mật** — chỉ Tình được sửa `ast_whitelist.py`
+1. **Vũ là Lead** — quyết định cuối cùng Vũ chốt, nhưng thay đổi contract phải báo cả nhóm
+2. **Hải giữ DB** — ai cần đụng `db/` phải báo Hải
+3. **Tình giữ bảo mật** — sửa `ast_whitelist.py`, `apply.py`, `approval.py` cần review 2 người, không ai tự merge

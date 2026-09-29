@@ -1,218 +1,198 @@
 # 📊 TIẾN ĐỘ DỰ ÁN
 
-> **Cập nhật lần cuối:** 28/09/2025 — bởi Vũ (nhóm trưởng)
-> **Tuần hiện tại:** Tuần 1/12
-> **Tổng tiến độ:** 🟩⬜⬜⬜⬜⬜⬜⬜⬜⬜ **5%**
-
----
-
-## 🎯 TỔNG QUAN 10 GIAI ĐOẠN
-
-|  #  | Giai đoạn               |   Trạng thái    | Deadline | Người chính |
-| :-: | ----------------------- | :-------------: | :------: | ----------- |
-|  0  | Setup môi trường        |   ✅ **Done**   |  28/09   | Vũ          |
-|  1  | CSDL 12M records        | 🟡 **Đang làm** |  05/10   | Hải         |
-|  2  | 30 query + ground truth |   ⬜ Chưa làm   |  08/10   | Tường       |
-|  3  | 6 Tool MCP              |   ⬜ Chưa làm   |  15/10   | Vũ + Hải    |
-|  4  | Tích hợp LLM            |   ⬜ Chưa làm   |  18/10   | Vũ          |
-|  5  | Validation Layer        |   ⬜ Chưa làm   |  22/10   | Hải         |
-|  6  | 20 Prompt Injection     |   ⬜ Chưa làm   |  25/10   | Tình        |
-|  7  | Metrics + Baseline      |   ⬜ Chưa làm   |  29/10   | Tường       |
-|  8  | Dashboard Streamlit     |   ⬜ Chưa làm   |  02/11   | Tình        |
-|  9  | Báo cáo + Demo          |   ⬜ Chưa làm   |  09/11   | Cả nhóm     |
+> **Cập nhật lần cuối:** 29/09 — bởi Vũ (nhóm trưởng)
+> **Tuần hiện tại:** Tuần 1/12 (cuối tuần)
+> **Tổng tiến độ:** 🟩⬜⬜⬜⬜⬜⬜⬜⬜⬜ **~5%**
+>
+> ⚠️ **File này chỉ ghi TRẠNG THÁI.** Deadline, người phụ trách và tiêu chí Done xem [ROADMAP.md](ROADMAP.md) (mục 4–5). Mục tiêu Precision/Recall/Consistency xem [ROADMAP.md](ROADMAP.md) mục 2.4. Không ghi lại con số ở đây để tránh lệch.
 
 **Chú thích:** ✅ Done | 🟡 Đang làm | ⬜ Chưa làm | 🔴 Trễ hạn | ⏸️ Tạm dừng
 
 ---
 
-## 👥 PHÂN CÔNG NHANH
+## 🎯 TỔNG QUAN CÁC GIAI ĐOẠN
 
-| Thành viên | Vai trò                      | Phụ trách chính                          |
-| ---------- | ---------------------------- | ---------------------------------------- |
-| **Vũ** ⭐  | 🧠 Team Lead + MCP Architect | MCP Server core, LLM, báo cáo, điều phối |
-| **Hải**    | 🗄️ DB Engineer + Backend     | CSDL, 6 tool backend, Validation Layer   |
-| **Tình**   | 🛡️ Security + Frontend       | AST whitelist, 20 injection, Dashboard   |
-| **Tường**  | 📊 Data Analyst + Metrics    | Ground truth, metrics, biểu đồ           |
+|  #  | Giai đoạn                                            | Trạng thái  | Người chính      |          Deadline          |
+| :-: | ---------------------------------------------------- | :---------: | ---------------- | :------------------------: |
+|  0  | Setup môi trường                                     |   ✅ Done   | Vũ               |           28/09            |
+| 0b  | Chốt thiết kế (`api-contract.md`, `architecture.md`) | 🟡 Đang làm | Vũ               |       03/10 · 06/10        |
+|  1  | CSDL 12M records (phân bố lệch)                      | 🟡 Đang làm | Hải              |           05/10            |
+|  2  | 30 query + ground truth                              | 🟡 Đang làm | Tường            | 06/10 (draft) · 20/10 (ký) |
+|  3  | Tool 1–5 MCP                                         |     ⬜      | Vũ · Hải · Tường |           13/10            |
+|  4  | Tích hợp LLM                                         |     ⬜      | Vũ               |           18/10            |
+|  5  | Validation Layer                                     |     ⬜      | Hải              |           22/10            |
+|  6  | Tool 6 + approval token + 20 injection               |     ⬜      | Tình             |           27/10            |
+|  7  | Metrics + Baseline                                   |     ⬜      | Tường · Hải      |           03/11            |
+|  8  | Dashboard 4 tab                                      |     ⬜      | Tình             |           10/11            |
+|  9  | Báo cáo + Demo                                       |     ⬜      | Cả nhóm          |       17/11 · 01/12        |
 
-> Chi tiết xem [TEAM.md](TEAM.md)
+> Cột Deadline chỉ để tiện nhìn, bản chuẩn ở ROADMAP mục 5.
 
 ---
 
 ## 📅 CẬP NHẬT THEO TUẦN
 
-### 🗓️ Tuần 1 (23/09 – 29/09/2025)
+### 🗓️ Tuần 1 (23/09 – 29/09)
 
-**Mục tiêu:** Setup xong môi trường + khung dự án
+**Mục tiêu:** Setup môi trường + khung dự án
 
-| Việc                         | Người làm | Trạng thái | Ghi chú                    |
-| ---------------------------- | --------- | :--------: | -------------------------- |
-| Tạo repo GitHub              | Vũ        |     ✅     | Đã push lên `main` + `dev` |
-| Tạo cấu trúc thư mục         | Vũ        |     ✅     | 70 file + 20 thư mục       |
-| Viết `docker-compose.yml`    | Vũ        |     ✅     | MySQL 8.0 chạy được        |
-| Cài đặt MySQL + bật slow log | Hải       |     ✅     | `long_query_time = 0.5`    |
-| Tạo user `readonly_user`     | Hải       |     ✅     | Chỉ có quyền SELECT        |
-| Draft 30 query theo 5 nhóm   | Tường     |     🟡     | Đang viết nhóm 3/5         |
-| Setup Streamlit skeleton     | Tình      |     ✅     | `app.py` chạy được         |
-| Test quyền readonly user     | Tình      |     ✅     | DDL bị chặn thành công     |
+| Việc                      | Người   | Trạng thái | Ghi chú                       |
+| ------------------------- | ------- | :--------: | ----------------------------- |
+| Tạo repo GitHub           | Vũ      |     ✅     | Đã push `main` + `dev`        |
+| Cấu trúc thư mục          | Vũ      |     ✅     | 70 file + 20 thư mục          |
+| `docker-compose.yml`      | Vũ      |     ✅     | MySQL 8.0 chạy được           |
+| MySQL + bật slow log      | Hải     |     ✅     | `long_query_time = 0.5`       |
+| User `readonly_user`      | Hải     |     ✅     | Chỉ SELECT                    |
+| Test quyền readonly       | Tình    |     ✅     | DDL bị chặn                   |
+| Streamlit skeleton        | Tình    |     ✅     | `app.py` chạy được            |
+| Draft 30 query            | Tường   |     🟡     | Nhóm 3/5 → chuyển sang tuần 2 |
+| Chốt `api-contract.md`    | Cả nhóm |     🟡     | Đã có draft v1, cần review    |
+| Bàn giao kiến thức 4 buổi | Cả nhóm |     🟡     | Xem Blockers                  |
+
+**Checklist cuối tuần 1 (kiểm tra thật, không tick trước):**
+
+- [x] `docker compose up -d` chạy không lỗi
+- [x] `SHOW VARIABLES LIKE 'slow_query_log'` → ON
+- [x] `readonly_user` không chạy được `DROP TABLE`
+- [x] Streamlit `app.py` mở được
+- [ ] Draft 30 query đủ 5 nhóm → **còn thiếu nhóm 4, 5**
+- [ ] `api-contract.md` đã chốt → **đang review**
+- [ ] Tất cả thành viên hiểu phân công mới → **cần xác nhận ở standup**
 
 **Vấn đề gặp phải:**
 
-- ⚠️ MySQL trong Docker bị chậm khi seed → chuyển sang `LOAD DATA INFILE`
+- ⚠️ MySQL trong Docker chậm khi seed → chuyển sang `LOAD DATA INFILE`
 - ⚠️ Streamlit crash khi không có data → thêm try/except
 
-**Kế hoạch tuần 2:** Seed xong 12M orders, hoàn thành draft 30 query
+**Thay đổi lớn cuối tuần 1:** cập nhật ROADMAP v2 (tách baseline đúng bản chất, approval token, INVISIBLE INDEX, định nghĩa metric, cân lại phân công). Chi tiết ở [ROADMAP.md](ROADMAP.md) mục 0.
 
 ---
 
-### 🗓️ Tuần 2 (30/09 – 06/10/2025)
+### 🗓️ Tuần 2 (30/09 – 06/10)
 
-**Mục tiêu:** Có CSDL 12M records + draft 30 query
+| Việc                                  | Người        | Trạng thái | Ghi chú                        |
+| ------------------------------------- | ------------ | :--------: | ------------------------------ |
+| Chuyển `log_output` sang `FILE,TABLE` | Hải          |     ⬜     |                                |
+| Seed 1M users                         | Hải          |     ⬜     | Phân bố Zipf                   |
+| Seed 12M orders                       | Hải          |     ⬜     | Status lệch, đỉnh Black Friday |
+| Seed 20M order_items                  | Hải          |     ⬜     |                                |
+| Verify phân bố dữ liệu                | Tường        |     ⬜     |                                |
+| Hoàn thành draft 30 query (6/nhóm)    | Tường        |     ⬜     |                                |
+| Chốt `api-contract.md`                | Vũ + cả nhóm |     ⬜     | Hạn 03/10                      |
+| Chốt `architecture.md`                | Vũ           |     ⬜     | Hạn 06/10                      |
+| Khung 6 tool rỗng                     | Vũ           |     ⬜     |                                |
+| Draft AST whitelist v1 + test đơn vị  | Tình         |     ⬜     |                                |
+| Xin API key + đặt ngân sách token     | Vũ           |     ⬜     | Hạn 01/10                      |
 
-| Việc                   | Người làm | Trạng thái | Ghi chú |
-| ---------------------- | --------- | :--------: | ------- |
-| Seed 1M users          | Hải       |     ⬜     |         |
-| Seed 12M orders        | Hải       |     ⬜     |         |
-| Seed 20M order_items   | Hải       |     ⬜     |         |
-| Verify phân bố dữ liệu | Tường     |     ⬜     |         |
-| Hoàn thành 30 query    | Tường     |     ⬜     |         |
-| Viết khung 6 tool rỗng | Vũ        |     ⬜     |         |
-| Draft AST whitelist    | Tình      |     ⬜     |         |
-
-_(Sẽ cập nhật khi tuần 2 bắt đầu)_
-
----
-
-## 🚨 BLOCKERS (Vấn đề đang chặn)
-
-| #   | Vấn đề                                | Người xử lý | Trạng thái  | Deadline |
-| --- | ------------------------------------- | ----------- | ----------- | -------- |
-| 1   | MySQL trong Docker chậm khi seed      | Hải         | 🟡 Đang fix | 30/09    |
-| 2   | Chưa có API key Anthropic             | Vũ          | 🔴 Chưa có  | 01/10    |
-| 3   | Bàn giao kiến thức MCP cũ → Vũ        | Cả nhóm     | 🟡 Đang làm | 30/09    |
-| 4   | Bàn giao kiến thức MySQL cũ → Hải     | Cả nhóm     | 🟡 Đang làm | 30/09    |
-| 5   | Bàn giao kiến thức Security cũ → Tình | Cả nhóm     | 🟡 Đang làm | 30/09    |
-| 6   | Bàn giao kiến thức Metrics cũ → Tường | Cả nhóm     | 🟡 Đang làm | 30/09    |
+_(Cập nhật khi tuần 2 bắt đầu)_
 
 ---
 
-## 📈 METRICS THEO DÕI
+## 🚨 BLOCKERS
 
-| Chỉ số                  | Hiện tại | Mục tiêu   |
-| ----------------------- | -------- | ---------- |
-| Số dòng bảng `orders`   | 0        | 12,000,000 |
-| Số query chậm trong log | 0        | ≥ 30       |
-| Số tool MCP hoàn thành  | 0/6      | 6/6        |
-| Số injection test pass  | 0/20     | 20/20      |
-| Precision của LLM       | —        | ≥ 70%      |
-| Recall của LLM          | —        | ≥ 70%      |
+| #   | Vấn đề                                                                                        | Người xử lý   | Trạng thái   | Hạn   |
+| --- | --------------------------------------------------------------------------------------------- | ------------- | ------------ | ----- |
+| 1   | MySQL trong Docker chậm khi seed                                                              | Hải (Vũ pair) | 🟡 Đang fix  | 30/09 |
+| 2   | Chưa có API key Anthropic                                                                     | Vũ            | 🔴 Chưa có   | 01/10 |
+| 3   | Bàn giao MCP: Tình → Vũ                                                                       | Tình, Vũ      | 🟡           | 30/09 |
+| 4   | Bàn giao MySQL: Vũ → Hải                                                                      | Vũ, Hải       | 🟡           | 30/09 |
+| 5   | Bàn giao Security (`sqlglot`): Vũ → Tình, **kèm code mẫu có test**                            | Vũ, Tình      | 🟡           | 30/09 |
+| 6   | Bàn giao EXPLAIN/metrics: Tình → Tường                                                        | Tình, Tường   | 🟡           | 30/09 |
+| 7   | Chưa xác nhận cả 30 query thực sự > 0.5s (MySQL 8 tự tối ưu một số subquery)                  | Tường, Hải    | ⬜ Chưa kiểm | 13/10 |
+| 8   | Chưa kiểm chứng case study `(created_at, status)` vs `(status, created_at)` bằng số liệu thật | Tường, Hải    | ⬜ Chưa kiểm | 13/10 |
+
+---
+
+## 📈 CHỈ SỐ THEO DÕI
+
+Mục tiêu chuẩn xem [ROADMAP.md](ROADMAP.md) mục 2.4. Cột "Hiện tại" là chỗ duy nhất cần cập nhật ở đây.
+
+| Chỉ số                                             | Hiện tại |
+| -------------------------------------------------- | :------: |
+| Số dòng bảng `orders`                              |    0     |
+| Số query trong slow log                            |    0     |
+| Query xác nhận > 0.5s (trên 30)                    |   0/30   |
+| Tool MCP hoàn thành                                |   0/6    |
+| Injection test pass                                |   0/20   |
+| Ground truth có chữ ký GVHD                        |   Chưa   |
+| Precision / Recall (index)                         |    —     |
+| Consistency Rate                                   |    —     |
+| False Positive Rate                                |    —     |
+| Rewrite đạt (kết quả tương đương + P95 giảm ≥ 20%) |    —     |
 
 ---
 
 ## 📝 NHẬT KÝ THAY ĐỔI
 
-| Ngày  | Người   | Việc đã làm                                                      |
-| ----- | ------- | ---------------------------------------------------------------- |
-| 23/09 | Vũ      | Tạo repo, push cấu trúc ban đầu                                  |
-| 24/09 | Hải     | Setup MySQL + bật slow log                                       |
-| 25/09 | Vũ      | Viết `docker-compose.yml`                                        |
-| 26/09 | Tường   | Bắt đầu draft 30 query                                           |
-| 27/09 | Tình    | Test readonly user, DDL bị chặn OK                               |
-| 28/09 | Cả nhóm | Standup: review tuần 1, chốt kế hoạch tuần 2                     |
-| 28/09 | Cả nhóm | **Đổi phân công**: Vũ=Lead, Hải=DB, Tình=Security, Tường=Metrics |
+| Ngày  | Người   | Việc đã làm                                                            |
+| ----- | ------- | ---------------------------------------------------------------------- |
+| 23/09 | Vũ      | Tạo repo, push cấu trúc ban đầu                                        |
+| 24/09 | Hải     | Setup MySQL + bật slow log                                             |
+| 25/09 | Vũ      | Viết `docker-compose.yml`                                              |
+| 26/09 | Tường   | Bắt đầu draft 30 query                                                 |
+| 27/09 | Tình    | Test readonly user, DDL bị chặn OK                                     |
+| 28/09 | Cả nhóm | Standup: đổi phân công (Vũ=Lead, Hải=DB, Tình=Security, Tường=Metrics) |
+| 29/09 | Vũ      | ROADMAP v2, TEAM, PROGRESS, `api-contract.md` draft v1                 |
 
 ---
 
-## 🔄 GHI CHÚ VỀ ĐỔI PHÂN CÔNG (28/09)
+## 🔄 GHI CHÚ ĐỔI PHÂN CÔNG
 
-**Lý do đổi:** Cân bằng lại workload + phát huy thế mạnh từng người.
+**Đổi vai (28/09):**
 
-**Bảng mapping cũ → mới:**
+| Vai trò                   | Người cũ | Người mới |
+| ------------------------- | -------- | --------- |
+| Team Lead + MCP Architect | Tình     | **Vũ**    |
+| DB Engineer               | Hải      | Hải       |
+| Security + Frontend       | Vũ       | **Tình**  |
+| Data Analyst + Metrics    | Tường    | Tường     |
 
-| Vai trò                      | Người CŨ | Người MỚI         |
-| ---------------------------- | -------- | ----------------- |
-| 🧠 Team Lead + MCP Architect | Tình     | **Vũ** ⭐         |
-| 🗄️ DB Engineer + Backend     | Hải      | Hải (không đổi)   |
-| 🛡️ Security + Frontend       | Vũ       | **Tình**          |
-| 📊 Data Analyst + Metrics    | Tường    | Tường (không đổi) |
-
-**Kế hoạch bàn giao (tuần 1-2):**
-
-| Buổi | Người dạy | Người học | Nội dung                                       |
-| :--: | --------- | --------- | ---------------------------------------------- |
-|  1   | Tình (cũ) | Vũ (mới)  | MCP protocol, cách viết tool, kiến trúc server |
-|  2   | Vũ (cũ)   | Hải       | MySQL setup, seed data, LOAD DATA INFILE       |
-|  3   | Vũ (cũ)   | Tình      | AST whitelist (sqlglot), prompt injection      |
-|  4   | Tình (cũ) | Tường     | EXPLAIN, cách đo metrics, ground truth         |
+**Điều chỉnh việc (29/09, theo ROADMAP v2):** Tool 6 → Tình · Tool 5 + baseline → Tường · Hải verify ground truth cùng Tường. Lý do và chi tiết ở [TEAM.md](TEAM.md).
 
 **Rủi ro cần theo dõi:**
 
-- ⚠️ Vũ vừa làm Lead vừa làm MCP Architect → cần Tình hỗ trợ MCP 2 tuần đầu
-- ⚠️ Hải chưa quen MySQL → cần Vũ hỗ trợ seed 1 tuần đầu
-- ⚠️ Tình chưa quen AST whitelist → cần Vũ bàn giao code mẫu
-- ⚠️ Tường chưa quen EXPLAIN → cần Hải + Vũ hỗ trợ
+- ⚠️ Vũ vừa Lead vừa MCP Architect → Tình hỗ trợ MCP 2 tuần đầu; nếu quá tải, báo ngay trong standup
+- ⚠️ Hải đang trên đường găng (seed → validation) mà mới quen MySQL → Vũ pair seed tuần 2
+- ⚠️ Tình mới làm AST whitelist → Vũ giao code mẫu kèm test
+- ⚠️ Tường mới làm EXPLAIN nhưng giữ ground truth → Hải verify chéo
 
 ---
 
 ## 📌 CÁCH CẬP NHẬT FILE NÀY
 
-1. **Cuối mỗi ngày (sau standup):** Đổi 🟡 → ✅ khi xong việc
-2. **Chủ nhật hàng tuần:** Thêm bảng "Tuần N" mới
-3. **Khi gặp vấn đề:** Thêm vào mục "Blockers"
-4. **Cuối cùng:** Cập nhật % tổng tiến độ ở đầu file
+| Khi nào             | Cập nhật gì                                           | Ai làm    |
+| ------------------- | ----------------------------------------------------- | --------- |
+| Sau standup tối     | Đổi trạng thái việc đã xong                           | Vũ        |
+| Gặp blocker mới     | Thêm dòng vào "Blockers"                              | Người gặp |
+| Chủ nhật            | Thêm bảng "Tuần N+1", cập nhật % và "Chỉ số theo dõi" | Vũ        |
+| Đổi phân công/scope | Ghi vào "Nhật ký thay đổi" **và** sửa ROADMAP         | Vũ        |
+| Cuối tháng          | Review tổng tiến độ                                   | Cả nhóm   |
 
-**Ai cập nhật:** **Vũ** (nhóm trưởng) — nhưng ai cũng có thể đề xuất sửa qua Pull Request.
-
----
-
-## 🎯 QUY TẮC CẬP NHẬT PROGRESS
-
-| Khi nào             | Cập nhật gì                           | Ai làm    |
-| ------------------- | ------------------------------------- | --------- |
-| Sau standup tối     | Đổi trạng thái việc đã xong (🟡 → ✅) | Vũ        |
-| Khi gặp blocker mới | Thêm dòng vào mục "Blockers"          | Người gặp |
-| Chủ nhật            | Thêm section "Tuần N+1"               | Vũ        |
-| Cuối tháng          | Review tổng tiến độ                   | Cả nhóm   |
-| Khi đổi phân công   | Ghi chú vào "Nhật ký thay đổi"        | Vũ        |
+Ai cũng có thể đề xuất sửa qua Pull Request.
 
 ---
 
-## 📞 LIÊN HỆ NHANH THEO VAI TRÒ
+## ✅ CHECKLIST REVIEW CUỐI TUẦN (Vũ)
 
-| Vấn đề                        | Liên hệ                  |
-| ----------------------------- | ------------------------ |
-| Điều phối, deadline, kế hoạch | **Vũ** (Lead)            |
-| MCP protocol, LLM API         | **Vũ** (MCP Architect)   |
-| MySQL, Docker, seed data      | **Hải** (DB Engineer)    |
-| Validation Layer, baseline    | **Hải** (Backend)        |
-| Bảo mật, injection, dashboard | **Tình** (Security)      |
-| Metrics, số liệu, biểu đồ     | **Tường** (Data Analyst) |
-| Không biết hỏi ai             | **Nhóm chat chung**      |
-
----
-
-## 🎯 MỤC TIÊU CUỐI TUẦN 1 (REVIEW)
-
-Trước Chủ nhật 29/09, nhóm phải đạt:
-
-- [ ] `docker compose up -d` chạy không lỗi
-- [ ] `SHOW VARIABLES LIKE 'slow_query_log'` → ON
-- [ ] `readonly_user` không thể chạy `DROP TABLE`
-- [ ] Streamlit `app.py` mở được trên browser
-- [ ] Draft 30 query (chưa cần chạy) — đủ 5 nhóm
-- [ ] Chốt `docs/api-contract.md` (input/output 6 tool)
-- [ ] Tất cả thành viên hiểu phân công mới
+| Mục                                                | Trạng thái |
+| -------------------------------------------------- | :--------: |
+| Cập nhật bảng "Tuần N"                             |     ⬜     |
+| Thêm bảng "Tuần N+1"                               |     ⬜     |
+| Cập nhật % tổng tiến độ                            |     ⬜     |
+| Kiểm tra Blockers                                  |     ⬜     |
+| Cập nhật "Chỉ số theo dõi"                         |     ⬜     |
+| Gửi weekly report GVHD                             |     ⬜     |
+| Đối chiếu với ROADMAP mục 5, có việc nào trễ không |     ⬜     |
 
 ---
 
-## ✅ CHECKLIST REVIEW CUỐI TUẦN
+## 📞 LIÊN HỆ NHANH
 
-**Cuối mỗi tuần, Vũ cập nhật các mục sau:**
-
-| Mục                                             | Trạng thái |
-| ----------------------------------------------- | :--------: |
-| Cập nhật bảng "Tuần N" với trạng thái từng việc |     ⬜     |
-| Thêm bảng "Tuần N+1" kế hoạch                   |     ⬜     |
-| Cập nhật % tổng tiến độ ở đầu file              |     ⬜     |
-| Kiểm tra Blockers — cái nào đã fix              |     ⬜     |
-| Cập nhật Metrics theo dõi                       |     ⬜     |
-| Gửi weekly report cho GVHD                      |     ⬜     |
+| Vấn đề                                           | Liên hệ         |
+| ------------------------------------------------ | --------------- |
+| Điều phối, deadline, kế hoạch                    | Vũ              |
+| MCP protocol, LLM API, Tool 1–3                  | Vũ              |
+| MySQL, Docker, seed, Validation Layer, Tool 4    | Hải             |
+| AST, injection, Tool 6, Dashboard                | Tình            |
+| Ground truth, metrics, Tool 5, baseline, biểu đồ | Tường           |
+| Không biết hỏi ai                                | Nhóm chat chung |
