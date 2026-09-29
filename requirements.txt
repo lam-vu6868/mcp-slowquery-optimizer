@@ -1,8 +1,50 @@
-mcp>=1.0.0
-pymysql>=1.1.0
-sqlglot>=25.0.0
-anthropic>=0.40.0
-streamlit>=1.40.0
-faker>=30.0.0
-python-dotenv>=1.0.0
-pytest>=8.0.0
+# ============================================
+# MCP SLOW QUERY OPTIMIZER — REQUIREMENTS
+# Cập nhật: 29/09/2026
+# Python: 3.11+
+# ============================================
+
+# ---------- MCP Server ----------
+mcp>=1.0.0                    # MCP protocol SDK (6 tool)
+
+# ---------- Database ----------
+pymysql>=1.1.0                # Kết nối MySQL
+cryptography>=42.0.0          # Bắt buộc cho pymysql auth (MySQL 8 caching_sha2_password)
+
+# ---------- Security ----------
+sqlglot>=25.0.0               # Parse SQL AST (whitelist DDL/DML)
+
+# ---------- LLM ----------
+anthropic>=0.40.0             # Claude API
+openai>=1.50.0                # (Tùy chọn) GPT — backup
+tiktoken>=0.7.0               # Đếm token, kiểm soát chi phí API
+
+# ---------- Dashboard ----------
+streamlit>=1.40.0             # Dashboard 4 tab
+pandas>=2.0.0                 # DataFrame cho hiển thị dữ liệu
+altair>=5.0.0                 # Biểu đồ Streamlit (dep của streamlit)
+
+# ---------- Metrics & Charts ----------
+matplotlib>=3.8.0             # Vẽ biểu đồ P95, index size (Tường)
+seaborn>=0.13.0               # Biểu đồ đẹp hơn (heatmap, distribution)
+numpy>=1.26.0                 # Tính toán số học
+
+# ---------- Seed Data ----------
+faker>=30.0.0                 # Sinh dữ liệu giả
+numpy>=1.26.0                 # (đã liệt kê trên, dùng cho Zipf distribution)
+
+# ---------- Environment ----------
+python-dotenv>=1.0.0          # Đọc file .env
+
+# ---------- Testing ----------
+pytest>=8.0.0                 # Framework test
+pytest-asyncio>=0.23.0        # Test async (MCP tools là async)
+pytest-cov>=5.0.0             # Đo coverage
+pytest-mock>=3.12.0           # Mock DB trong test
+
+# ---------- Code Quality (tùy chọn) ----------
+ruff>=0.5.0                   # Linter nhanh (thay flake8 + isort)
+black>=24.0.0                 # Auto-format code
+
+# ---------- Logging & Debug ----------
+rich>=13.0.0                  # Log màu đẹp trong terminal
