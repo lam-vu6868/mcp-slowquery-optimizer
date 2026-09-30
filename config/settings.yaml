@@ -1,0 +1,32 @@
+# config/settings.yaml
+# ---------------------
+# Cấu hình không bí mật của dự án. Bí mật (API key, mật khẩu, APPROVAL_SECRET) để trong .env.
+# Phụ trách: Vũ | Review: Hải
+# Mọi ngưỡng dùng trong thực nghiệm PHẢI lấy từ file này để báo cáo ghi lại được.
+
+llm:
+  model: "claude-sonnet-5-5"     # GHIM phiên bản; đổi model = phải chạy lại thực nghiệm
+  temperature: 0.0               # thấp để Consistency Rate có ý nghĩa
+  max_tokens: 2000
+  max_tool_calls_per_query: 8
+  json_retry: 2                  # số lần retry khi JSON sai schema
+  consistency_runs: 5            # chạy lại cùng 1 prompt bao nhiêu lần
+
+db:
+  slow_query_threshold_s: 0.5
+  max_execution_time_ms: 30000
+
+validation:
+  warmup_runs: 3
+  measured_runs: 20
+  min_p95_improvement_pct: 20    # dưới ngưỡng này thì đề xuất bị coi là fail
+  require_result_equivalence: true
+  write_overhead_rows: 100000    # số dòng INSERT khi đo trade-off ghi
+
+approval:
+  token_ttl_seconds: 600
+  single_use: true
+
+limits:
+  max_rows_returned: 100
+  max_index_columns: 5

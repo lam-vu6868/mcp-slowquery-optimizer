@@ -1,0 +1,20 @@
+-- db/schema.sql
+-- -------------
+--
+-- CHỨC NĂNG :
+--     Định nghĩa 5 bảng thực nghiệm: users, orders, order_items, products, payments.
+--
+-- PHỤ TRÁCH  : Hải    |    REVIEW: Tường
+--
+-- LƯU Ý:
+--     - Chỉ tạo PRIMARY KEY và khóa ngoại cần thiết.
+--     - CỐ Ý KHÔNG tạo các index mà 30 query cần: để LLM đề xuất, ground truth mới có ý nghĩa.
+--     - Engine InnoDB, MySQL 8.0.
+--     - orders phải có created_at và status (dùng cho case study Black Friday).
+--
+-- CẦN LÀM:
+--     [ ] Viết CREATE TABLE cho 5 bảng.
+--
+-- THAM KHẢO  : db/init.sql, data/seed/
+--
+-- TRẠNG THÁI : KHUNG RỖNG — chưa cài đặt. Xóa dòng này khi bắt đầu code.

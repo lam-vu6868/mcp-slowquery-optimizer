@@ -1,0 +1,9 @@
+{
+  "_readme": "Đáp án chuẩn cho 30 query. JSON không có comment nên ghi chú nằm ở đây; code đọc file phải BỎ QUA các khóa bắt đầu bằng dấu gạch dưới. Mỗi query có TẬP đáp án chấp nhận được (không chỉ 1 đáp án). Tường soạn, Hải verify bằng EXPLAIN + benchmark, GVHD ký. KHÔNG sửa cho vừa kết quả LLM.",
+  "_owner": "Tường",
+  "_reviewer": "Hải (verify) + GVHD (ký)",
+  "version": 1,
+  "signed_by_gvhd": false,
+  "signed_date": null,
+  "items": []
+}

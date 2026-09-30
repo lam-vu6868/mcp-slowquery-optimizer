@@ -37,3 +37,11 @@ mysql-data/
 # Report tạm
 ~$*.docx
 ~$*.pptx
+
+# --- thêm bởi init_structure.py ---
+*.pyc
+data/generated/
+data/outputs/*.csv
+security/logs/*.log
+logs/
+structure.txt
