@@ -1,0 +1,14 @@
+/*
+dashboard/assets/style.css
+--------------------------
+
+CHỨC NĂNG :
+    CSS tùy chỉnh giao diện Dashboard (màu trạng thái Approved/Rejected/Pending, bảng, thẻ số liệu).
+
+PHỤ TRÁCH  : Tình    |    REVIEW: Tường
+
+LƯU Ý:
+    - Nạp bằng st.markdown('<style>...</style>', unsafe_allow_html=True) trong app.py.
+
+TRẠNG THÁI : KHUNG RỖNG — chưa cài đặt. Xóa dòng này khi bắt đầu code.
+*/

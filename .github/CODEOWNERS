@@ -1,0 +1,34 @@
+# .github/CODEOWNERS
+# Thay các @..._GITHUB bằng GitHub username thật của từng người rồi bật
+# "Require review from Code Owners" trong Settings > Branches.
+# Quy tắc chi tiết: project-management/TEAM.md
+
+# Mặc định: Vũ (Lead) review
+*                                   @VU_GITHUB
+
+/mcp_server/server.py               @VU_GITHUB
+/mcp_server/tools/slow_queries.py   @VU_GITHUB
+/mcp_server/tools/schema.py         @VU_GITHUB
+/mcp_server/tools/stats.py          @VU_GITHUB
+/mcp_server/llm/                    @VU_GITHUB
+/mcp_server/utils/sanitize.py       @VU_GITHUB
+/config/                            @VU_GITHUB
+/docs/                              @VU_GITHUB
+/reports/                           @VU_GITHUB
+
+/mcp_server/tools/explain.py        @HAI_GITHUB
+/mcp_server/validation/             @HAI_GITHUB
+/mcp_server/store/                  @HAI_GITHUB
+/mcp_server/utils/db.py             @HAI_GITHUB
+/db/                                @HAI_GITHUB
+/data/seed/                         @HAI_GITHUB
+
+# Bảo mật: cần Tình VÀ Vũ (và Hải với apply/approval)
+/security/                          @TINH_GITHUB @VU_GITHUB
+/mcp_server/tools/apply.py          @TINH_GITHUB @VU_GITHUB @HAI_GITHUB
+/dashboard/                         @TINH_GITHUB
+
+/mcp_server/tools/benchmark.py      @TUONG_GITHUB
+/data/queries/                      @TUONG_GITHUB @HAI_GITHUB
+/data/metrics/                      @TUONG_GITHUB
+/data/baseline/                     @TUONG_GITHUB

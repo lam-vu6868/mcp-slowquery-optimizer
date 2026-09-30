@@ -1,0 +1,16 @@
+# pyproject.toml — cho phép `pip install -e .` để import mcp_server/security từ mọi nơi
+# (Dashboard, tests, scripts). Thư viện phụ thuộc vẫn ở requirements.txt.
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mcp-slowquery-optimizer"
+version = "0.1.0"
+requires-python = ">=3.11"
+
+[tool.setuptools.packages.find]
+include = ["mcp_server*", "security*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
