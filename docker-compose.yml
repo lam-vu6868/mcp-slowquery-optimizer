@@ -28,15 +28,25 @@ services:
     container_name: mcp_mysql_db
     command: --local-infile=1
     restart: always
+
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root} #Nếu trống thì mặc định là root
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-shopdb}
     ports:
       - "3307:3306"
+
     volumes:
-      - ./db/conf/my.cnf:/etc/mysql/conf.d/my.cnf
-      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./db/conf/my.cnf:/etc/mysql/conf.d/my.cnf:ro
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./db/init.sql:/docker-entrypoint-initdb.d/02-init.sql:ro
       - mysql_data:/var/lib/mysql
+
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-root}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
 volumes:
   mysql_data:
