@@ -1,24 +1,112 @@
-"""
-security/ast_whitelist.py
--------------------------
+"""Fail-closed SQL AST whitelist for MySQL queries."""
 
-CHỨC NĂNG :
-    AST whitelist (sqlglot, dialect mysql): kiểm mọi SQL từ bên ngoài trước khi chạy.
+from __future__ import annotations
 
-PHỤ TRÁCH  : Tình    |    REVIEW: Vũ
+import re
+from typing import Iterable
 
-LƯU Ý:
-    - Fail-closed: parse lỗi thì TỪ CHỐI.
-    - Chỉ 1 statement mỗi lần (chặn nối lệnh bằng dấu ;).
-    - Chỉ cho SELECT và EXPLAIN.
-    - Từ chối comment thực thi /*! ... */ và /*M! ... */.
-    - Từ chối INTO OUTFILE/DUMPFILE, LOAD_FILE, FOR UPDATE, LOCK IN SHARE MODE.
-    - Từ chối hàm nguy hiểm: SLEEP, BENCHMARK, GET_LOCK, RELEASE_LOCK.
-    - Từ chối truy cập schema hệ thống ngoài danh sách cho phép.
-    - DDL duy nhất được phép là CREATE INDEX do SERVER tự sinh ở Tool 6, không đi qua đường của LLM.
-    - Mỗi quy tắc phải có ít nhất 1 test trong tests/test_ast_whitelist.py.
+from sqlglot import exp, parse_one
 
-THAM KHẢO  : project-management/ROADMAP.md (mục 2.2), tests/test_ast_whitelist.py
+_ALLOWED_SYSTEM_SCHEMAS = {"information_schema", "mysql", "performance_schema", "sys"}
+_FORBIDDEN_PATTERNS = (
+    r"/\*!\s*\d+",
+    r"/\*M!",
+    r"\bINTO\s+(?:OUTFILE|DUMPFILE)\b",
+    r"\bLOAD_FILE\s*\(",
+    r"\bFOR\s+UPDATE\b",
+    r"\bLOCK\s+IN\s+SHARE\s+MODE\b",
+    r"\bSLEEP\s*\(",
+    r"\bBENCHMARK\s*\(",
+    r"\bGET_LOCK\s*\(",
+    r"\bRELEASE_LOCK\s*\(",
+)
 
-TRẠNG THÁI : KHUNG RỖNG — chưa cài đặt. Xóa dòng này khi bắt đầu code.
-"""
+
+def _normalize_sql(sql: str) -> str:
+    if not isinstance(sql, str):
+        raise TypeError("SQL must be a string.")
+
+    normalized = sql.strip()
+    if not normalized:
+        raise ValueError("SQL cannot be empty.")
+    return normalized
+
+
+def _contains_forbidden_pattern(sql: str) -> bool:
+    return any(re.search(pattern, sql, flags=re.IGNORECASE) for pattern in _FORBIDDEN_PATTERNS)
+
+
+def _table_names(statement: exp.Expression) -> Iterable[str]:
+    seen: set[str] = set()
+    for table in statement.find_all(exp.Table):
+        names = []
+        if table.db:
+            names.append(table.db)
+        if table.name:
+            names.append(table.name)
+        for name in names:
+            normalized = str(name).strip()
+            if normalized:
+                seen.add(normalized.lower())
+    return sorted(seen)
+
+
+def validate_sql(sql: str, *, allowed_schemas: set[str] | None = None) -> str:
+    """Validate and normalize a SQL statement.
+
+    Returns the trimmed SQL string when valid. Raises ValueError on any unsafe payload.
+    """
+
+    normalized = _normalize_sql(sql)
+
+    if normalized.count(";") > 0:
+        raise ValueError("Only one SQL statement is allowed at a time.")
+
+    if _contains_forbidden_pattern(normalized):
+        raise ValueError("SQL contains forbidden execution or lock patterns.")
+
+    try:
+        statement = parse_one(normalized, read="mysql")
+    except Exception as exc:  # sqlglot raises parser exceptions, so fail closed.
+        raise ValueError("Unable to parse SQL safely.") from exc
+
+    if statement is None:
+        raise ValueError("No SQL statement found.")
+
+    is_select = isinstance(statement, exp.Select)
+    is_explain = normalized.upper().startswith("EXPLAIN ")
+    if not is_select and not is_explain:
+        raise ValueError("Only SELECT and EXPLAIN statements are permitted.")
+
+    allowed = {str(schema).lower() for schema in (allowed_schemas or set())}
+    for table_name in _table_names(statement):
+        if table_name in _ALLOWED_SYSTEM_SCHEMAS:
+            raise ValueError("Access to system schemas is forbidden.")
+        if allowed and table_name not in allowed:
+            if "." in table_name:
+                schema_name, _, _ = table_name.partition(".")
+                if schema_name not in allowed:
+                    raise ValueError("Table access is restricted to the allowed schema list.")
+
+    return normalized
+
+
+def is_allowed_sql(sql: str, *, allowed_schemas: set[str] | None = None) -> bool:
+    try:
+        validate_sql(sql, allowed_schemas=allowed_schemas)
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
+validate_statement = validate_sql
+is_safe_sql = is_allowed_sql
+allowlist_sql = validate_sql
+__all__ = [
+    "validate_sql",
+    "validate_statement",
+    "is_allowed_sql",
+    "is_safe_sql",
+    "allowlist_sql",
+]
+

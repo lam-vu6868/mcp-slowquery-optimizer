@@ -1,11 +1,14 @@
-"""
-security/__init__.py
---------------------
+"""Security helpers used by the optimizer."""
 
-CHỨC NĂNG :
-    Package bảo mật (cần cho pip install -e .).
+from .approval import generate_approval_token, issue_token, reset_used_tokens, verify_token
+from .ast_whitelist import is_allowed_sql, validate_sql
 
-PHỤ TRÁCH  : Tình    |    REVIEW: Vũ
+__all__ = [
+    "issue_token",
+    "generate_approval_token",
+    "verify_token",
+    "reset_used_tokens",
+    "validate_sql",
+    "is_allowed_sql",
+]
 
-TRẠNG THÁI : KHUNG RỖNG — chưa cài đặt. Xóa dòng này khi bắt đầu code.
-"""
