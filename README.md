@@ -1,6 +1,6 @@
 # 🚀 MCP Slow Query Optimizer
 
-> **Đề tài tốt nghiệp:** Tối ưu Slow Query và Chỉ mục CSDL bằng LLM thông qua kiến trúc MCP (Model Context Protocol).
+> **Dự án môn học:** Tối ưu Slow Query và Chỉ mục CSDL bằng LLM thông qua kiến trúc MCP (Model Context Protocol).
 
 ---
 
