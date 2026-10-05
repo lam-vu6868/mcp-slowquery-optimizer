@@ -1,26 +1,4 @@
-# docker-compose.yml
-# ------------------
-#
-# CHỨC NĂNG :
-#     Khởi động MySQL 8.0 cho thực nghiệm (kèm cấu hình slow log).
-#
-# PHỤ TRÁCH  : Hải    |    REVIEW: Vũ
-#
-# LƯU Ý:
-#     - File đang RỖNG nên `docker compose up -d` sẽ báo lỗi cho đến khi có nội dung thật.
-#     - Bắt buộc MySQL 8.0 (cần INVISIBLE INDEX cho Validation Layer).
-#     - Mount db/conf/my.cnf vào /etc/mysql/conf.d/ và db/init.sql vào /docker-entrypoint-initdb.d/.
-#     - Mật khẩu lấy từ .env (biến môi trường), KHÔNG ghi cứng trong file này.
-#     - Cấu hình cần có: slow_query_log=ON, long_query_time=0.5, log_output=FILE,TABLE.
-#     - Dùng volume có tên để dữ liệu 12M dòng không mất khi `docker compose down`.
-#
-# CẦN LÀM:
-#     [ ] Điền service mysql (image mysql:8.0, port, volume, env, healthcheck).
-#
-# THAM KHẢO  : db/conf/my.cnf, db/init.sql, .env.example
-#
-
-version: '3.8'
+version: "3.8"
 
 services:
   db:
@@ -28,15 +6,35 @@ services:
     container_name: mcp_mysql_db
     command: --local-infile=1
     restart: always
+
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-shopdb}
+
     ports:
       - "3307:3306"
+
     volumes:
       - ./db/conf/my.cnf:/etc/mysql/conf.d/my.cnf
-      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./db/init.sql:/docker-entrypoint-initdb.d/02-init.sql:ro
       - mysql_data:/var/lib/mysql
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-uroot",
+          "-p${MYSQL_ROOT_PASSWORD:-root}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
 volumes:
   mysql_data:

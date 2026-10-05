@@ -15,8 +15,6 @@
 -- THAM KHẢO  : db/init.sql, data/seed/
 --
 
-GO
-
 USE shopdb;
 
 DROP TABLE IF EXISTS sales_data;
