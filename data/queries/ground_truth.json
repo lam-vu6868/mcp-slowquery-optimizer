@@ -1,9 +1,251 @@
 {
-  "_readme": "Đáp án chuẩn cho 30 query. JSON không có comment nên ghi chú nằm ở đây; code đọc file phải BỎ QUA các khóa bắt đầu bằng dấu gạch dưới. Mỗi query có TẬP đáp án chấp nhận được (không chỉ 1 đáp án). Tường soạn, Hải verify bằng EXPLAIN + benchmark, GVHD ký. KHÔNG sửa cho vừa kết quả LLM.",
-  "_owner": "Tường",
-  "_reviewer": "Hải (verify) + GVHD (ký)",
-  "version": 1,
-  "signed_by_gvhd": false,
-  "signed_date": null,
-  "items": []
+  "version": "draft-v1",
+  "created_at": "2025-10-05",
+  "author": "Tường",
+  "reviewer": "Hải",
+  "gvhd_signature": null,
+  "queries": {
+    "q01": {
+      "group": 1,
+      "answer_type": "index",
+      "acceptable_answers": [
+        { "type": "index", "table": "orders", "columns": ["status"], "index_name": "idx_orders_status", "note": "Đáp án chính" },
+        { "type": "index", "table": "orders", "columns": ["status", "created_at"], "index_name": "idx_orders_status_created", "note": "Tương đương nếu P95 chênh ≤ 10%" }
+      ],
+      "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
+    },
+    "q02": {
+      "group": 1,
+      "answer_type": "index",
+      "acceptable_answers": [
+        { "type": "index", "table": "users", "columns": ["email"], "index_name": "idx_users_email", "note": "Đáp án chính" }
+      ],
+      "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
+    },
+    "q03": {
+      "group": 1,
+      "answer_type": "index",
+      "acceptable_answers": [
+        { "type": "index", "table": "order_items", "columns": ["product_id"], "index_name": "idx_order_items_product", "note": "Đáp án chính" }
+      ],
+      "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
+    },
+    "q04": {
+      "group": 1,
+      "answer_type": "index",
+      "acceptable_answers": [
+        { "type": "index", "table": "products", "columns": ["category_id"], "index_name": "idx_products_category", "note": "Đáp án chính" }
+      ],
+      "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
+    },
+    "q05": {
+      "group": 1,
+      "answer_type": "index",
+      "acceptable_answers": [
+        { "type": "index", "table": "orders", "columns": ["user_id"], "index_name": "idx_orders_user", "note": "Đáp án chính" }
+      ],
+      "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
+    },
+    "q06": {
+      "group": 1,
+      "answer_type": "index",
+      "acceptable_answers": [
+        { "type": "index", "table": "users", "columns": ["city"], "index_name": "idx_users_city", "note": "Cần đo vì city cardinality thấp" }
+      ],
+      "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
+    },
+    "q07": {
+      "group": 2,
+      "answer_type": "index",
+      "acceptable_answers": [
+        { "type": "index", "table": "orders", "columns": ["status", "created_at"], "index_name": "idx_orders_status_created", "note": "Equality trước, range sau" },
+        { "type": "index", "table": "orders", "columns": ["created_at", "status"], "index_name": "idx_orders_created_status", "note": "Đề bài ghi vậy — cần đo thật" }
+      ],
+      "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
+    },
+    "q08": {
+      "group": 2,
+      "answer_type": "index",
+      "acceptable_answers": [
+        { "type": "index", "table": "orders", "columns": ["status", "user_id"], "index_name": "idx_orders_status_user", "note": "2 equality" }
+      ],
+      "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
+    },
+    "q09": {
+      "group": 2,
+      "answer_type": "index",
+      "acceptable_answers": [
+        { "type": "index", "table": "orders", "columns": ["status", "total_amount"], "index_name": "idx_orders_status_amount", "note": "Equality trước, range sau" }
+      ],
+      "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
+    },
+    "q10": {
+      "group": 2,
+      "answer_type": "index",
+      "acceptable_answers": [
+        { "type": "index", "table": "orders", "columns": ["status", "created_at"], "index_name": "idx_orders_status_created", "note": "Index cũng giúp ORDER BY" }
+      ],
+      "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
+    },
+    "q11": {
+      "group": 2,
+      "answer_type": "index",
+      "acceptable_answers": [
+        { "type": "index", "table": "products", "columns": ["category_id", "price"], "index_name": "idx_products_cat_price", "note": "Equality trước, range sau" }
+      ],
+      "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
+    },
+    "q12": {
+      "group": 2,
+      "answer_type": "index",
+      "acceptable_answers": [
+        { "type": "index", "table": "orders", "columns": ["status", "payment_method"], "index_name": "idx_orders_status_payment", "note": "2 equality" }
+      ],
+      "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
+    },
+    "q13": {
+      "group": 3,
+      "answer_type": "rewrite",
+      "acceptable_answers": [
+        { "type": "rewrite", "rewritten_sql": "SELECT COUNT(*) FROM orders WHERE created_at >= '2024-01-01' AND created_at < '2025-01-01' AND status = 'completed'", "note": "Chuyển YEAR() thành range" }
+      ],
+      "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
+    },
+    "q14": {
+      "group": 3,
+      "answer_type": "rewrite",
+      "acceptable_answers": [
+        { "type": "rewrite", "rewritten_sql": "SELECT COUNT(*) FROM orders WHERE created_at >= '2024-11-01' AND created_at < '2024-12-01'", "note": "MONTH() không có năm → cần UNION theo năm hoặc query riêng" }
+      ],
+      "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
+    },
+    "q15": {
+      "group": 3,
+      "answer_type": "rewrite",
+      "acceptable_answers": [
+        { "type": "rewrite", "rewritten_sql": "SELECT id, user_id FROM orders WHERE created_at >= '2024-11-29 00:00:00' AND created_at < '2024-11-30 00:00:00'", "note": "Chuyển DATE() thành range" }
+      ],
+      "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
+    },
+    "q16": {
+      "group": 3,
+      "answer_type": "rewrite",
+      "acceptable_answers": [
+        { "type": "rewrite", "rewritten_sql": "SELECT id, full_name FROM users WHERE email = 'user123@example.com'", "note": "Dùng collation case-insensitive hoặc lưu lowercase" }
+      ],
+      "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
+    },
+    "q17": {
+      "group": 3,
+      "answer_type": "rewrite",
+      "acceptable_answers": [
+        { "type": "rewrite", "rewritten_sql": "SELECT id, user_id FROM orders WHERE total_amount > 4999900", "note": "Đảo phép toán" }
+      ],
+      "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
+    },
+    "q18": {
+      "group": 3,
+      "answer_type": "rewrite",
+      "acceptable_answers": [
+        { "type": "rewrite", "rewritten_sql": "SELECT id, email FROM users WHERE full_name LIKE 'Ngu%'", "note": "LIKE prefix dùng được index" }
+      ],
+      "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
+    },
+    "q19": {
+      "group": 4,
+      "answer_type": "index",
+      "acceptable_answers": [
+        { "type": "index", "table": "orders", "columns": ["user_id", "created_at"], "index_name": "idx_orders_user_created", "note": "Index giúp WHERE + ORDER BY" }
+      ],
+      "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
+    },
+    "q20": {
+      "group": 4,
+      "answer_type": "index",
+      "acceptable_answers": [
+        { "type": "index", "table": "order_items", "columns": ["order_id", "price"], "index_name": "idx_oi_order_price", "note": "Giúp WHERE + ORDER BY" }
+      ],
+      "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
+    },
+    "q21": {
+      "group": 4,
+      "answer_type": "index",
+      "acceptable_answers": [
+        { "type": "index", "table": "products", "columns": ["category_id", "price"], "index_name": "idx_products_cat_price", "note": "Giúp WHERE + ORDER BY" }
+      ],
+      "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
+    },
+    "q22": {
+      "group": 4,
+      "answer_type": "index",
+      "acceptable_answers": [
+        { "type": "index", "table": "orders", "columns": ["status", "total_amount"], "index_name": "idx_orders_status_amount", "note": "Giúp WHERE + ORDER BY" }
+      ],
+      "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
+    },
+    "q23": {
+      "group": 4,
+      "answer_type": "index",
+      "acceptable_answers": [
+        { "type": "index", "table": "users", "columns": ["city", "created_at"], "index_name": "idx_users_city_created", "note": "Giúp WHERE + ORDER BY" }
+      ],
+      "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
+    },
+    "q24": {
+      "group": 4,
+      "answer_type": "index",
+      "acceptable_answers": [
+        { "type": "index", "table": "orders", "columns": ["created_at"], "index_name": "idx_orders_created", "note": "Index giúp ORDER BY không filesort" }
+      ],
+      "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
+    },
+    "q25": {
+      "group": 5,
+      "answer_type": "rewrite",
+      "acceptable_answers": [
+        { "type": "rewrite", "rewritten_sql": "SELECT DISTINCT u.id, u.email, u.full_name FROM users u JOIN orders o ON o.user_id = u.id WHERE o.total_amount > 10000000", "note": "IN → JOIN + DISTINCT" }
+      ],
+      "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
+    },
+    "q26": {
+      "group": 5,
+      "answer_type": "rewrite",
+      "acceptable_answers": [
+        { "type": "rewrite", "rewritten_sql": "SELECT u.id, u.email FROM users u LEFT JOIN orders o ON o.user_id = u.id AND o.status = 'cancelled' WHERE o.id IS NULL", "note": "NOT IN → LEFT JOIN IS NULL" }
+      ],
+      "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
+    },
+    "q27": {
+      "group": 5,
+      "answer_type": "rewrite",
+      "acceptable_answers": [
+        { "type": "rewrite", "rewritten_sql": "SELECT DISTINCT u.id, u.email FROM users u JOIN orders o ON o.user_id = u.id WHERE o.total_amount > 5000000", "note": "EXISTS → JOIN + DISTINCT" }
+      ],
+      "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
+    },
+    "q28": {
+      "group": 5,
+      "answer_type": "rewrite",
+      "acceptable_answers": [
+        { "type": "rewrite", "rewritten_sql": "SELECT u.id, u.email, COUNT(o.id) AS order_count FROM users u LEFT JOIN orders o ON o.user_id = u.id WHERE u.city = 'Hanoi' GROUP BY u.id, u.email", "note": "Correlated subquery → LEFT JOIN + GROUP BY" }
+      ],
+      "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
+    },
+    "q29": {
+      "group": 5,
+      "answer_type": "rewrite",
+      "acceptable_answers": [
+        { "type": "rewrite", "rewritten_sql": "SELECT DISTINCT p.id, p.name FROM products p JOIN order_items oi ON oi.product_id = p.id JOIN orders o ON o.id = oi.order_id WHERE o.status = 'completed'", "note": "3 tầng IN → 3 JOIN" }
+      ],
+      "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
+    },
+    "q30": {
+      "group": 5,
+      "answer_type": "rewrite",
+      "acceptable_answers": [
+        { "type": "rewrite", "rewritten_sql": "SELECT user_id, COUNT(*) AS cnt FROM orders GROUP BY user_id HAVING COUNT(*) > 10", "note": "Derived table → GROUP BY + HAVING trực tiếp" }
+      ],
+      "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
+    }
+  }
 }
