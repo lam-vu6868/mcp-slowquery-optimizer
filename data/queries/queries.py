@@ -14,8 +14,6 @@ Nhóm 5: Subquery → JOIN (self-join, q25-q30)
 QUERIES = [
     # ============================================================
     # NHÓM 1: THIẾU INDEX (6 query)
-    # Bản chất: WHERE lọc trên cột KHÔNG có index → full scan 5M dòng
-    # Cách sửa: Thêm index trên cột lọc
     # ============================================================
     {
         "id": "q01",
@@ -68,8 +66,6 @@ QUERIES = [
 
     # ============================================================
     # NHÓM 2: SAI THỨ TỰ CỘT COMPOSITE (6 query)
-    # Bản chất: Query có equality + range, index đặt SAI thứ tự
-    # Quy tắc vàng: EQUALITY TRƯỚC, RANGE SAU
     # ============================================================
     {
         "id": "q07",
@@ -123,8 +119,6 @@ QUERIES = [
 
     # ============================================================
     # NHÓM 3: HÀM BỌC CỘT - NON-SARGABLE (6 query)
-    # Bản chất: Dùng hàm quanh cột → MySQL không dùng được index
-    # Cách sửa: Rewrite thành range/comparison trực tiếp
     # ============================================================
     {
         "id": "q13",
@@ -146,9 +140,9 @@ QUERIES = [
         "id": "q15",
         "group": 3,
         "description": "DATE() bọc cột order_date",
-        "sql": "SELECT id, region, total_revenue FROM sales_data WHERE DATE(order_date) = '2024-11-29'",
+        "sql": "SELECT id, region, total_revenue FROM sales_data WHERE DATE(order_date) = '2024-05-15'",
         "expected_answer_type": "rewrite",
-        "rewrite_hint": "Chuyển thành order_date = '2024-11-29' (vì order_date đã là DATE, DATE() thừa) hoặc range nếu là DATETIME",
+        "rewrite_hint": "Chuyển thành order_date = '2024-05-15' (vì order_date đã là DATE, DATE() thừa)",
     },
     {
         "id": "q16",
@@ -177,8 +171,6 @@ QUERIES = [
 
     # ============================================================
     # NHÓM 4: SELECT * + FILESORT (6 query)
-    # Bản chất: SELECT * đọc nhiều cột + ORDER BY không index → filesort
-    # Cách sửa: Thêm index trên cột ORDER BY (và WHERE)
     # ============================================================
     {
         "id": "q19",
@@ -231,8 +223,6 @@ QUERIES = [
 
     # ============================================================
     # NHÓM 5: SUBQUERY → JOIN (SELF-JOIN vì chỉ có 1 bảng) (6 query)
-    # Bản chất: Subquery không tối ưu → rewrite thành self-join
-    # Lưu ý: MySQL 8 tự chuyển 1 số IN → semijoin, cần test thật
     # ============================================================
     {
         "id": "q25",
