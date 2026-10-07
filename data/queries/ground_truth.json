@@ -282,7 +282,7 @@
       "acceptable_answers": [
         {
           "type": "rewrite",
-          "rewritten_sql": "SELECT COUNT(*) FROM sales_data WHERE (order_date >= '2023-11-01' AND order_date < '2023-12-01') OR (order_date >= '2024-11-01' AND order_date < '2024-12-01')",
+          "rewritten_sql": "SELECT COUNT(*) FROM sales_data WHERE (order_date >= '2017-11-01' AND order_date < '2017-12-01') OR (order_date >= '2020-11-01' AND order_date < '2020-12-01')",
           "note": "MONTH() không có năm → phải UNION hoặc OR nhiều range. Tùy năm có trong data mà chọn"
         }
       ],
@@ -535,8 +535,8 @@
       "acceptable_answers": [
         {
           "type": "rewrite",
-          "rewritten_sql": "SELECT s1.region, s1.country, COUNT(s2.id) AS region_count FROM sales_data s1 LEFT JOIN sales_data s2 ON s2.region = s1.region WHERE s1.order_priority = 'H' GROUP BY s1.region, s1.country",
-          "note": "Correlated subquery → self-join + GROUP BY"
+          "rewritten_sql": "SELECT s.id, s.region, s.country, s.total_revenue FROM sales_data s JOIN (SELECT AVG(total_revenue) AS avg_rev FROM sales_data) AS t WHERE s.total_revenue > t.avg_rev LIMIT 1000",
+          "note": "Scalar subquery trong WHERE → derived table + CROSS JOIN"
         }
       ],
       "measurement": {
@@ -552,8 +552,8 @@
       "acceptable_answers": [
         {
           "type": "rewrite",
-          "rewritten_sql": "SELECT DISTINCT s1.id, s1.region, s1.item_type FROM sales_data s1 JOIN sales_data s2 ON s2.item_type = s1.item_type JOIN sales_data s3 ON s3.country = s2.country WHERE s3.sales_channel = 'Online'",
-          "note": "3 tầng IN → self-join 3 lần + DISTINCT"
+          "rewritten_sql": "SELECT DISTINCT s1.id, s1.region, s1.item_type FROM sales_data s1 JOIN sales_data s2 ON s2.item_type = s1.item_type WHERE s2.sales_channel = 'Online' LIMIT 5000",
+          "note": "IN subquery → self-join + DISTINCT"
         }
       ],
       "measurement": {
