@@ -1,16 +1,18 @@
 {
-  "version": "draft-v1",
-  "created_at": "2025-10-05",
+  "version": "draft-v2-sales_data",
+  "created_at": "2025-10-07",
   "author": "Tường",
   "reviewer": "Hải",
   "gvhd_signature": null,
+  "dataset": "shopdb.sales_data",
+  "notes": "Ground truth cho 30 query trên dataset sales_data. Nhóm 5 dùng self-join vì chỉ có 1 bảng.",
   "queries": {
     "q01": {
       "group": 1,
       "answer_type": "index",
       "acceptable_answers": [
-        { "type": "index", "table": "orders", "columns": ["status"], "index_name": "idx_orders_status", "note": "Đáp án chính" },
-        { "type": "index", "table": "orders", "columns": ["status", "created_at"], "index_name": "idx_orders_status_created", "note": "Tương đương nếu P95 chênh ≤ 10%" }
+        { "type": "index", "table": "sales_data", "columns": ["region"], "index_name": "idx_sales_region", "note": "Đáp án chính" },
+        { "type": "index", "table": "sales_data", "columns": ["region", "id"], "index_name": "idx_sales_region_id", "note": "Tương đương nếu P95 chênh ≤ 10%" }
       ],
       "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
     },
@@ -18,7 +20,7 @@
       "group": 1,
       "answer_type": "index",
       "acceptable_answers": [
-        { "type": "index", "table": "users", "columns": ["email"], "index_name": "idx_users_email", "note": "Đáp án chính" }
+        { "type": "index", "table": "sales_data", "columns": ["country"], "index_name": "idx_sales_country", "note": "Đáp án chính" }
       ],
       "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
     },
@@ -26,7 +28,7 @@
       "group": 1,
       "answer_type": "index",
       "acceptable_answers": [
-        { "type": "index", "table": "order_items", "columns": ["product_id"], "index_name": "idx_order_items_product", "note": "Đáp án chính" }
+        { "type": "index", "table": "sales_data", "columns": ["item_type"], "index_name": "idx_sales_item_type", "note": "Đáp án chính" }
       ],
       "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
     },
@@ -34,7 +36,7 @@
       "group": 1,
       "answer_type": "index",
       "acceptable_answers": [
-        { "type": "index", "table": "products", "columns": ["category_id"], "index_name": "idx_products_category", "note": "Đáp án chính" }
+        { "type": "index", "table": "sales_data", "columns": ["sales_channel"], "index_name": "idx_sales_channel", "note": "Đáp án chính. Lưu ý: cardinality thấp (2-3 giá trị)" }
       ],
       "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
     },
@@ -42,7 +44,7 @@
       "group": 1,
       "answer_type": "index",
       "acceptable_answers": [
-        { "type": "index", "table": "orders", "columns": ["user_id"], "index_name": "idx_orders_user", "note": "Đáp án chính" }
+        { "type": "index", "table": "sales_data", "columns": ["order_priority"], "index_name": "idx_sales_priority", "note": "Đáp án chính. Cardinality thấp (4 giá trị H/M/L/C)" }
       ],
       "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
     },
@@ -50,24 +52,27 @@
       "group": 1,
       "answer_type": "index",
       "acceptable_answers": [
-        { "type": "index", "table": "users", "columns": ["city"], "index_name": "idx_users_city", "note": "Cần đo vì city cardinality thấp" }
+        { "type": "index", "table": "sales_data", "columns": ["order_id"], "index_name": "idx_sales_order_id", "note": "Đáp án chính" }
       ],
       "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
     },
+
     "q07": {
       "group": 2,
       "answer_type": "index",
       "acceptable_answers": [
-        { "type": "index", "table": "orders", "columns": ["status", "created_at"], "index_name": "idx_orders_status_created", "note": "Equality trước, range sau" },
-        { "type": "index", "table": "orders", "columns": ["created_at", "status"], "index_name": "idx_orders_created_status", "note": "Đề bài ghi vậy — cần đo thật" }
+        { "type": "index", "table": "sales_data", "columns": ["region", "order_date"], "index_name": "idx_sales_region_date", "note": "Equality (region) trước, range (order_date) sau — theo quy tắc" },
+        { "type": "index", "table": "sales_data", "columns": ["order_date", "region"], "index_name": "idx_sales_date_region", "note": "Đề bài ghi vậy — cần đo thật để xác nhận" }
       ],
-      "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
+      "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null },
+      "case_study": true
     },
     "q08": {
       "group": 2,
       "answer_type": "index",
       "acceptable_answers": [
-        { "type": "index", "table": "orders", "columns": ["status", "user_id"], "index_name": "idx_orders_status_user", "note": "2 equality" }
+        { "type": "index", "table": "sales_data", "columns": ["region", "country"], "index_name": "idx_sales_region_country", "note": "2 equality" },
+        { "type": "index", "table": "sales_data", "columns": ["country", "region"], "index_name": "idx_sales_country_region", "note": "Tương đương (2 equality)" }
       ],
       "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
     },
@@ -75,7 +80,7 @@
       "group": 2,
       "answer_type": "index",
       "acceptable_answers": [
-        { "type": "index", "table": "orders", "columns": ["status", "total_amount"], "index_name": "idx_orders_status_amount", "note": "Equality trước, range sau" }
+        { "type": "index", "table": "sales_data", "columns": ["region", "total_revenue"], "index_name": "idx_sales_region_rev", "note": "Equality trước, range sau" }
       ],
       "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
     },
@@ -83,7 +88,7 @@
       "group": 2,
       "answer_type": "index",
       "acceptable_answers": [
-        { "type": "index", "table": "orders", "columns": ["status", "created_at"], "index_name": "idx_orders_status_created", "note": "Index cũng giúp ORDER BY" }
+        { "type": "index", "table": "sales_data", "columns": ["order_priority", "order_date"], "index_name": "idx_sales_priority_date", "note": "Equality trước, range sau" }
       ],
       "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
     },
@@ -91,7 +96,7 @@
       "group": 2,
       "answer_type": "index",
       "acceptable_answers": [
-        { "type": "index", "table": "products", "columns": ["category_id", "price"], "index_name": "idx_products_cat_price", "note": "Equality trước, range sau" }
+        { "type": "index", "table": "sales_data", "columns": ["item_type", "total_profit"], "index_name": "idx_sales_item_profit", "note": "Equality trước, range sau" }
       ],
       "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
     },
@@ -99,15 +104,20 @@
       "group": 2,
       "answer_type": "index",
       "acceptable_answers": [
-        { "type": "index", "table": "orders", "columns": ["status", "payment_method"], "index_name": "idx_orders_status_payment", "note": "2 equality" }
+        { "type": "index", "table": "sales_data", "columns": ["sales_channel", "order_date"], "index_name": "idx_sales_channel_date", "note": "Equality trước, range sau" }
       ],
       "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
     },
+
     "q13": {
       "group": 3,
       "answer_type": "rewrite",
       "acceptable_answers": [
-        { "type": "rewrite", "rewritten_sql": "SELECT COUNT(*) FROM orders WHERE created_at >= '2024-01-01' AND created_at < '2025-01-01' AND status = 'completed'", "note": "Chuyển YEAR() thành range" }
+        {
+          "type": "rewrite",
+          "rewritten_sql": "SELECT COUNT(*) AS total FROM sales_data WHERE order_date >= '2024-01-01' AND order_date < '2025-01-01' AND region = 'Asia'",
+          "note": "Chuyển YEAR() thành range"
+        }
       ],
       "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
     },
@@ -115,7 +125,11 @@
       "group": 3,
       "answer_type": "rewrite",
       "acceptable_answers": [
-        { "type": "rewrite", "rewritten_sql": "SELECT COUNT(*) FROM orders WHERE created_at >= '2024-11-01' AND created_at < '2024-12-01'", "note": "MONTH() không có năm → cần UNION theo năm hoặc query riêng" }
+        {
+          "type": "rewrite",
+          "rewritten_sql": "SELECT COUNT(*) FROM sales_data WHERE (order_date >= '2023-11-01' AND order_date < '2023-12-01') OR (order_date >= '2024-11-01' AND order_date < '2024-12-01') OR (order_date >= '2025-11-01' AND order_date < '2025-12-01')",
+          "note": "MONTH() không có năm → phải UNION hoặc OR nhiều range. Tùy năm có trong data mà chọn"
+        }
       ],
       "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
     },
@@ -123,7 +137,11 @@
       "group": 3,
       "answer_type": "rewrite",
       "acceptable_answers": [
-        { "type": "rewrite", "rewritten_sql": "SELECT id, user_id FROM orders WHERE created_at >= '2024-11-29 00:00:00' AND created_at < '2024-11-30 00:00:00'", "note": "Chuyển DATE() thành range" }
+        {
+          "type": "rewrite",
+          "rewritten_sql": "SELECT id, region, total_revenue FROM sales_data WHERE order_date = '2024-11-29'",
+          "note": "order_date là DATE → DATE() thừa, bỏ luôn"
+        }
       ],
       "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
     },
@@ -131,7 +149,11 @@
       "group": 3,
       "answer_type": "rewrite",
       "acceptable_answers": [
-        { "type": "rewrite", "rewritten_sql": "SELECT id, full_name FROM users WHERE email = 'user123@example.com'", "note": "Dùng collation case-insensitive hoặc lưu lowercase" }
+        {
+          "type": "rewrite",
+          "rewritten_sql": "SELECT id, region, total_revenue FROM sales_data WHERE country = 'Vietnam'",
+          "note": "Nếu collation là ci (case-insensitive) → bỏ UPPER luôn. Nếu cs → dùng LOWER + index functional"
+        }
       ],
       "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
     },
@@ -139,7 +161,11 @@
       "group": 3,
       "answer_type": "rewrite",
       "acceptable_answers": [
-        { "type": "rewrite", "rewritten_sql": "SELECT id, user_id FROM orders WHERE total_amount > 4999900", "note": "Đảo phép toán" }
+        {
+          "type": "rewrite",
+          "rewritten_sql": "SELECT id, region, country FROM sales_data WHERE total_revenue > 4900",
+          "note": "Đảo phép toán: +100 chuyển sang >"
+        }
       ],
       "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
     },
@@ -147,15 +173,20 @@
       "group": 3,
       "answer_type": "rewrite",
       "acceptable_answers": [
-        { "type": "rewrite", "rewritten_sql": "SELECT id, email FROM users WHERE full_name LIKE 'Ngu%'", "note": "LIKE prefix dùng được index" }
+        {
+          "type": "rewrite",
+          "rewritten_sql": "SELECT id, country, total_revenue FROM sales_data WHERE region LIKE 'Asi%'",
+          "note": "LEFT() → LIKE prefix, MySQL dùng được index"
+        }
       ],
       "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
     },
+
     "q19": {
       "group": 4,
       "answer_type": "index",
       "acceptable_answers": [
-        { "type": "index", "table": "orders", "columns": ["user_id", "created_at"], "index_name": "idx_orders_user_created", "note": "Index giúp WHERE + ORDER BY" }
+        { "type": "index", "table": "sales_data", "columns": ["region", "order_date"], "index_name": "idx_sales_region_date", "note": "Index giúp cả WHERE + ORDER BY" }
       ],
       "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
     },
@@ -163,7 +194,7 @@
       "group": 4,
       "answer_type": "index",
       "acceptable_answers": [
-        { "type": "index", "table": "order_items", "columns": ["order_id", "price"], "index_name": "idx_oi_order_price", "note": "Giúp WHERE + ORDER BY" }
+        { "type": "index", "table": "sales_data", "columns": ["country", "units_sold"], "index_name": "idx_sales_country_units", "note": "Giúp WHERE + ORDER BY" }
       ],
       "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
     },
@@ -171,7 +202,7 @@
       "group": 4,
       "answer_type": "index",
       "acceptable_answers": [
-        { "type": "index", "table": "products", "columns": ["category_id", "price"], "index_name": "idx_products_cat_price", "note": "Giúp WHERE + ORDER BY" }
+        { "type": "index", "table": "sales_data", "columns": ["item_type", "total_revenue"], "index_name": "idx_sales_item_rev", "note": "Giúp WHERE + ORDER BY" }
       ],
       "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
     },
@@ -179,7 +210,7 @@
       "group": 4,
       "answer_type": "index",
       "acceptable_answers": [
-        { "type": "index", "table": "orders", "columns": ["status", "total_amount"], "index_name": "idx_orders_status_amount", "note": "Giúp WHERE + ORDER BY" }
+        { "type": "index", "table": "sales_data", "columns": ["sales_channel", "order_date"], "index_name": "idx_sales_channel_date", "note": "Giúp WHERE + ORDER BY" }
       ],
       "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
     },
@@ -187,7 +218,7 @@
       "group": 4,
       "answer_type": "index",
       "acceptable_answers": [
-        { "type": "index", "table": "users", "columns": ["city", "created_at"], "index_name": "idx_users_city_created", "note": "Giúp WHERE + ORDER BY" }
+        { "type": "index", "table": "sales_data", "columns": ["order_priority", "total_profit"], "index_name": "idx_sales_priority_profit", "note": "Giúp WHERE + ORDER BY" }
       ],
       "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
     },
@@ -195,23 +226,33 @@
       "group": 4,
       "answer_type": "index",
       "acceptable_answers": [
-        { "type": "index", "table": "orders", "columns": ["created_at"], "index_name": "idx_orders_created", "note": "Index giúp ORDER BY không filesort" }
+        { "type": "index", "table": "sales_data", "columns": ["order_date"], "index_name": "idx_sales_date", "note": "Index giúp ORDER BY không filesort" }
       ],
       "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
     },
+
     "q25": {
       "group": 5,
       "answer_type": "rewrite",
       "acceptable_answers": [
-        { "type": "rewrite", "rewritten_sql": "SELECT DISTINCT u.id, u.email, u.full_name FROM users u JOIN orders o ON o.user_id = u.id WHERE o.total_amount > 10000000", "note": "IN → JOIN + DISTINCT" }
+        {
+          "type": "rewrite",
+          "rewritten_sql": "SELECT DISTINCT s1.id, s1.region, s1.country FROM sales_data s1 JOIN sales_data s2 ON s2.region = s1.region WHERE s2.total_profit > 10000",
+          "note": "IN subquery → self-join + DISTINCT"
+        }
       ],
-      "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
+      "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null },
+      "note": "Self-join vì chỉ có 1 bảng"
     },
     "q26": {
       "group": 5,
       "answer_type": "rewrite",
       "acceptable_answers": [
-        { "type": "rewrite", "rewritten_sql": "SELECT u.id, u.email FROM users u LEFT JOIN orders o ON o.user_id = u.id AND o.status = 'cancelled' WHERE o.id IS NULL", "note": "NOT IN → LEFT JOIN IS NULL" }
+        {
+          "type": "rewrite",
+          "rewritten_sql": "SELECT s1.id, s1.region FROM sales_data s1 LEFT JOIN sales_data s2 ON s2.order_id = s1.order_id AND s2.order_priority = 'C' WHERE s2.id IS NULL",
+          "note": "NOT IN → LEFT JOIN IS NULL"
+        }
       ],
       "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
     },
@@ -219,7 +260,11 @@
       "group": 5,
       "answer_type": "rewrite",
       "acceptable_answers": [
-        { "type": "rewrite", "rewritten_sql": "SELECT DISTINCT u.id, u.email FROM users u JOIN orders o ON o.user_id = u.id WHERE o.total_amount > 5000000", "note": "EXISTS → JOIN + DISTINCT" }
+        {
+          "type": "rewrite",
+          "rewritten_sql": "SELECT DISTINCT s1.id, s1.region, s1.total_profit FROM sales_data s1 JOIN sales_data s2 ON s2.region = s1.region WHERE s2.total_revenue > 50000",
+          "note": "EXISTS correlated → self-join + DISTINCT"
+        }
       ],
       "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
     },
@@ -227,7 +272,11 @@
       "group": 5,
       "answer_type": "rewrite",
       "acceptable_answers": [
-        { "type": "rewrite", "rewritten_sql": "SELECT u.id, u.email, COUNT(o.id) AS order_count FROM users u LEFT JOIN orders o ON o.user_id = u.id WHERE u.city = 'Hanoi' GROUP BY u.id, u.email", "note": "Correlated subquery → LEFT JOIN + GROUP BY" }
+        {
+          "type": "rewrite",
+          "rewritten_sql": "SELECT s1.region, s1.country, COUNT(s2.id) AS region_count FROM sales_data s1 LEFT JOIN sales_data s2 ON s2.region = s1.region WHERE s1.order_priority = 'H' GROUP BY s1.region, s1.country",
+          "note": "Correlated subquery → self-join + GROUP BY"
+        }
       ],
       "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
     },
@@ -235,7 +284,11 @@
       "group": 5,
       "answer_type": "rewrite",
       "acceptable_answers": [
-        { "type": "rewrite", "rewritten_sql": "SELECT DISTINCT p.id, p.name FROM products p JOIN order_items oi ON oi.product_id = p.id JOIN orders o ON o.id = oi.order_id WHERE o.status = 'completed'", "note": "3 tầng IN → 3 JOIN" }
+        {
+          "type": "rewrite",
+          "rewritten_sql": "SELECT DISTINCT s1.id, s1.region, s1.item_type FROM sales_data s1 JOIN sales_data s2 ON s2.item_type = s1.item_type JOIN sales_data s3 ON s3.country = s2.country WHERE s3.sales_channel = 'Online'",
+          "note": "3 tầng IN → self-join 3 lần + DISTINCT"
+        }
       ],
       "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
     },
@@ -243,7 +296,11 @@
       "group": 5,
       "answer_type": "rewrite",
       "acceptable_answers": [
-        { "type": "rewrite", "rewritten_sql": "SELECT user_id, COUNT(*) AS cnt FROM orders GROUP BY user_id HAVING COUNT(*) > 10", "note": "Derived table → GROUP BY + HAVING trực tiếp" }
+        {
+          "type": "rewrite",
+          "rewritten_sql": "SELECT region, SUM(total_revenue) AS total FROM sales_data GROUP BY region HAVING SUM(total_revenue) > 1000000",
+          "note": "Derived table → GROUP BY + HAVING trực tiếp"
+        }
       ],
       "measurement": { "before_p95_ms": null, "after_p95_ms": null, "measured_by": null, "measured_at": null }
     }
