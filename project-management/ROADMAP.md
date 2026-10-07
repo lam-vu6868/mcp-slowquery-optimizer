@@ -3,7 +3,7 @@
 > **Vai trò của file này:** Mọi deadline, người phụ trách, tiêu chí Done và quyết định kỹ thuật **chỉ được ghi ở đây**.
 > `TEAM.md`, `PROGRESS.md`, `README.md` chỉ **link về** file này, không tự ghi lại deadline/chỉ số.
 > **Người cập nhật:** Vũ. Ai muốn sửa thì tạo Pull Request.
-> **Quy ước ngày:** ghi `dd/mm`. Nếu nhóm làm năm 2026 thì chỉ cần đổi năm ở tiêu đề các file, không phải sửa từng dòng.
+> **Quy ước ngày:** ghi `dd/mm`.
 
 ---
 
@@ -28,7 +28,7 @@
 
 ```mermaid
 flowchart TD
-    A[0. Setup + chốt thiết kế<br/>api-contract, validation, metric] --> B[1. CSDL 12M + phân bố lệch<br/>Hải]
+    A[0. Setup + chốt thiết kế<br/>api-contract, validation, metric] --> B[1. CSDL 5M + phân bố lệch<br/>Hải]
     A --> C[2. 30 query + ground truth nháp<br/>Tường + Hải verify]
     B --> D[3. Tool 1-5 MCP<br/>Vũ + Hải + Tường]
     C --> D
@@ -93,7 +93,7 @@ Dashboard backend ──apply_optimization(proposal_id, token)──▶ Server k
 - Từ chối comment dạng thực thi `/*! ... */` và `/*M! ... */`.
 - Từ chối `INTO OUTFILE`, `INTO DUMPFILE`, `LOAD_FILE()`, `FOR UPDATE`, `LOCK IN SHARE MODE`.
 - Từ chối hàm nguy hiểm: `SLEEP`, `BENCHMARK`, `GET_LOCK`, `RELEASE_LOCK`, `SYS_EXEC`, `LOAD_FILE`.
-- Từ chối truy cập schema hệ thống ngoài danh sách cho phép (`information_schema`, `performance_schema`, `mysql.*` chỉ qua tool riêng, không qua SQL tự do).
+- Từ chối truy cập schema hệ thống ngoài danh sách cho phép (`information_schema` cho phép; `mysql.*` chặn).
 - DDL duy nhất được phép là `CREATE INDEX` do **server tự sinh** ở Tool 6, không đi qua đường của LLM.
 - Nếu parse lỗi → **từ chối** (fail-closed).
 
@@ -156,7 +156,7 @@ Dashboard backend ──apply_optimization(proposal_id, token)──▶ Server k
 
 > Không đạt mức mong muốn vẫn báo cáo trung thực, phân tích nguyên nhân. Không chỉnh ground truth cho vừa kết quả.
 
-**Kiểm tra lại case study:** đề bài ghi `(created_at, status)`. Với điều kiện _range_ trên `created_at` và _equality_ trên `status`, quy tắc thông thường là cột equality đứng trước (`(status, created_at)`). Tường + Hải **đo bằng EXPLAIN và benchmark thật** trên dữ liệu của nhóm, rồi ghi kết luận có số liệu vào báo cáo thay vì chép nguyên đề bài.
+**Kiểm tra lại case study:** Với dataset `sales_data`, query case study có dạng `WHERE region = 'Asia' AND order_date >= '2024-01-01'`. Điều kiện `region` là **equality**, `order_date` là **range** → quy tắc là cột equality đứng trước: `(region, order_date)`. Tường + Hải **đo bằng EXPLAIN và benchmark thật** trên dữ liệu của nhóm, rồi ghi kết luận có số liệu vào báo cáo.
 
 ### 2.5. Baseline (2 loại, đúng bản chất)
 
@@ -169,10 +169,11 @@ Ghi rõ trong báo cáo: `pt-query-digest` **không** đề xuất index nên kh
 
 ### 2.6. Dữ liệu và slow log
 
-- **Phân bố lệch** (bắt buộc): Zipf cho `user_id`/`product_id`, `status` lệch (vd 85% `completed`), đỉnh đơn hàng theo mùa/Black Friday. Nếu phân bố đều, index nào cũng "tốt như nhau" và ground truth mất ý nghĩa.
+- **Dataset:** bảng `sales_data` (5M dòng), gồm 17 cột với đầy đủ `order_date` (DATE), `order_date_raw` (VARCHAR), `region`, `country`, `item_type`, `sales_channel`, `order_priority`, `total_revenue`, `total_cost`, `total_profit`, `units_sold`, `unit_price`, `unit_cost`, `ship_date`.
+- **Phân bố:** status (region) phân bố tương đối đều, `order_date` trải từ 2014 → 2024, có thể thêm phân bố lệch nếu cần.
 - `log_output = FILE,TABLE` (file cho `pt-query-digest`, bảng `mysql.slow_log` cho tool). Nguồn chính nên là `performance_schema.events_statements_summary_by_digest` (có sẵn digest, `rows_examined`), `slow_log` là nguồn bổ sung.
-- **Xác nhận cả 30 query đều chạy > 0.5s** trên máy thật của nhóm. Với MySQL 8, nhiều `IN (subquery)` tự được chuyển thành semijoin nên có thể không chậm. Chọn kiểu thực sự chậm (correlated, `NOT IN`, `EXISTS` không sargable...).
-- Thời gian seed: **ước lượng 2–6 giờ** (tùy máy, dùng `LOAD DATA INFILE` + tắt index tạm thời rồi tạo lại). Sửa con số "30 phút" trong README.
+- **Xác nhận cả 30 query đều chạy > 0.5s** trên máy thật của nhóm — đã hoàn thành, 30/30 query pass.
+- Thời gian import dataset: **~5-10 phút** cho 5M dòng từ CSV.
 
 ---
 
@@ -181,11 +182,11 @@ Ghi rõ trong báo cáo: `pt-query-digest` **không** đề xuất index nên kh
 | Thành viên | Vai trò             | Phụ trách chính                                                                                                | Thay đổi so với bản cũ                                                 |
 | ---------- | ------------------- | -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
 | **Vũ**     | Lead + MCP + LLM    | `server.py`, Tool 1–3, `llm/`, docs, báo cáo chương 1–3                                                        | **Bớt** `apply.py` (giao Tình), bớt slide (chia đều)                   |
-| **Hải**    | DB + Validation     | CSDL, `explain.py`, Validation Layer, verify ground truth                                                      | **Thêm** verify ground truth cùng Tường; **bớt** baseline (giao Tường) |
+| **Hải**    | DB + Validation     | CSDL 5M, `explain.py`, Validation Layer, verify ground truth                                                   | **Thêm** verify ground truth cùng Tường; **bớt** baseline (giao Tường) |
 | **Tình**   | Security + Frontend | AST whitelist, **`apply.py` + approval token**, 20 injection, Dashboard                                        | **Thêm** `apply.py` vì đây là code bảo mật trọng yếu                   |
 | **Tường**  | Data + Metrics      | 30 query, ground truth, **`benchmark.py`**, metrics, **baseline greedy/rule-based + pt-query-digest**, biểu đồ | **Thêm** `benchmark.py` + baseline (Tường ít việc dev ở giai đoạn đầu) |
 
-**Quy tắc sở hữu file:** dùng `CODEOWNERS` trên GitHub + bắt buộc 1 review trước khi merge, thay cho "chỉ một người được sửa". Người chính vẫn chịu trách nhiệm, nhưng người khác có thể sửa bug gấp qua PR mà không phải chờ.
+**Quy tắc sở hữu file:** dùng `CODEOWNERS` trên GitHub + bắt buộc 1 review trước khi merge. Người chính vẫn chịu trách nhiệm, nhưng người khác có thể sửa bug gấp qua PR mà không phải chờ.
 
 | File / thư mục                                                           | Người chính | Reviewer                       |
 | ------------------------------------------------------------------------ | ----------- | ------------------------------ |
@@ -205,7 +206,7 @@ Ghi rõ trong báo cáo: `pt-query-digest` **không** đề xuất index nên kh
 
 **Quản lý rủi ro người mới:**
 
-- Vũ ↔ Hải: pair seed tuần 2 (2 buổi 2 giờ). Có phương án 5M từ đầu nếu lỗi.
+- Vũ ↔ Hải: pair import dataset tuần 2. Có phương án 5M từ đầu nếu lỗi.
 - Hải ↔ Tường: Hải cùng Tường chạy EXPLAIN cho 10 query đầu, sau đó Tường tự làm.
 - Tình ↔ Vũ: Vũ bàn giao code mẫu `sqlglot` **kèm test**, không chỉ giảng.
 - Tình (cựu MCP) hỗ trợ Vũ trong 2 tuần đầu, ghi chú vào `docs/handover.md`.
@@ -216,39 +217,44 @@ Ghi rõ trong báo cáo: `pt-query-digest` **không** đề xuất index nên kh
 
 > Nguyên tắc: **mỗi tuần không quá 3 việc nặng trên cùng một người**. Tuần 7 là **buffer + code freeze**. Viết báo cáo **song song từ tuần 3**, không dồn cuối.
 
-### 🟢 Tuần 1 (23/09 → 29/09): Nền tảng ✅ phần lớn xong
+### 🟢 Tuần 1 (23/09 → 29/09): Nền tảng — ✅ DONE
 
-- Repo, docker-compose, MySQL + slow log, `readonly_user`, Streamlit skeleton: **xong**.
-- Việc còn tồn: draft 30 query (nhóm 3/5), bàn giao kiến thức, `api-contract.md`. Chuyển sang tuần 2.
+- Repo, docker-compose, MySQL + slow log, `readonly_user`, `index_admin`, Streamlit skeleton: **xong**.
+- 5 file .md quản lý dự án: **xong**.
 
-### 🟢 Tuần 2 (30/09 → 06/10): Dữ liệu + chốt thiết kế
+### 🟢 Tuần 2 (30/09 → 06/10): Dữ liệu + chốt thiết kế — ✅ DONE
 
-| Việc                                                                  | Người           | Ghi chú                                               |
-| --------------------------------------------------------------------- | --------------- | ----------------------------------------------------- |
-| Seed 1M users, 12M orders, 20M items (phân bố lệch)                   | Hải (+ Vũ pair) | Chạy nền/qua đêm. Chốt: nếu 04/10 chưa xong → giảm 5M |
-| Chuyển `log_output` sang `FILE,TABLE`                                 | Hải             |                                                       |
-| Hoàn thành draft 30 query (6/nhóm)                                    | Tường           |                                                       |
-| **Chốt `api-contract.md`** (input/output 6 tool, schema đề xuất JSON) | Vũ + cả nhóm    | Chốt trước 03/10                                      |
-| **Chốt `architecture.md`** (mục 2.1–2.5)                              | Vũ              | Chốt trước 06/10                                      |
-| Khung 6 tool rỗng                                                     | Vũ              |                                                       |
-| Draft AST whitelist v1 + test đơn vị                                  | Tình            | Bắt đầu sớm, không đợi tool                           |
-| Xin API key + đặt ngân sách token                                     | Vũ              | Có key trước 01/10                                    |
+| Việc                                                                  | Người           | Trạng thái |
+| --------------------------------------------------------------------- | --------------- | :--------: |
+| Import dataset sales_data 5M dòng                                     | Hải             |     ✅     |
+| Fix NULL `order_date` + `ship_date`                                   | Hải             |     ✅     |
+| Chốt `api-contract.md`                                                | Vũ + cả nhóm    |     ✅     |
+| Chốt `architecture.md`                                                | Vũ              |     ✅     |
+| `docs/setup-guide.md`                                                 | Hải             |     ✅     |
+| utils/config.py, db.py, logger.py + verify_setup                      | Vũ + Hải        |     ✅     |
+| 30 query + ground_truth.json (30/30 query pass > 0.5s)                | Tường           |     ✅     |
 
-**Done tuần 2:** `COUNT(*) orders ≥ 5,000,000` · slow log có ≥ 10 query · `api-contract.md` và `architecture.md` đã chốt · 30 query draft đủ 5 nhóm · có API key.
+**Done tuần 2:** CSDL 5M dòng OK · slow log có query · contract + architecture đã chốt · 30 query pass 30/30.
 
-### 🟡 Tuần 3 (07/10 → 13/10): Tool 1–5
+### 🟡 Tuần 3 (07/10 → 13/10): Tool 1–5 — ĐANG LÀM
 
-| Việc                                                                                 | Người       |
-| ------------------------------------------------------------------------------------ | ----------- |
-| Tool 1 `get_slow_queries`, 2 `get_schema`, 3 `get_table_stats`                       | Vũ          |
-| Tool 4 `explain_query`                                                               | Hải         |
-| Tool 5 `benchmark_query` (warm-up, ≥ 20 lần, P50/P95)                                | Tường       |
-| Chạy 30 query trên dữ liệu thật, **xác nhận cả 30 đều > 0.5s**, thay query không đạt | Tường + Hải |
-| Đo phân bố dữ liệu, soạn ground truth nháp (tập đáp án chấp nhận được)               | Tường       |
-| AST whitelist v1 pass bộ test cơ bản                                                 | Tình        |
-| Viết nháp phần "Cơ sở lý thuyết"                                                     | Vũ          |
+| Việc                                                              | Người       | Trạng thái |
+| ----------------------------------------------------------------- | ----------- | :--------: |
+| AST whitelist v1 + 47 unit tests pass                             | Tình        |     ✅     |
+| Tool 4 `explain_query` + 7 test pass                              | Hải         |     ✅     |
+| Tool 5 `benchmark_query` + 7 test pass                            | Tường       |     ✅     |
+| Utils (config/db/logger) + verify_setup                           | Vũ + Hải    |     ✅     |
+| Chốt `architecture.md` + `setup-guide.md`                         | Vũ + Hải    |     ✅     |
+| Import 5M dòng sales_data + fix NULL date                         | Hải         |     ✅     |
+| Xác nhận 30 query > 0.5s                                          | Tường       |     ✅     |
+| Tool 1 `get_slow_queries`                                         | Vũ          |     ⬜     |
+| Tool 2 `get_schema`                                               | Vũ          |     ⬜     |
+| Tool 3 `get_table_stats`                                          | Vũ          |     ⬜     |
+| `mcp_server/server.py` đăng ký 5 tool                             | Vũ          |     ⬜     |
+| Đo P95 cho ground truth (baseline)                                | Tường + Hải |     ⬜     |
+| Nháp chương "Cơ sở lý thuyết"                                     | Vũ          |     ⬜     |
 
-**Done tuần 3:** Tool 1–5 gọi được, trả JSON đúng contract · 30 query đều > 0.5s · ground truth nháp xong.
+**Done tuần 3 (mục tiêu):** Tool 1–5 gọi được, trả JSON đúng contract · 30 query đều > 0.5s · ground truth nháp xong.
 
 ### 🟡 Tuần 4 (14/10 → 20/10): LLM + Validation + ground truth ký
 
@@ -326,12 +332,14 @@ Nộp báo cáo + slide cho GVHD (Vũ) · backup source/data/video (Hải) · in
 | -------------------------------- | :-------: | ---------------------- |
 | Chốt `api-contract.md`           |   03/10   | Vũ                     |
 | Chốt `architecture.md` (mục 2)   |   06/10   | Vũ                     |
-| Seed xong (12M, hoặc 5M nếu trễ) |   05/10   | Hải                    |
+| Import dataset 5M dòng           |   05/10   | Hải                    |
 | Draft 30 query đủ 5 nhóm         |   06/10   | Tường                  |
-| Có API key Anthropic             |   01/10   | Vũ                     |
-| Tool 1–5 chạy được               |   13/10   | Vũ, Hải, Tường         |
+| AST whitelist v1 + 47 tests      |   07/10   | Tình                   |
+| Tool 4 + 5 chạy được             |   07/10   | Hải, Tường             |
+| Tool 1–3 chạy được               |   13/10   | Vũ                     |
+| `server.py` đăng ký 5 tool       |   13/10   | Vũ                     |
 | 30 query xác nhận > 0.5s         |   13/10   | Tường                  |
-| AST whitelist v1                 |   13/10   | Tình                   |
+| Đo P95 baseline cho ground truth |   13/10   | Tường + Hải            |
 | LLM agent chạy được              |   18/10   | Vũ                     |
 | Validation Layer chạy được       |   22/10   | Hải                    |
 | **Ground truth có chữ ký GVHD**  | **20/10** | Tường                  |
@@ -366,13 +374,13 @@ Chia 4 nhóm × 5 kịch bản để bao phủ cả injection **gián tiếp**:
 | Trễ      | Hành động                                                                               |
 | -------- | --------------------------------------------------------------------------------------- |
 | 1–2 ngày | Bù cuối tuần, dùng buffer tuần 7                                                        |
-| 3–5 ngày | 12M → 5M · 30 query → 24 (giữ đủ 5 nhóm, ≥ 4/nhóm) · bỏ baseline rule-based, giữ greedy |
+| 3–5 ngày | 30 query → 24 (giữ đủ 5 nhóm, ≥ 4/nhóm) · bỏ baseline rule-based, giữ greedy            |
 | 1 tuần   | Họp khẩn, cắt scope, giữ core                                                           |
 | 2 tuần+  | Báo GVHD, chuẩn bị phương án B                                                          |
 
 **Không được cắt:** 6 Tool (đủ) · Validation Layer · approval token · 20 injection · Dashboard 4 tab · ground truth có chữ ký · báo cáo.
 
-**Được cắt nếu trễ:** số dòng dữ liệu (tối thiểu 5M theo đề) · số query · baseline phụ · một số biểu đồ phụ.
+**Được cắt nếu trễ:** số query · baseline phụ · một số biểu đồ phụ.
 
 ---
 
