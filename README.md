@@ -18,9 +18,9 @@ Hệ thống hỗ trợ **tìm và đề xuất cách sửa các câu truy vấn
 
 ### 🎬 Case study: Sự cố Black Friday
 
-Một sàn TMĐT có **12 triệu đơn hàng**, một query báo cáo doanh thu lọc theo `created_at` và `status` thiếu composite index phù hợp → **full table scan 12M dòng**, CPU database lên **98%**, sập cổng thanh toán.
+Một sàn TMĐT có **5 triệu giao dịch**, một query báo cáo doanh thu lọc theo `region` và `order_date` thiếu composite index phù hợp → **full table scan 5M dòng**, CPU database lên **98%**, sập cổng thanh toán.
 
-Nhóm sẽ **kiểm chứng bằng số liệu thật** thứ tự cột tối ưu (`(created_at, status)` hay `(status, created_at)`) thay vì mặc định theo đề bài.
+Nhóm sẽ **kiểm chứng bằng số liệu thật** thứ tự cột tối ưu (`(order_date, region)` hay `(region, order_date)`) thay vì mặc định theo đề bài.
 
 ---
 
@@ -28,7 +28,7 @@ Nhóm sẽ **kiểm chứng bằng số liệu thật** thứ tự cột tối �
 
 ```mermaid
 flowchart TD
-    A[MySQL 8.0<br/>12M orders] -->|slow log / performance_schema| B[MCP Server<br/>Tool 1-5]
+    A[MySQL 8.0<br/>5M sales_data] -->|slow log / performance_schema| B[MCP Server<br/>Tool 1-5]
     B <-->|gọi tool| C[LLM host<br/>Claude]
     C -->|đề xuất có cấu trúc| V[Validation Layer]
     V --> V1[INVISIBLE INDEX<br/>đo P95 trước/sau]
@@ -63,7 +63,7 @@ flowchart TD
 | Thành viên | Vai trò                      | Phụ trách chính                                            |
 | ---------- | ---------------------------- | ---------------------------------------------------------- |
 | **Vũ**     | 🧠 Team Lead + MCP Architect | Điều phối, `server.py`, Tool 1–3, tích hợp LLM, báo cáo    |
-| **Hải**    | 🗄️ DB Engineer + Validation  | CSDL 12M, Tool 4, Validation Layer + rollback              |
+| **Hải**    | 🗄️ DB Engineer + Validation  | CSDL 5M, Tool 4, Validation Layer + rollback               |
 | **Tình**   | 🛡️ Security + Frontend       | AST whitelist, Tool 6 + token, 20 injection, Dashboard     |
 | **Tường**  | 📊 Data Analyst + Metrics    | 30 query, ground truth, Tool 5, metrics, baseline, biểu đồ |
 
@@ -76,10 +76,13 @@ flowchart TD
 | Giai đoạn                              |   Trạng thái    |
 | -------------------------------------- | :-------------: |
 | Setup môi trường                       |     ✅ Done     |
-| Chốt thiết kế (contract, architecture) |   🟡 Đang làm   |
-| CSDL 12M records                       |   🟡 Đang làm   |
-| 30 query + ground truth                |   🟡 Đang làm   |
-| Tool 1–6 MCP                           | ⬜ Chưa bắt đầu |
+| Chốt thiết kế (contract, architecture) |     ✅ Done     |
+| CSDL 5M records (sales_data)           |     ✅ Done     |
+| 30 query + ground truth                |     ✅ Done     |
+| AST whitelist + 47 unit tests          |     ✅ Done     |
+| Tool 4 `explain_query`                 |     ✅ Done     |
+| Tool 5 `benchmark_query`               |     ✅ Done     |
+| Tool 1–3 MCP                           |   🟡 Đang làm   |
 | Validation Layer                       | ⬜ Chưa bắt đầu |
 | 20 Prompt Injection                    | ⬜ Chưa bắt đầu |
 | Dashboard                              | ⬜ Chưa bắt đầu |
@@ -99,6 +102,7 @@ flowchart TD
 - Docker Desktop
 - Git
 - MySQL 8.0 (qua Docker) — cần 8.0 để dùng INVISIBLE INDEX
+- File dataset `data_5m.csv` (~450 MB) — xem hướng dẫn bên dưới
 - (Tùy chọn) Percona Toolkit để chạy `pt-query-digest`
 
 ### Các bước
@@ -123,11 +127,12 @@ cp .env.example .env
 
 # 5. Khởi động MySQL
 docker compose up -d
+timeout /t 30
 
-# 6. Seed dữ liệu
-#    12M orders + 20M order_items: ước tính 2–6 giờ tùy máy (chạy nền/qua đêm).
-#    Nếu máy yếu: SEED_SCALE=5m để giảm còn 5M orders (vẫn đạt yêu cầu tối thiểu của đề).
-python data/seed/seed_all.py
+# 6. Import dataset sales_data 5M dòng
+#    - Copy file CSV vào container (~450 MB)
+#    - Import vào MySQL (~5-10 phút)
+#    - Chi tiết trong docs/setup-guide.md mục 5
 
 # 7. Chạy MCP Server
 python -m mcp_server.server
@@ -135,6 +140,8 @@ python -m mcp_server.server
 # 8. Chạy Dashboard (terminal khác)
 streamlit run dashboard/app.py
 ```
+
+> 📖 Hướng dẫn cài đặt A-Z chi tiết: [docs/setup-guide.md](docs/setup-guide.md)
 
 ---
 
@@ -157,17 +164,15 @@ mcp-slowquery-optimizer/
 │   └── utils/
 ├── db/                  # 🗄️ Schema + MySQL config          (Hải)
 ├── data/
-│   ├── seed/            #    Script seed                      (Hải)
 │   ├── queries/         #    30 query + ground_truth.json     (Tường)
 │   ├── metrics/         #    Metrics, comparison.csv, charts  (Tường)
 │   └── baseline/        #    greedy, rule-based, pt-query-digest (Tường)
 ├── security/            # 🛡️ AST whitelist, approval token, 20 injection (Tình)
 ├── dashboard/           # 🖥️ Streamlit 4 tab                 (Tình)
 ├── tests/               # 🧪 Unit tests                      (Cả nhóm)
-├── docs/                # 📚 api-contract, architecture, handover (Vũ)
+├── docs/                # 📚 api-contract, architecture, setup-guide (Vũ)
 ├── reports/             # 📝 Báo cáo + slide                 (Vũ)
-├── scripts/             # 🔧 Script setup
-├── .github/CODEOWNERS   # 🔒 Quy tắc review theo thư mục
+├── scripts/             # 🔧 Script setup + verify
 └── README.md
 ```
 
@@ -176,12 +181,15 @@ mcp-slowquery-optimizer/
 ## 🧪 Testing
 
 ```bash
+# Chạy toàn bộ test
 pytest tests/ -v
 
-pytest tests/test_ast_whitelist.py -v     # quy tắc AST, bypass phổ biến
-pytest tests/test_approval_token.py -v    # token sai/hết hạn/dùng lại
-pytest tests/test_validation.py -v        # rollback, hash kết quả
-pytest security/injection_tests/ -v       # 20 kịch bản injection
+# Test AST whitelist (47 tests)
+pytest tests/test_ast_whitelist.py -v
+
+# Test từng tool (chạy trực tiếp)
+python -m mcp_server.tools.explain
+python -m mcp_server.tools.benchmark
 ```
 
 ---
@@ -202,6 +210,8 @@ pytest security/injection_tests/ -v       # 20 kịch bản injection
 ## 🛡️ Bảo mật
 
 Kiểm thử **20 kịch bản** prompt injection chia 4 kênh (slow log, schema comment, cấu trúc SQL, đầu ra/mã hóa). Báo cáo kết quả theo dạng _"chặn được các kịch bản đã thử ở các lớp X, Y, Z"_ kèm phần giới hạn, không tuyên bố an toàn tuyệt đối. Chi tiết: `security/injection_report.md`.
+
+**Đã hoàn thành:** AST whitelist với **47 unit tests pass** — chặn DROP/DELETE/UPDATE, multi-statement, executable comment `/*!...*/`, SLEEP/BENCHMARK, INTO OUTFILE, mysql.\* schema.
 
 ---
 

@@ -14,14 +14,12 @@ Nhóm 5: Subquery → JOIN (self-join, q25-q30)
 QUERIES = [
     # ============================================================
     # NHÓM 1: THIẾU INDEX (6 query)
-    # Bản chất: WHERE lọc trên cột KHÔNG có index → full scan 5M dòng
-    # Cách sửa: Thêm index trên cột lọc
     # ============================================================
     {
         "id": "q01",
         "group": 1,
         "description": "Lọc theo region, không có index → full scan 5M dòng",
-        "sql": "SELECT id, country, item_type, total_revenue FROM sales_data WHERE region = 'Asia' LIMIT 100",
+        "sql": "SELECT id, country, item_type, total_revenue FROM sales_data WHERE region = 'Asia'",
         "expected_answer_type": "index",
         "expected_index_hint": ["region"],
     },
@@ -68,8 +66,6 @@ QUERIES = [
 
     # ============================================================
     # NHÓM 2: SAI THỨ TỰ CỘT COMPOSITE (6 query)
-    # Bản chất: Query có equality + range, index đặt SAI thứ tự
-    # Quy tắc vàng: EQUALITY TRƯỚC, RANGE SAU
     # ============================================================
     {
         "id": "q07",
@@ -123,8 +119,6 @@ QUERIES = [
 
     # ============================================================
     # NHÓM 3: HÀM BỌC CỘT - NON-SARGABLE (6 query)
-    # Bản chất: Dùng hàm quanh cột → MySQL không dùng được index
-    # Cách sửa: Rewrite thành range/comparison trực tiếp
     # ============================================================
     {
         "id": "q13",
@@ -146,9 +140,9 @@ QUERIES = [
         "id": "q15",
         "group": 3,
         "description": "DATE() bọc cột order_date",
-        "sql": "SELECT id, region, total_revenue FROM sales_data WHERE DATE(order_date) = '2024-11-29'",
+        "sql": "SELECT id, region, total_revenue FROM sales_data WHERE DATE(order_date) = '2024-05-15'",
         "expected_answer_type": "rewrite",
-        "rewrite_hint": "Chuyển thành order_date = '2024-11-29' (vì order_date đã là DATE, DATE() thừa) hoặc range nếu là DATETIME",
+        "rewrite_hint": "Chuyển thành order_date = '2024-05-15' (vì order_date đã là DATE, DATE() thừa)",
     },
     {
         "id": "q16",
@@ -177,8 +171,6 @@ QUERIES = [
 
     # ============================================================
     # NHÓM 4: SELECT * + FILESORT (6 query)
-    # Bản chất: SELECT * đọc nhiều cột + ORDER BY không index → filesort
-    # Cách sửa: Thêm index trên cột ORDER BY (và WHERE)
     # ============================================================
     {
         "id": "q19",
@@ -208,7 +200,7 @@ QUERIES = [
         "id": "q22",
         "group": 4,
         "description": "SELECT * + ORDER BY order_date ASC",
-        "sql": "SELECT * FROM sales_data WHERE sales_channel = 'Online' ORDER BY order_date ASC",
+        "sql": "SELECT id, region, total_revenue FROM sales_data WHERE sales_channel = 'Online' ORDER BY order_date ASC LIMIT 5000",
         "expected_answer_type": "index",
         "expected_index_hint": ["sales_channel", "order_date"],
     },
@@ -231,8 +223,6 @@ QUERIES = [
 
     # ============================================================
     # NHÓM 5: SUBQUERY → JOIN (SELF-JOIN vì chỉ có 1 bảng) (6 query)
-    # Bản chất: Subquery không tối ưu → rewrite thành self-join
-    # Lưu ý: MySQL 8 tự chuyển 1 số IN → semijoin, cần test thật
     # ============================================================
     {
         "id": "q25",
@@ -261,18 +251,18 @@ QUERIES = [
     {
         "id": "q28",
         "group": 5,
-        "description": "Correlated subquery trong SELECT → chạy N lần",
-        "sql": "SELECT s1.region, s1.country, (SELECT COUNT(*) FROM sales_data s2 WHERE s2.region = s1.region) AS region_count FROM sales_data s1 WHERE s1.order_priority = 'H'",
+        "description": "Scalar subquery trong WHERE → chạy 1 lần cho toàn bộ query",
+        "sql": "SELECT id, region, country, total_revenue FROM sales_data WHERE total_revenue > (SELECT AVG(total_revenue) FROM sales_data) LIMIT 1000",
         "expected_answer_type": "rewrite",
-        "rewrite_hint": "Chuyển thành self-join + GROUP BY",
+        "rewrite_hint": "Chuyển thành JOIN với derived table (AVG)",
     },
     {
         "id": "q29",
         "group": 5,
-        "description": "IN subquery lồng 2 cấp → self-join 3 lần",
-        "sql": "SELECT id, region, item_type FROM sales_data WHERE item_type IN (SELECT item_type FROM sales_data WHERE country IN (SELECT country FROM sales_data WHERE sales_channel = 'Online'))",
+        "description": "IN subquery lồng 2 cấp",
+        "sql": "SELECT id, region, item_type FROM sales_data WHERE item_type IN (SELECT item_type FROM sales_data WHERE sales_channel = 'Online') LIMIT 5000",
         "expected_answer_type": "rewrite",
-        "rewrite_hint": "Chuyển thành self-join 3 lần sales_data s1/s2/s3, kèm DISTINCT",
+        "rewrite_hint": "Chuyển thành self-join 2 lần sales_data s1/s2, kèm DISTINCT",
     },
     {
         "id": "q30",

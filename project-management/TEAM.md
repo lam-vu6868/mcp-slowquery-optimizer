@@ -12,7 +12,7 @@
 | Thành viên | Vai trò                      | Phụ trách chính                                                                  |
 | ---------- | ---------------------------- | -------------------------------------------------------------------------------- |
 | **Vũ** ⭐  | 🧠 Team Lead + MCP Architect | Điều phối, `server.py`, Tool 1–3, tích hợp LLM, docs, báo cáo chương 1–3         |
-| **Hải**    | 🗄️ DB Engineer + Validation  | CSDL 12M, Tool 4 (`explain`), Validation Layer + rollback, verify ground truth   |
+| **Hải**    | 🗄️ DB Engineer + Validation  | CSDL 5M, Tool 4 (`explain`), Validation Layer + rollback, verify ground truth    |
 | **Tình**   | 🛡️ Security + Frontend       | AST whitelist, **Tool 6 + approval token**, 20 injection, Dashboard, video demo  |
 | **Tường**  | 📊 Data Analyst + Metrics    | 30 query, ground truth, **Tool 5 (`benchmark`)**, metrics, **baseline**, biểu đồ |
 
@@ -52,7 +52,24 @@ docs/                              # api-contract, architecture, handover
 reports/
 ```
 
-**Hỗ trợ:** Tình (cựu MCP) hỗ trợ MCP protocol 2 tuần đầu · Vũ pair với Hải seed dữ liệu tuần 2.
+**Đã hoàn thành:**
+
+- ✅ Setup repo + cấu trúc
+- ✅ 5 file .md quản lý dự án
+- ✅ `docker-compose.yml`
+- ✅ `docs/api-contract.md`
+- ✅ `docs/architecture.md`
+- ✅ `utils/config.py`, `utils/logger.py`
+- ✅ `scripts/verify_setup.py`
+
+**Đang làm:**
+
+- 🟡 Tool 1 `slow_queries.py`
+- ⬜ Tool 2 `schema.py`
+- ⬜ Tool 3 `stats.py`
+- ⬜ `server.py`
+
+**Hỗ trợ:** Tình (cựu MCP) hỗ trợ MCP protocol 2 tuần đầu · Vũ pair với Hải import dataset tuần 2.
 **Lưu ý rủi ro:** Vũ là điểm nghẽn lớn nhất. Nếu bận, ưu tiên theo thứ tự: chốt contract → review PR chặn người khác → LLM → báo cáo.
 
 ---
@@ -61,7 +78,7 @@ reports/
 
 **Trách nhiệm:**
 
-- CSDL 12M orders + 20M items, **phân bố lệch** (Zipf, status lệch, đỉnh Black Friday)
+- CSDL 5M dòng từ dataset `sales_data`, đảm bảo `order_date`/`ship_date` không NULL
 - Cấu hình `log_output = FILE,TABLE`, slow log 0.5s
 - Tool 4 `explain_query`
 - **Validation Layer:** INVISIBLE INDEX, đo trước/sau, hash so sánh kết quả, rollback, đo write overhead
@@ -73,14 +90,28 @@ reports/
 
 ```
 db/                                # schema.sql, init.sql, conf/
-data/seed/
 mcp_server/tools/explain.py        # Tool 4
 mcp_server/validation/
 mcp_server/utils/db.py
 ```
 
-**Hỗ trợ:** Vũ pair seed tuần 2 · Tường hỗ trợ verify phân bố dữ liệu.
-**Lưu ý rủi ro:** đang nằm trên đường găng (seed → tool → validation). Có phương án 5M nếu 04/10 chưa seed xong.
+**Đã hoàn thành:**
+
+- ✅ Setup MySQL + slow log
+- ✅ `readonly_user` + `index_admin`
+- ✅ Import dataset 5M dòng
+- ✅ Fix NULL `order_date` + `ship_date`
+- ✅ `utils/db.py`
+- ✅ `docs/setup-guide.md`
+- ✅ Tool 4 `explain.py` (7 tests pass)
+
+**Đang làm:**
+
+- ⬜ Đo P95 baseline cho 30 query
+- ⬜ Validation Layer (tuần 4)
+
+**Hỗ trợ:** Vũ pair import dataset tuần 2 · Tường hỗ trợ verify phân bố dữ liệu.
+**Lưu ý rủi ro:** đang nằm trên đường găng (import → tool → validation).
 
 ---
 
@@ -105,6 +136,20 @@ security/injection_report.md
 mcp_server/tools/apply.py          # Tool 6
 dashboard/
 ```
+
+**Đã hoàn thành:**
+
+- ✅ `security/ast_whitelist.py` (47 unit tests pass)
+- ✅ `tests/test_ast_whitelist.py`
+- ✅ Test quyền readonly user
+- ✅ Streamlit skeleton
+
+**Đang làm:**
+
+- ⬜ Tool 6 `apply.py` (tuần 5)
+- ⬜ `security/approval.py` (tuần 5)
+- ⬜ 20 kịch bản injection (tuần 5)
+- ⬜ Dashboard 4 tab (tuần 6-7)
 
 **Hỗ trợ:** Vũ bàn giao code mẫu `sqlglot` **kèm test** trong 2 tuần đầu.
 **Lưu ý:** `apply.py` và `approval.py` cần **2 người review (Vũ + Hải)** trước khi merge.
@@ -131,6 +176,19 @@ data/metrics/                      # metrics.py, comparison.csv, charts/
 data/baseline/
 mcp_server/tools/benchmark.py      # Tool 5
 ```
+
+**Đã hoàn thành:**
+
+- ✅ 30 query (5 nhóm × 6 query)
+- ✅ `ground_truth.json` (draft v2)
+- ✅ Test 30 query — 30/30 pass > 0.5s
+- ✅ Tool 5 `benchmark.py` (7 tests pass)
+
+**Đang làm:**
+
+- ⬜ Đo P95 baseline cho 30 query
+- ⬜ Ground truth có chữ ký GVHD (deadline 20/10)
+- ⬜ Baseline greedy + rule-based (tuần 6)
 
 **Hỗ trợ:** Hải cùng chạy EXPLAIN cho 10 query đầu · Tình (cựu Metrics) dạy EXPLAIN/P50/P95 trong buổi bàn giao.
 **Lưu ý:** không chỉnh ground truth cho vừa kết quả LLM; báo cáo trung thực.
@@ -165,14 +223,14 @@ mcp_server/tools/benchmark.py      # Tool 5
 
 ---
 
-## 🔄 LỊCH BÀN GIAO KIẾN THỨC (TUẦN 1–2)
+## 🔄 LỊCH BÀN GIAO KIẾN THỨC (TUẦN 1–2) — ✅ HOÀN THÀNH
 
-|  #  | Người dạy          | Người học | Nội dung                                                                             | Thời lượng |
-| :-: | ------------------ | --------- | ------------------------------------------------------------------------------------ | ---------- |
-|  1  | Tình (cựu MCP)     | Vũ        | MCP protocol, cách viết tool, kiến trúc server                                       | 3h         |
-|  2  | Vũ (cựu DB)        | Hải       | MySQL setup, `LOAD DATA INFILE`, tối ưu insert, INVISIBLE INDEX                      | 3h         |
-|  3  | Vũ (cựu Security)  | Tình      | `sqlglot`, các bypass phổ biến (`/*!…*/`, multi-statement), 20 payload, test tự động | 3h         |
-|  4  | Tình (cựu Metrics) | Tường     | EXPLAIN MySQL, P50/P95, định dạng ground truth                                       | 3h         |
+|  #  | Người dạy          | Người học | Nội dung                                                                             | Trạng thái |
+| :-: | ------------------ | --------- | ------------------------------------------------------------------------------------ | :--------: |
+|  1  | Tình (cựu MCP)     | Vũ        | MCP protocol, cách viết tool, kiến trúc server                                       |     ✅     |
+|  2  | Vũ (cựu DB)        | Hải       | MySQL setup, `LOAD DATA INFILE`, tối ưu insert, INVISIBLE INDEX                      |     ✅     |
+|  3  | Vũ (cựu Security)  | Tình      | `sqlglot`, các bypass phổ biến (`/*!…*/`, multi-statement), 20 payload, test tự động |     ✅     |
+|  4  | Tình (cựu Metrics) | Tường     | EXPLAIN MySQL, P50/P95, định dạng ground truth                                       |     ✅     |
 
 **Nguyên tắc:** mỗi buổi có demo code cụ thể · người học phải **tự viết lại được** · ghi chú vào `docs/handover.md` · buổi 3 người dạy giao **code mẫu có test** cho người học.
 
@@ -182,19 +240,19 @@ mcp_server/tools/benchmark.py      # Tool 5
 
 Chi tiết từng việc và deadline xem [ROADMAP.md](ROADMAP.md) mục 4–5.
 
-| Tuần | Vũ                                           | Hải                         | Tình                                  | Tường                                               |
-| :--: | -------------------------------------------- | --------------------------- | ------------------------------------- | --------------------------------------------------- |
-|  1   | Setup repo, docker, đọc MCP spec             | Config MySQL, user readonly | Test readonly, Streamlit skeleton     | Draft 30 query                                      |
-|  2   | Chốt contract + architecture, khung tool     | **Seed 12M** (Vũ pair)      | AST whitelist v1 + test               | Hoàn thành draft 30 query                           |
-|  3   | Tool 1–3                                     | Tool 4                      | AST v1 pass test cơ bản               | Tool 5, xác nhận 30 query > 0.5s, ground truth nháp |
-|  4   | LLM agent + sanitize                         | **Validation Layer**        | Bổ sung quy tắc AST                   | **Ground truth có chữ ký** (Hải verify)             |
-|  5   | Prompt engineering                           | Rollback                    | **Tool 6 + token + 20 injection**     | Precision/Recall lần 1                              |
-|  6   | Chương 1–3 đầy đủ                            | Trade-off write overhead    | Dashboard tab 1–2, injection report   | Consistency, FPR, baseline                          |
-|  7   | Review, **code freeze 10/11**                | Buffer / hỗ trợ             | Dashboard tab 3–4                     | Biểu đồ matplotlib                                  |
-|  8   | Chương Mở đầu/Kiến trúc/Kết luận             | Chương Cài đặt              | Chương Bảo mật                        | Chương Thực nghiệm                                  |
-| 9–10 | Slide (phần mở đầu/kiến trúc), chỉnh báo cáo | Slide (DB/validation), Q&A  | Video demo, slide (bảo mật/dashboard) | Slide (kết quả), rà số liệu                         |
-|  11  | Nộp báo cáo, diễn tập                        | Backup source/data          | Test máy demo                         | In báo cáo                                          |
-|  12  | **Bảo vệ 15/12**                             | —                           | —                                     | —                                                   |
+| Tuần | Vũ                                      | Hải                        | Tình                                  | Tường                       |
+| :--: | --------------------------------------- | -------------------------- | ------------------------------------- | --------------------------- |
+|  1   | ✅ Setup repo, docker                   | ✅ Config MySQL, user      | ✅ Test readonly, Streamlit           | ✅ Draft 30 query           |
+|  2   | ✅ Chốt contract + architecture, utils  | ✅ Import 5M + fix NULL    | ✅ AST whitelist v1                   | ✅ Hoàn thành 30 query      |
+|  3   | 🟡 Tool 1–3, server.py                  | ✅ Tool 4 explain          | ✅ AST + 47 tests                     | ✅ Tool 5 benchmark         |
+|  4   | LLM agent + sanitize                    | Validation Layer           | Bổ sung quy tắc AST                   | Ground truth có chữ ký      |
+|  5   | Prompt engineering                      | Rollback                   | Tool 6 + token + 20 injection         | Precision/Recall lần 1      |
+|  6   | Chương 1–3 đầy đủ                       | Trade-off write overhead   | Dashboard tab 1–2, injection report   | Consistency, FPR, baseline  |
+|  7   | Review, code freeze 10/11               | Buffer / hỗ trợ            | Dashboard tab 3–4                     | Biểu đồ matplotlib          |
+|  8   | Chương Mở đầu/Kiến trúc/Kết luận        | Chương Cài đặt             | Chương Bảo mật                        | Chương Thực nghiệm          |
+| 9–10 | Slide (mở đầu/kiến trúc), chỉnh báo cáo | Slide (DB/validation), Q&A | Video demo, slide (bảo mật/dashboard) | Slide (kết quả), rà số liệu |
+|  11  | Nộp báo cáo, diễn tập                   | Backup source/data         | Test máy demo                         | In báo cáo                  |
+|  12  | **Bảo vệ 15/12**                        | —                          | —                                     | —                           |
 
 ---
 
