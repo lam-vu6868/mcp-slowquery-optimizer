@@ -119,8 +119,8 @@ Parser (`llm/parsers.py`) kiểm tra bằng JSON Schema. Sai schema → retry t�
 ```json
 {
   "limit": 10,
-  "min_avg_latency_ms": 500,
-  "order_by": "total_latency | avg_latency | rows_examined",
+  "min_avg_latency_ms": 500, // lấy những query  >= 500ms
+  "order_by": "total_latency",
   "since": "2025-10-01T00:00:00Z"
 }
 ```
