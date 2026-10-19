@@ -81,6 +81,7 @@ reports/
 - CSDL 5M dòng từ dataset `sales_data`, đảm bảo `order_date`/`ship_date` không NULL
 - Cấu hình `log_output = FILE,TABLE`, slow log 0.5s
 - Tool 4 `explain_query`
+- Tiếp quản sửa Tool 5 theo cơ chế streaming và thực hiện đo P95 cho 30 query
 - **Validation Layer:** INVISIBLE INDEX, đo trước/sau, hash so sánh kết quả, rollback, đo write overhead
 - Verify ground truth cùng Tường (EXPLAIN + benchmark)
 - Đo trade-off dung lượng index
@@ -91,6 +92,8 @@ reports/
 ```
 db/                                # schema.sql, init.sql, conf/
 mcp_server/tools/explain.py        # Tool 4
+mcp_server/tools/benchmark.py      # Tool 5 — bản streaming Hải sửa
+scripts/measure_p95_baseline.py    # Đo P95 và resume theo query
 mcp_server/validation/
 mcp_server/utils/db.py
 ```
@@ -104,10 +107,11 @@ mcp_server/utils/db.py
 - ✅ `utils/db.py`
 - ✅ `docs/setup-guide.md`
 - ✅ Tool 4 `explain.py` (7 tests pass)
+- ✅ Sửa Tool 5 `benchmark.py` sang streaming + hash riêng (7/7 test pass)
+- ✅ Đo đủ 30 query: 29 valid; q23 timeout và được giữ `INVALID`
 
 **Đang làm:**
 
-- ⬜ Đo P95 baseline cho 30 query
 - ⬜ Validation Layer (tuần 4)
 
 **Hỗ trợ:** Vũ pair import dataset tuần 2 · Tường hỗ trợ verify phân bố dữ liệu.
@@ -183,10 +187,10 @@ mcp_server/tools/benchmark.py      # Tool 5
 - ✅ `ground_truth.json` (draft v2)
 - ✅ Test 30 query — 30/30 pass > 0.5s
 - ✅ Tool 5 `benchmark.py` (7 tests pass)
+- ✅ Hải đã sửa bản streaming và hoàn tất lượt đo P95 30 query
 
 **Đang làm:**
 
-- ⬜ Đo P95 baseline cho 30 query
 - ⬜ Ground truth có chữ ký GVHD (deadline 20/10)
 - ⬜ Baseline greedy + rule-based (tuần 6)
 
@@ -244,7 +248,7 @@ Chi tiết từng việc và deadline xem [ROADMAP.md](ROADMAP.md) mục 4–5.
 | :--: | --------------------------------------- | -------------------------- | ------------------------------------- | --------------------------- |
 |  1   | ✅ Setup repo, docker                   | ✅ Config MySQL, user      | ✅ Test readonly, Streamlit           | ✅ Draft 30 query           |
 |  2   | ✅ Chốt contract + architecture, utils  | ✅ Import 5M + fix NULL    | ✅ AST whitelist v1                   | ✅ Hoàn thành 30 query      |
-|  3   | 🟡 Tool 1–3, server.py                  | ✅ Tool 4 explain          | ✅ AST + 47 tests                     | ✅ Tool 5 benchmark         |
+|  3   | 🟡 Tool 1–3, server.py                  | ✅ Tool 4 + sửa Tool 5 + P95 | ✅ AST + 47 tests                   | ✅ 30 query + Tool 5 bản đầu |
 |  4   | LLM agent + sanitize                    | Validation Layer           | Bổ sung quy tắc AST                   | Ground truth có chữ ký      |
 |  5   | Prompt engineering                      | Rollback                   | Tool 6 + token + 20 injection         | Precision/Recall lần 1      |
 |  6   | Chương 1–3 đầy đủ                       | Trade-off write overhead   | Dashboard tab 1–2, injection report   | Consistency, FPR, baseline  |

@@ -290,6 +290,15 @@ Parser (`llm/parsers.py`) kiểm tra bằng JSON Schema. Sai schema → retry t�
 
 Giới hạn: `measured_runs` 5–50, `timeout_ms` ≤ 60000.
 
+**Quy tắc triển khai và đo:**
+
+- Đọc kết quả bằng server-side cursor theo từng lô; P50/P95 bao gồm thời gian MySQL xử lý và truyền hết kết quả.
+- P95 tính theo phương pháp nearest-rank. Warm-up không được đưa vào mẫu đo.
+- `rows_examined` lấy từ chênh lệch các bộ đếm `Handler_read*` trước/sau từng lượt và trả về trung vị.
+- Hash được tính trong một lượt riêng, không tính vào P50/P95.
+- Query không có `ORDER BY` được chuẩn hóa và sắp xếp trên ổ đĩa trước khi hash.
+- Kết quả thiếu số lượt yêu cầu hoặc có timeout không được dùng làm baseline chính thức.
+
 **Output `data`:**
 
 ```json
@@ -306,6 +315,7 @@ Giới hạn: `measured_runs` 5–50, `timeout_ms` ≤ 60000.
   "result_hash": "sha256:…",
   "row_count": 84,
   "deterministic_order": true
+  "warnings": []
 }
 ```
 

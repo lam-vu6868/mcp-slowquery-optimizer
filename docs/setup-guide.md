@@ -1,7 +1,7 @@
 # 🚀 HƯỚNG DẪN CÀI ĐẶT TỪ A ĐẾN Z
 
 > **Phụ trách:** Hải (DB/Docker) · Vũ (Python/MCP) · Tình (Dashboard)
-> **Trạng thái:** Đã hoàn thiện phần CSDL & Docker
+> **Trạng thái:** Đã hoàn thiện CSDL, Docker, Tool 4, Tool 5 và quy trình đo P95
 > **Mục tiêu:** Người mới clone repo làm theo file này chạy được, không cần hỏi.
 
 ---
@@ -288,7 +288,9 @@ docker exec mcp_mysql_db rm /tmp/data_5m.csv
 
 ## 6. CẤU HÌNH SLOW QUERY LOG
 
-Slow log đã được mount qua `my.cnf`, nhưng cần verify:
+Trên Windows, file `my.cnf` được mount vào container có thể bị MySQL bỏ qua do quyền file `world-writable`. Vì vậy cấu hình thực tế của dự án được lưu bằng `SET PERSIST`.
+
+Cấu hình này được MySQL lưu vào `mysqld-auto.cnf` trong Docker volume và vẫn còn hiệu lực sau khi restart container.
 
 ### 6.1. Kiểm tra slow log bật
 
@@ -304,11 +306,72 @@ long_query_time      0.500000
 log_output           FILE,TABLE
 ```
 
-### 6.2. Nếu slow log OFF
+### 6.2. Bật và lưu cấu hình bằng `SET PERSIST`
+
+Vào MySQL bằng tài khoản root:
 
 ```cmd
-docker exec -i mcp_mysql_db mysql -uroot -proot -e "SET GLOBAL slow_query_log = 'ON'; SET GLOBAL long_query_time = 0.5; SET GLOBAL log_output = 'FILE,TABLE';"
+docker compose exec db mysql -u root -p shopdb
 ```
+
+Trong MySQL, chạy:
+
+```sql
+SET PERSIST slow_query_log = ON;
+SET PERSIST long_query_time = 0.5;
+SET PERSIST log_output = 'FILE,TABLE';
+```
+
+Kiểm tra giá trị đang có hiệu lực:
+
+```sql
+SHOW GLOBAL VARIABLES
+WHERE Variable_name IN (
+    'slow_query_log',
+    'long_query_time',
+    'log_output'
+);
+```
+
+Kết quả mong đợi:
+
+```text
+log_output       FILE,TABLE
+long_query_time  0.500000
+slow_query_log   ON
+```
+
+Kiểm tra cấu hình đã được lưu:
+
+```sql
+SELECT VARIABLE_NAME, VARIABLE_VALUE
+FROM performance_schema.persisted_variables
+WHERE VARIABLE_NAME IN (
+    'slow_query_log',
+    'long_query_time',
+    'log_output'
+);
+```
+
+Thoát MySQL:
+
+```sql
+exit;
+```
+
+Restart container để kiểm chứng cấu hình vẫn tồn tại:
+
+```cmd
+docker compose restart db
+```
+
+Kiểm tra lại:
+
+```cmd
+docker compose exec db mysql -u root -p -e "SHOW GLOBAL VARIABLES WHERE Variable_name IN ('slow_query_log','long_query_time','log_output');"
+```
+
+Không dùng `SET GLOBAL` làm cách cấu hình chính vì giá trị có thể mất khi MySQL hoặc container khởi động lại.
 
 ### 6.3. Test slow log ghi
 
@@ -433,13 +496,93 @@ streamlit run dashboard/app.py
 
 ---
 
-## 9. CHẠY TEST
+## 9. CHẠY TEST VÀ ĐO P95
+
+### 9.1. Verify cấu hình và kết nối
 
 ```cmd
-pytest tests/ -v
+python scripts\verify_setup.py
 ```
 
-_Vũ bổ sung script `scripts/verify_setup.py` — sẽ cập nhật sau._
+Kết quả hợp lệ:
+
+- Import config thành công.
+- Kết nối `readonly_user` thành công.
+- Kết nối `index_admin` thành công.
+- Đọc được bảng `sales_data`.
+- Tổng số dòng khoảng 5 triệu.
+
+### 9.2. Test Tool 4 — `explain_query`
+
+```cmd
+python -m mcp_server.tools.explain
+```
+
+Kết quả mong đợi:
+
+```text
+KẾT QUẢ: 7/7 pass
+```
+
+### 9.3. Test Tool 5 — `benchmark_query`
+
+```cmd
+python -m mcp_server.tools.benchmark
+```
+
+Kết quả mong đợi:
+
+```text
+KẾT QUẢ: 7/7 pass
+```
+
+Tool 5 dùng streaming để đọc kết quả theo từng lô. Hash được tính trong một lượt riêng và không được đưa vào P50/P95.
+
+### 9.4. Đo P95 baseline
+
+Đo theo nhóm:
+
+```cmd
+python scripts\measure_p95_baseline.py --group 1
+python scripts\measure_p95_baseline.py --group 2
+python scripts\measure_p95_baseline.py --group 3
+python scripts\measure_p95_baseline.py --group 4
+python scripts\measure_p95_baseline.py --group 5
+```
+
+Đo một hoặc nhiều query:
+
+```cmd
+python scripts\measure_p95_baseline.py --ids q07
+python scripts\measure_p95_baseline.py --ids q07 q08
+```
+
+Buộc đo lại query đã có kết quả:
+
+```cmd
+python scripts\measure_p95_baseline.py --ids q23 --force
+```
+
+Kết quả được lưu tại:
+
+```text
+data/outputs/p95_baseline_raw.json
+```
+
+`data/outputs/` là thư mục kết quả tạm đã bị `.gitignore` bỏ qua. Không dùng `git add -f` để commit file raw.
+
+Một query chỉ được đánh dấu `VALID` khi:
+
+- Thành công đủ 20/20 lượt.
+- Không có timeout.
+- Có `result_hash`.
+
+Kết quả ngày 19/10/2026:
+
+- Đã đo đủ 30 query.
+- 29 query `VALID`.
+- q23 `INVALID` vì có 4/20 lượt timeout.
+- Không dùng P95 của 16 lượt thành công làm baseline chính thức.
 
 ---
 
@@ -542,16 +685,30 @@ docker cp "D:/data_5m.csv" mcp_mysql_db:/tmp/data_5m.csv
 
 ### ❌ Lỗi 6: `mysql: [Warning] World-writable config file ignored`
 
-**Nguyên nhân:** File `my.cnf` có quyền ghi cho mọi người (Windows mount).
+**Nguyên nhân:** Khi mount file từ Windows, quyền file có thể khiến MySQL xem `my.cnf` là `world-writable` và bỏ qua file cấu hình.
 
-**Fix (tùy chọn):**
+**Ảnh hưởng:** Các cấu hình trong `my.cnf`, ví dụ slow query log và `long_query_time`, có thể không được nạp.
+
+**Cách xử lý của dự án:** Không sửa quyền file trực tiếp trong container. Dùng `SET PERSIST`:
 
 ```cmd
-docker exec -u root mcp_mysql_db chmod 644 /etc/mysql/conf.d/my.cnf
-docker restart mcp_mysql_db
+docker compose exec db mysql -u root -p shopdb
 ```
 
-**→ Không ảnh hưởng chức năng. Có thể bỏ qua.**
+```sql
+SET PERSIST slow_query_log = ON;
+SET PERSIST long_query_time = 0.5;
+SET PERSIST log_output = 'FILE,TABLE';
+```
+
+Sau đó restart và kiểm tra:
+
+```cmd
+docker compose restart db
+docker compose exec db mysql -u root -p -e "SHOW GLOBAL VARIABLES WHERE Variable_name IN ('slow_query_log','long_query_time','log_output');"
+```
+
+Nếu kết quả vẫn là `ON`, `0.500000`, `FILE,TABLE` thì cấu hình persistent đã hoạt động.
 
 ---
 
@@ -592,8 +749,14 @@ Sau khi làm xong tất cả các bước, bạn phải có:
 - [ ] Bảng `sales_data` có ~5M dòng
 - [ ] `order_date` và `ship_date` KHÔNG bị NULL
 - [ ] Slow log bật với `long_query_time = 0.5`
+- [ ] `SET PERSIST` đã lưu `slow_query_log`, `long_query_time`, `log_output`
 - [ ] Index đã xóa sạch (chỉ còn PRIMARY)
 - [ ] File CSV tạm đã dọn
+- [ ] `python scripts\verify_setup.py` chạy thành công
+- [ ] Tool 4 `explain_query` test 7/7 pass
+- [ ] Tool 5 `benchmark_query` streaming test 7/7 pass
+- [ ] Đã chạy đo P95 cho đủ 30 query
+- [ ] q23 được ghi nhận `INVALID/TIMEOUT`, không sửa JSON thủ công
 
 **Verify tổng thể:**
 
@@ -613,10 +776,10 @@ Kết quả: `total = ~5M`, `null_date = 0`.
 | `docker compose down`                                             | Dừng (giữ data)        |
 | `docker compose down -v`                                          | Dừng + **xóa data** ⚠️ |
 | `docker compose ps`                                               | Xem trạng thái         |
-| `docker compose logs mysql`                                       | Xem log                |
+| `docker compose logs db`                                          | Xem log service MySQL  |
 | `docker exec -it mcp_mysql_db mysql -uroot -proot`                | Vào MySQL shell        |
 | `docker exec -i mcp_mysql_db mysql -uroot -proot shopdb -e "..."` | Chạy 1 lệnh SQL        |
 
 ---
 
-**Cập nhật lần cuối:** 05/10/2026 — bởi Hải
+**Cập nhật lần cuối:** 19/10/2026 — bởi Hải
