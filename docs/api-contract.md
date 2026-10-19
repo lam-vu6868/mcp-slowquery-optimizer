@@ -314,7 +314,7 @@ Giới hạn: `measured_runs` 5–50, `timeout_ms` ≤ 60000.
   "cache_state": "warm",
   "result_hash": "sha256:…",
   "row_count": 84,
-  "deterministic_order": true
+  "deterministic_order": true,
   "warnings": []
 }
 ```

@@ -1,6 +1,6 @@
 # 📊 TIẾN ĐỘ DỰ ÁN
 
-> **Cập nhật lần cuối:** 07/10/2026 — bởi Vũ (nhóm trưởng)
+> **Cập nhật lần cuối:** 19/10/2026 — Vũ quản lý; Hải cập nhật kết quả Tool 5 và P95
 > **Tuần hiện tại:** Tuần 3/12
 > **Tổng tiến độ:** 🟩🟩🟩⬜⬜⬜⬜⬜⬜⬜ **~27%**
 >
