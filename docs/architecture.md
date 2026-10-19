@@ -1,8 +1,8 @@
 # 🏗️ KIẾN TRÚC HỆ THỐNG — MCP Slow Query Optimizer
 
 > **Người giữ file:** Vũ · **Reviewer:** Cả nhóm
-> **Cập nhật:** 07/10/2026
-> **Trạng thái:** ✅ Đã chốt (mục 2.1–2.6 theo ROADMAP v2)
+> **Cập nhật:** 19/10/2026
+> **Trạng thái:** ✅ Đã chốt; đã đồng bộ cách đo Tool 5 theo cơ chế streaming
 >
 > File này mô tả **chi tiết kiến trúc** — làm cơ sở cho việc code 6 tool.
 > Đọc kèm: [api-contract.md](api-contract.md) · [../project-management/ROADMAP.md](../project-management/ROADMAP.md) mục 2.
@@ -417,28 +417,88 @@ sequenceDiagram
 ### 6.4. Quy trình đo P95 chuẩn
 
 | Bước | Việc | Số lần |
-|:---:|---|:---:|
-| 1 | Warm-up (bỏ kết quả) | 3 |
-| 2 | Đo thật | 20 |
-| 3 | Sắp xếp mảng duration | — |
-| 4 | Lấy P95 (vị trí thứ 19) | — |
+| :---: | ---- | :----: |
+| 1 | Warm-up để làm nóng cache, không đưa vào kết quả | 3 |
+| 2 | Đo end-to-end latency | 20 |
+| 3 | Mỗi lượt đọc hết kết quả theo từng lô bằng server-side cursor | 20 |
+| 4 | Sắp xếp danh sách thời gian tăng dần | — |
+| 5 | Tính P95 theo nearest-rank: `ceil(0.95 × n)` | — |
+| 6 | Chạy một lượt riêng để tính hash kết quả | 1 |
 
-**Điều kiện pass:**
-- `result_equivalent = true` (hash giống nhau)
-- `P95 giảm ≥ 20%` (after ≤ 0.8 × before)
-- Không timeout, không lỗi
+**Phạm vi latency:**
+
+- Bao gồm thời gian MySQL xử lý query.
+- Bao gồm thời gian truyền toàn bộ kết quả từ MySQL về Python.
+- Không bao gồm lượt chạy hash riêng.
+- Không bao gồm các lượt warm-up.
+
+**Điều kiện một baseline hợp lệ:**
+
+- Đủ 20/20 lượt đo thành công.
+- `timed_out_runs = 0`.
+- Có `result_hash`.
+- Không có lỗi trong quá trình đọc kết quả.
+
+Nếu thiếu lượt hoặc có timeout, kết quả phải được giữ ở trạng thái `INVALID`. Không được tính P95 chính thức chỉ từ các lượt thành công còn lại.
+
+**Điều kiện Validation pass:**
+
+- `result_equivalent = true` — hash trước và sau giống nhau.
+- P95 giảm ít nhất 20%: `after_p95 <= 0.8 × before_p95`.
+- Không timeout và không phát sinh lỗi.
 
 ### 6.5. Hash kết quả như thế nào?
 
-**Vấn đề:** Query `SELECT *` không có `ORDER BY` → thứ tự kết quả ngẫu nhiên → hash khác nhau mỗi lần.
+**Vấn đề:** Query `SELECT *` có thể trả về hàng triệu dòng. Nếu dùng `fetchall()` rồi `sorted(rows)`, Python phải giữ toàn bộ kết quả trong RAM và có nguy cơ hết bộ nhớ.
 
-**Giải pháp:**
+**Giải pháp đã triển khai trong Tool 5:**
+
+1. Dùng `SSDictCursor` để đọc kết quả theo từng lô nhỏ.
+2. Mỗi dòng được chuẩn hóa về biểu diễn JSON ổn định.
+3. Lượt tính hash chạy riêng, không đưa vào P50/P95.
+4. Nếu query có `ORDER BY` xác định, hash lần lượt các dòng theo thứ tự MySQL trả về.
+5. Nếu query không có `ORDER BY`, ghi các dòng đã chuẩn hóa vào SQLite tạm trên ổ đĩa.
+6. Đọc lại SQLite theo thứ tự tăng dần để tính hash.
+7. Xóa file SQLite tạm sau khi hoàn thành.
+
 ```python
-# Sort kết quả trước khi hash
-rows = cursor.fetchall()
-rows_sorted = sorted(rows)  # Sắp xếp theo tất cả các cột
-result_hash = sha256(str(rows_sorted).encode()).hexdigest()
+BATCH_SIZE = 1000
+
+with connection.cursor(SSDictCursor) as cursor:
+    cursor.execute(sql)
+
+    while True:
+        batch = cursor.fetchmany(BATCH_SIZE)
+        if not batch:
+            break
+
+        for row in batch:
+            canonical_row = canonicalize(row)
+            process_row(canonical_row)
 ```
+
+Với query không có `ORDER BY`:
+
+```python
+# Ghi từng dòng vào SQLite tạm, không giữ toàn bộ trong RAM
+sqlite_cursor.execute(
+    "INSERT INTO result_rows(canonical_row) VALUES (?)",
+    (canonical_row,),
+)
+
+# Đọc theo thứ tự ổn định để hash
+for row in sqlite_cursor.execute(
+    "SELECT canonical_row FROM result_rows ORDER BY canonical_row"
+):
+    hasher.update(row[0].encode("utf-8"))
+```
+
+**Kết quả:**
+
+- Không dùng `fetchall()` cho dữ liệu query.
+- Không giữ toàn bộ kết quả trong RAM.
+- Hash ổn định với query không có `ORDER BY`.
+- Trường `deterministic_order` được đặt `false` và kèm cảnh báo khi Tool 5 phải tự sắp xếp kết quả.
 
 ---
 
@@ -666,7 +726,7 @@ flowchart TB
 | 4 | **Dùng `sales_data` (1 bảng)** | Dataset đã có, 5M dòng | Không test được JOIN nhiều bảng (dùng self-join) |
 | 5 | **Dashboard riêng (không phải LLM)** | Chỉ người dùng mới gọi Tool 6 | LLM phải qua giao diện |
 | 6 | **HMAC token 1 lần** | Chống replay | Cần generate mỗi lần approve |
-| 7 | **Đo P95 20 lần** | Loại nhiễu | Mỗi query test mất 30-60s |
+| 7 | **Đo P95 20 lần bằng streaming** | Loại nhiễu, đo cả thời gian truyền kết quả | Query trả nhiều dòng có thể chạy lâu hoặc timeout |
 
 ### 10.2. Những gì KHÔNG làm (và lý do)
 
@@ -709,7 +769,7 @@ flowchart TB
 - [x] Approval token dùng HMAC, 1 lần, hết hạn 10 phút
 - [x] INVISIBLE INDEX cho validation
 - [x] 6 lớp bảo mật độc lập
-- [x] Hash kết quả có sort trước
+- [x] Hash chạy trong lượt riêng; query không có ORDER BY được sort trên SQLite tạm
 - [x] Audit log ghi mọi hành động
 - [x] Chỉ cho `EXPLAIN ANALYZE` ở Validation, không cho LLM
 - [x] Sanitize input từ slow log và schema
@@ -717,4 +777,4 @@ flowchart TB
 
 ---
 
-**Cập nhật lần cuối:** 07/10/2026 — bởi Vũ
+**Cập nhật lần cuối:** 19/10/2026 — Vũ giữ tài liệu; Hải cập nhật cơ chế Tool 5 streaming

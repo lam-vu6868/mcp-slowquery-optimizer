@@ -73,7 +73,7 @@
 | Tool 2 `get_schema`               | Vũ          |     ⬜     | Sau Tool 1                             |
 | Tool 3 `get_table_stats`          | Vũ          |     ⬜     | Sau Tool 2                             |
 | `mcp_server/server.py`            | Vũ          |     ⬜     | Đăng ký 5 tool — sau khi xong Tool 1-3 |
-| Đo P95 cho ground truth           | Tường + Hải |     ⬜     | Sau khi Tool 5 xong                    |
+| Đo P95 cho ground truth           | Hải         |     ✅     | Đã đo 30/30: 29 valid, q23 timeout     |
 | Nháp chương "Cơ sở lý thuyết"     | Vũ          |     ⬜     | Song song                              |
 
 **Checklist cuối tuần 3:**
@@ -89,7 +89,11 @@
 **Vấn đề gặp phải:**
 
 - ⚠️ `readonly_user` không có quyền `RELOAD` → không dùng được `FLUSH STATUS`
-  → Fix: Tool 5 bỏ `FLUSH STATUS`, dùng `Handler_read_rnd_next` cho `rows_examined`.
+  → Fix: Tool 5 bỏ `FLUSH STATUS`, tính chênh lệch tổng `Handler_read*` trước/sau từng lượt.
+- ⚠️ `fetchall()` giữ toàn bộ kết quả lớn trong RAM và số đếm Handler bị cộng dồn
+  → Fix: Hải sửa Tool 5 dùng `SSDictCursor` đọc theo lô; hash chạy riêng và sort trên SQLite tạm.
+- ⚠️ q23 trả khoảng 1.250.007 dòng, 4/20 lượt timeout ở lần xác nhận
+  → Giữ `INVALID`; không dùng P95 của 16 lượt thành công, không tăng timeout quá 60000 ms.
 - ⚠️ `sqlglot` version mới không có `exp.Explain`
   → Fix: Tool 4 + AST whitelist xử lý EXPLAIN riêng bằng regex.
 - ⚠️ Lỗi import `mcp_server` khi chạy file trực tiếp
@@ -140,7 +144,9 @@
 | 06/10 | Vũ      | Chốt api-contract + architecture + setup-guide                         |
 | 07/10 | Tình    | AST whitelist + 47 unit tests pass                                     |
 | 07/10 | Hải     | Tool 4 `explain_query` (7 tests pass)                                  |
-| 07/10 | Tường   | Tool 5 `benchmark_query` (7 tests pass)                                |
+| 07/10 | Tường   | Tool 5 `benchmark_query` bản đầu (7 tests pass)                        |
+| 19/10 | Hải     | Sửa Tool 5 theo cơ chế streaming, hash riêng; test 7/7 pass            |
+| 19/10 | Hải     | Đo P95 đủ 30 query: 29 valid, q23 timeout và giữ trạng thái INVALID    |
 
 ---
 

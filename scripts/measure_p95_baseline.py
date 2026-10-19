@@ -1,4 +1,47 @@
-"""Do P95 baseline cho 30 query va luu ket qua sau tung query."""
+"""
+scripts/measure_p95_baseline.py
+-------------------------------
+CHỨC NĂNG:
+    Đo P95 baseline cho bộ 30 query bằng benchmark_query và lưu kết quả
+    sau từng query để có thể tiếp tục khi quá trình bị gián đoạn.
+
+PHỤ TRÁCH:
+    Hải — thực hiện đo P95 tuần 3.
+    Tool 5 ban đầu do Tường phụ trách; Hải tiếp quản sửa bản streaming.
+
+CẤU HÌNH ĐO CHUẨN:
+    - Warm-up: 3 lần (bỏ kết quả).
+    - Measured: 20 lần.
+    - Timeout: 60000 ms cho mỗi lần chạy.
+    - Cache state: warm.
+    - P95 dùng phương pháp nearest-rank từ các lần chạy thành công.
+
+CÁCH DÙNG:
+    python scripts/measure_p95_baseline.py --group 1
+    python scripts/measure_p95_baseline.py --ids q07 q08
+    python scripts/measure_p95_baseline.py --ids q23 --force
+QUY TẮC:
+    - Mặc định bỏ qua query đã có status=valid; --force dùng để đo lại.
+    - Kết quả được ghi nguyên tử sau từng query vào
+      data/outputs/p95_baseline_raw.json.
+    - data/outputs là dữ liệu tạm, đã bị .gitignore bỏ qua; không dùng
+      git add -f để commit file raw.
+    - Chỉ đánh dấu valid khi đủ 20 lượt thành công, không timeout và có
+      result_hash. Thiếu lượt hoặc có timeout phải giữ trạng thái invalid.
+    - Không sửa JSON thủ công, không tăng timeout quá 60000 ms và không
+      thay đổi SQL chỉ để biến kết quả invalid thành valid.
+
+KẾT QUẢ ĐO NGÀY 19/10/2026:
+    - Đã chạy đủ 30 query: 29 query valid.
+    - q23 invalid do timeout: lần đo xác nhận gần nhất thành công 16/20,
+      timeout 4/20. Không dùng P95 của các lượt thành công làm baseline
+      chính thức; ghi nhận q23 vượt ngưỡng 60000 ms.
+
+THAM KHẢO:
+    - mcp_server/tools/benchmark.py
+    - docs/api-contract.md (Tool 5)
+    - project-management/ROADMAP.md (mục 2.3)
+"""
 import argparse
 import asyncio
 import json
