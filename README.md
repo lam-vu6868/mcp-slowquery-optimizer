@@ -63,7 +63,7 @@ flowchart TD
 | Thành viên | Vai trò                      | Phụ trách chính                                            |
 | ---------- | ---------------------------- | ---------------------------------------------------------- |
 | **Vũ**     | 🧠 Team Lead + MCP Architect | Điều phối, `server.py`, Tool 1–3, tích hợp LLM, báo cáo    |
-| **Hải**    | 🗄️ DB Engineer + Validation  | CSDL 5M, Tool 4, Validation Layer + rollback               |
+| **Hải**    | 🗄️ DB Engineer + Validation  | CSDL 5M, Tool 4, P95, Validation     |
 | **Tình**   | 🛡️ Security + Frontend       | AST whitelist, Tool 6 + token, 20 injection, Dashboard     |
 | **Tường**  | 📊 Data Analyst + Metrics    | 30 query, ground truth, Tool 5, metrics, baseline, biểu đồ |
 
@@ -82,6 +82,7 @@ flowchart TD
 | AST whitelist + 47 unit tests          |     ✅ Done     |
 | Tool 4 `explain_query`                 |     ✅ Done     |
 | Tool 5 `benchmark_query`               |     ✅ Done     |
+| Đo P95 bộ 30 query                     | ✅ 29 valid · q23 timeout |
 | Tool 1–3 MCP                           |   🟡 Đang làm   |
 | Validation Layer                       | ⬜ Chưa bắt đầu |
 | 20 Prompt Injection                    | ⬜ Chưa bắt đầu |
@@ -190,6 +191,10 @@ pytest tests/test_ast_whitelist.py -v
 # Test từng tool (chạy trực tiếp)
 python -m mcp_server.tools.explain
 python -m mcp_server.tools.benchmark
+
+# Đo lại một nhóm/query P95 (kết quả raw nằm trong data/outputs và không commit)
+python scripts/measure_p95_baseline.py --group 1
+python scripts/measure_p95_baseline.py --ids q23 --force
 ```
 
 ---
