@@ -1,8 +1,8 @@
 # 📊 TIẾN ĐỘ DỰ ÁN
 
-> **Cập nhật lần cuối:** 19/10/2026 — Vũ quản lý; Hải cập nhật kết quả Tool 5 và P95
-> **Tuần hiện tại:** Tuần 3/12
-> **Tổng tiến độ:** 🟩🟩🟩⬜⬜⬜⬜⬜⬜⬜ **~27%**
+> **Cập nhật lần cuối:** 28/10/2026 — đối chiếu Tool 1 với code và test; Vũ quản lý
+> **Tuần hiện tại:** Tuần 6/12 (theo ROADMAP)
+> **Tổng tiến độ:** Chưa tính lại từ mốc ~27% ngày 19/10
 >
 > ⚠️ **File này chỉ ghi TRẠNG THÁI.** Deadline, người phụ trách và tiêu chí Done xem [ROADMAP.md](ROADMAP.md) (mục 4–5). Mục tiêu Precision/Recall/Consistency xem [ROADMAP.md](ROADMAP.md) mục 2.4.
 
@@ -69,7 +69,7 @@
 | **AST whitelist + 47 unit tests** | Tình        |     ✅     | 47/47 test pass                        |
 | **Tool 4 `explain_query`**        | Hải         |     ✅     | 7/7 test pass                          |
 | **Tool 5 `benchmark_query`**      | Tường       |     ✅     | 7/7 test pass                          |
-| Tool 1 `get_slow_queries`         | Vũ          |     ⬜     | Đang làm — ưu tiên tiếp theo           |
+| Tool 1 `get_slow_queries`         | Vũ          |     🟡     | Có code + 11 unit tests; chờ thử MySQL và đăng ký MCP |
 | Tool 2 `get_schema`               | Vũ          |     ⬜     | Sau Tool 1                             |
 | Tool 3 `get_table_stats`          | Vũ          |     ⬜     | Sau Tool 2                             |
 | `mcp_server/server.py`            | Vũ          |     ⬜     | Đăng ký 5 tool — sau khi xong Tool 1-3 |
@@ -81,7 +81,7 @@
 - [x] `security/ast_whitelist.py` (47 tests)
 - [x] `mcp_server/tools/explain.py` (7 tests)
 - [x] `mcp_server/tools/benchmark.py` (7 tests)
-- [ ] `mcp_server/tools/slow_queries.py`
+- [ ] `mcp_server/tools/slow_queries.py` — có code và unit tests; chưa thử MySQL thật/đăng ký MCP
 - [ ] `mcp_server/tools/schema.py`
 - [ ] `mcp_server/tools/stats.py`
 - [ ] `mcp_server/server.py`
@@ -147,6 +147,7 @@
 | 07/10 | Tường   | Tool 5 `benchmark_query` bản đầu (7 tests pass)                        |
 | 19/10 | Hải     | Sửa Tool 5 theo cơ chế streaming, hash riêng; test 7/7 pass            |
 | 19/10 | Hải     | Đo P95 đủ 30 query: 29 valid, q23 timeout và giữ trạng thái INVALID    |
+| 28/10 | Codex   | Tool 1 có code + 11 unit tests; toàn bộ 58 tests pass, Ruff pass; chưa thử MySQL thật hoặc đăng ký MCP |
 
 ---
 
