@@ -56,6 +56,7 @@ FORBIDDEN_KEYWORDS = [
     "SYS_EXEC",
     "SYSTEM_USER",
     "FOR UPDATE",
+    "FOR SHARE",          # cú pháp khóa dòng MySQL 8 (phát hiện bởi kịch bản injection C4)
     "LOCK IN SHARE MODE",
 ]
 
@@ -94,12 +95,35 @@ def _has_multi_statement(sql: str) -> bool:
     return ";" in stripped
 
 
+def _normalize_for_keywords(sql: str) -> str:
+    """
+    Bỏ comment thường + gộp khoảng trắng để không né được bằng
+    'FOR/**/UPDATE' hay 'LOCK  IN   SHARE MODE' (phát hiện khi chạy kịch bản injection C4).
+    """
+    try:
+        from mcp_server.utils.sanitize import strip_sql_comments
+        sql = strip_sql_comments(sql)
+    except ImportError:
+        sql = re.sub(r"/\*.*?\*/", " ", sql, flags=re.S)
+    return " ".join(sql.upper().split())
+
+
 def _has_forbidden_keyword(sql: str) -> Tuple[bool, str]:
-    """Check keyword nguy hiểm bằng text search"""
-    sql_upper = sql.upper()
+    """Check keyword nguy hiểm bằng text search (trên cả bản gốc và bản đã chuẩn hóa)"""
+    variants = (sql.upper(), _normalize_for_keywords(sql))
     for kw in FORBIDDEN_KEYWORDS:
-        if kw in sql_upper:
+        if any(kw in v for v in variants):
             return True, f"Keyword bị chặn: {kw}"
+    return False, ""
+
+
+def _has_lock_or_into(parsed) -> Tuple[bool, str]:
+    """Chặn bằng AST: mọi mệnh đề khóa dòng (FOR UPDATE/SHARE...) và SELECT ... INTO"""
+    for node in parsed.walk():
+        if isinstance(node, exp.Lock):
+            return True, "Mệnh đề khóa dòng bị chặn (FOR UPDATE / FOR SHARE / LOCK IN SHARE MODE)"
+        if isinstance(node, exp.Into):
+            return True, "SELECT ... INTO bị chặn"
     return False, ""
 
 
@@ -191,6 +215,9 @@ def check(sql: str) -> Tuple[bool, str]:
             has_func, reason = _has_forbidden_function(inner_parsed)
             if has_func:
                 return False, reason
+            has_lock, reason = _has_lock_or_into(inner_parsed)
+            if has_lock:
+                return False, reason
             ok, reason = _check_table_schemas(inner_parsed)
             if not ok:
                 return False, reason
@@ -216,6 +243,11 @@ def check(sql: str) -> Tuple[bool, str]:
     # ---- LỚP 5: Check hàm nguy hiểm ----
     has_func, reason = _has_forbidden_function(parsed)
     if has_func:
+        return False, reason
+
+    # ---- LỚP 5b: Khóa dòng / SELECT INTO (kiểm trên AST, không phụ thuộc khoảng trắng) ----
+    has_lock, reason = _has_lock_or_into(parsed)
+    if has_lock:
         return False, reason
 
     # ---- LỚP 6: Check schema ----

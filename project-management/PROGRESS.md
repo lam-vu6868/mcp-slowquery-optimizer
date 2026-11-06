@@ -21,9 +21,9 @@
 |  3  | Tool 1–5 MCP                                         | 🟡 Đang làm | Vũ · Hải · Tường |           13/10            |
 |  4  | Tích hợp LLM                                         |     ⬜      | Vũ               |           18/10            |
 |  5  | Validation Layer                                     |     ⬜      | Hải              |           22/10            |
-|  6  | Tool 6 + approval token + 20 injection               |     ⬜      | Tình             |           27/10            |
+|  6  | Tool 6 + approval token + 20 injection               | 🟡 Chờ review | Tình             |           27/10            |
 |  7  | Metrics + Baseline                                   |     ⬜      | Tường · Hải      |           03/11            |
-|  8  | Dashboard 4 tab                                      |     ⬜      | Tình             |           10/11            |
+|  8  | Dashboard 4 tab                                      | 🟡 Chờ dữ liệu thật | Tình             |           10/11            |
 |  9  | Báo cáo + Demo                                       |     ⬜      | Cả nhóm          |       17/11 · 01/12        |
 
 ---
@@ -120,7 +120,7 @@
 | Số query trong slow log                            |          ~30          |
 | Query xác nhận > 0.5s (trên 30)                    |       **30/30**       |
 | Tool MCP hoàn thành                                |        **2/6**        |
-| Injection test pass                                | 47/47 (unit test AST) |
+| Injection test pass                                | **20/20 kịch bản** (offline) · 172 unit test bảo mật |
 | Ground truth có chữ ký GVHD                        |         Chưa          |
 | Precision / Recall (index)                         |           —           |
 | Consistency Rate                                   |           —           |
@@ -144,10 +144,15 @@
 | 06/10 | Vũ      | Chốt api-contract + architecture + setup-guide                         |
 | 07/10 | Tình    | AST whitelist + 47 unit tests pass                                     |
 | 07/10 | Hải     | Tool 4 `explain_query` (7 tests pass)                                  |
+<<<<<<< Updated upstream
 | 07/10 | Tường   | Tool 5 `benchmark_query` bản đầu (7 tests pass)                        |
 | 19/10 | Hải     | Sửa Tool 5 theo cơ chế streaming, hash riêng; test 7/7 pass            |
 | 19/10 | Hải     | Đo P95 đủ 30 query: 29 valid, q23 timeout và giữ trạng thái INVALID    |
 | 28/10 | Codex   | Tool 1 có code + 11 unit tests; toàn bộ 58 tests pass, Ruff pass; chưa thử MySQL thật hoặc đăng ký MCP |
+=======
+| 07/10 | Tường   | Tool 5 `benchmark_query` (7 tests pass)                                |
+| 06/11 | Tình    | Tool 6 + approval token + audit log + sanitize; 20 injection 20/20 (vá 4 cách né AST); Dashboard 4 tab; chương Bảo mật (nháp) |
+>>>>>>> Stashed changes
 
 ---
 

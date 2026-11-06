@@ -298,6 +298,31 @@ class TestParseError:
 
 
 # ============================================================
+# NHÓM HỒI QUY: các cách né tìm ra khi chạy 20 kịch bản injection (06/11)
+# ============================================================
+
+class TestBypassRegression:
+    """Trước bản vá, các câu này LỌT qua whitelist."""
+
+    @pytest.mark.parametrize("sql", [
+        "SELECT * FROM sales_data WHERE id = 1 FOR SHARE",
+        "SELECT * FROM sales_data WHERE id = 1 FOR SHARE SKIP LOCKED",
+        "SELECT * FROM sales_data FOR/**/UPDATE",
+        "SELECT * FROM sales_data LOCK  IN   SHARE MODE",
+        "SELECT * FROM sales_data LOCK\nIN SHARE\tMODE",
+        "SELECT region INTO @v FROM sales_data LIMIT 1",
+        "EXPLAIN SELECT * FROM sales_data FOR SHARE",
+    ])
+    def test_blocked(self, sql):
+        ok, _ = check(sql)
+        assert ok is False
+
+    def test_order_by_share_column_still_allowed(self):
+        ok, _ = check("SELECT region, units_sold FROM sales_data ORDER BY units_sold")
+        assert ok is True
+
+
+# ============================================================
 # CHẠY ĐƠN LẺ ĐỂ XEM OUTPUT
 # ============================================================
 

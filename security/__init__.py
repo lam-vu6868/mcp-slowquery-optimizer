@@ -7,5 +7,5 @@ CHỨC NĂNG :
 
 PHỤ TRÁCH  : Tình    |    REVIEW: Vũ
 
-TRẠNG THÁI : KHUNG RỖNG — chưa cài đặt. Xóa dòng này khi bắt đầu code.
+Gồm: ast_whitelist (L4), approval (token Tool 6), injection_tests (20 kịch bản).
 """

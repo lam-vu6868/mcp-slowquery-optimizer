@@ -7,5 +7,5 @@ CHỨC NĂNG :
 
 PHỤ TRÁCH  : Hải    |    REVIEW: Vũ
 
-TRẠNG THÁI : KHUNG RỖNG — chưa cài đặt. Xóa dòng này khi bắt đầu code.
+Gồm: meta_db (SQLite), proposals, audit_log. Bản tối thiểu do Tình viết để Tool 6 chạy được — Hải review/mở rộng.
 """
