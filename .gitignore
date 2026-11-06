@@ -45,3 +45,7 @@ data/outputs/*.csv
 security/logs/*.log
 logs/
 structure.txt
+
+# --- Tình: dữ liệu meta (proposals/audit/token) & DB test injection ---
+data/meta/
+security/logs/*.sqlite3
