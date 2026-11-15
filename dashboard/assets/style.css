@@ -1,14 +1,42 @@
 /*
 dashboard/assets/style.css
 --------------------------
-
-CHỨC NĂNG :
-    CSS tùy chỉnh giao diện Dashboard (màu trạng thái Approved/Rejected/Pending, bảng, thẻ số liệu).
-
-PHỤ TRÁCH  : Tình    |    REVIEW: Tường
-
-LƯU Ý:
-    - Nạp bằng st.markdown('<style>...</style>', unsafe_allow_html=True) trong app.py.
-
-TRẠNG THÁI : KHUNG RỖNG — chưa cài đặt. Xóa dòng này khi bắt đầu code.
+CHỨC NĂNG : màu trạng thái Approved/Rejected/Pending, thẻ số liệu, khối SQL không tin cậy.
+PHỤ TRÁCH : Tình    |    REVIEW: Tường
+Nạp bởi dashboard/common.py::setup_page()
 */
+
+.badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.80rem;
+  font-weight: 600;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+.badge-approved { background: #e3f4ea; color: #1b6b3a; border: 1px solid #b7e1c6; }
+.badge-ready    { background: #e6eefc; color: #1f4fa3; border: 1px solid #bcd0f5; }
+.badge-pending  { background: #fdf3dc; color: #8a5a00; border: 1px solid #f1d898; }
+.badge-rejected { background: #fbe7e7; color: #a12a2a; border: 1px solid #f0bcbc; }
+
+.untrusted-note {
+  font-size: 0.78rem;
+  color: #8a5a00;
+  margin: -4px 0 6px 0;
+}
+
+.layer-chip {
+  display: inline-block;
+  margin: 1px 4px 1px 0;
+  padding: 1px 8px;
+  border-radius: 6px;
+  background: rgba(127, 127, 127, 0.12);
+  font-size: 0.78rem;
+}
+
+div[data-testid="stMetric"] {
+  border: 1px solid rgba(127, 127, 127, 0.2);
+  border-radius: 10px;
+  padding: 10px 14px;
+}

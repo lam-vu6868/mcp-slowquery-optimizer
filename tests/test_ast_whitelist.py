@@ -22,8 +22,8 @@ CHỨC NĂNG: Test AST whitelist.
 PHỤ TRÁCH: Tình    |    REVIEW: Vũ
 """
 import pytest
-from security.ast_whitelist import check
 
+from security.ast_whitelist import check
 
 # ============================================================
 # NHÓM 1: SQL ĐƯỢC PHÉP
@@ -113,7 +113,7 @@ class TestDangerousStatements:
     """Nhóm test DDL/DML phải BỊ CHẶN"""
 
     def test_drop_table(self):
-        ok, reason = check("DROP TABLE sales_data")
+        ok, _ = check("DROP TABLE sales_data")
         assert ok is False
 
     def test_drop_database(self):
@@ -197,7 +197,7 @@ class TestForbiddenFunctions:
         assert "SLEEP" in reason.upper()
 
     def test_benchmark(self):
-        ok, reason = check("SELECT BENCHMARK(1000000, MD5('x'))")
+        ok, _ = check("SELECT BENCHMARK(1000000, MD5('x'))")
         assert ok is False
 
     def test_load_file(self):
@@ -298,9 +298,34 @@ class TestParseError:
 
 
 # ============================================================
+# NHÓM HỒI QUY: các cách né tìm ra khi chạy 20 kịch bản injection (06/11)
+# ============================================================
+
+class TestBypassRegression:
+    """Trước bản vá, các câu này LỌT qua whitelist."""
+
+    @pytest.mark.parametrize("sql", [
+        "SELECT * FROM sales_data WHERE id = 1 FOR SHARE",
+        "SELECT * FROM sales_data WHERE id = 1 FOR SHARE SKIP LOCKED",
+        "SELECT * FROM sales_data FOR/**/UPDATE",
+        "SELECT * FROM sales_data LOCK  IN   SHARE MODE",
+        "SELECT * FROM sales_data LOCK\nIN SHARE\tMODE",
+        "SELECT region INTO @v FROM sales_data LIMIT 1",
+        "EXPLAIN SELECT * FROM sales_data FOR SHARE",
+    ])
+    def test_blocked(self, sql):
+        ok, _ = check(sql)
+        assert ok is False
+
+    def test_order_by_share_column_still_allowed(self):
+        ok, _ = check("SELECT region, units_sold FROM sales_data ORDER BY units_sold")
+        assert ok is True
+
+
+# ============================================================
 # CHẠY ĐƠN LẺ ĐỂ XEM OUTPUT
 # ============================================================
 
 if __name__ == "__main__":
     import subprocess
-    subprocess.run(["pytest", __file__, "-v", "--tb=short"])
+    subprocess.run(["pytest", __file__, "-v", "--tb=short"], check=False)

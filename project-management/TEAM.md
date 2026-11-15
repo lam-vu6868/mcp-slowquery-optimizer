@@ -148,12 +148,17 @@ dashboard/
 - ✅ Test quyền readonly user
 - ✅ Streamlit skeleton
 
+- ✅ Tool 6 `apply.py` + `security/approval.py` + audit log (38 + 28 tests, **chờ Vũ + Hải review**)
+- ✅ `utils/sanitize.py` (cùng Vũ, 29 tests)
+- ✅ 20 kịch bản injection: chặn 20/20 offline, vá 4 cách né AST (`FOR SHARE`…) — `security/injection_report.md`
+- ✅ Dashboard 4 tab (chạy với dữ liệu demo; chờ Tool 1 + Validation để chạy dữ liệu thật)
+- ✅ Chương "Bảo mật" bản nháp (`reports/chuong_bao_mat.md`), kịch bản video demo
+
 **Đang làm:**
 
-- ⬜ Tool 6 `apply.py` (tuần 5)
-- ⬜ `security/approval.py` (tuần 5)
-- ⬜ 20 kịch bản injection (tuần 5)
-- ⬜ Dashboard 4 tab (tuần 6-7)
+- ⬜ Chạy `run_tests --db` trên MySQL (lớp readonly_user) + test tích hợp Tool 6 với MySQL thật
+- ⬜ Đo phản ứng LLM thật với 20 vector (khi agent của Vũ xong)
+- ⬜ Quay video demo + video dự phòng (hạn 01/12)
 
 **Hỗ trợ:** Vũ bàn giao code mẫu `sqlglot` **kèm test** trong 2 tuần đầu.
 **Lưu ý:** `apply.py` và `approval.py` cần **2 người review (Vũ + Hải)** trước khi merge.
