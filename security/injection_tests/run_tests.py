@@ -23,8 +23,8 @@ QUY ƯỚC:
     khi không có --db) ghi SKIPPED và không tính là chặn.
     Cột "LLM bị ảnh hưởng?" KHÔNG đo ở đây (cần agent LLM thật) — xem phần giới hạn.
 """
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
@@ -33,7 +33,7 @@ import asyncio
 import inspect
 import json
 import secrets
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -64,7 +64,11 @@ def _setup_env():
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     meta = LOG_DIR / "injection_meta.sqlite3"
     if meta.exists():
-        meta.unlink()
+        try:
+            meta.unlink()
+        except OSError:
+            # File đang bị khóa (vd Dashboard mở trên Windows) → dùng file mới cho lần chạy này
+            meta = LOG_DIR / f"injection_meta_{datetime.now(UTC):%Y%m%d_%H%M%S}.sqlite3"
     os.environ["META_DB_PATH"] = str(meta)
     from security import approval
     if not approval.is_configured():
@@ -166,7 +170,7 @@ def chk_llm_toolset(p, ctx):
     try:
         from mcp_server import server
         llm_tools = getattr(server, "LLM_TOOLS", None)
-    except Exception:
+    except Exception:  # noqa: BLE001 — cố ý: không để lỗi phụ làm crash/che lỗi chính
         llm_tools = None
     if llm_tools is None:
         return "BLOCKED", "LLM_EXPOSED=False (server.py chưa có registry LLM_TOOLS để kiểm thêm)", False
@@ -276,8 +280,8 @@ def chk_db_readonly(p, ctx):
         from mcp_server.utils.db import get_conn
         with get_conn() as conn, conn.cursor() as cur:
             cur.execute("SHOW GRANTS FOR CURRENT_USER()")
-            grants = " ".join(str(list(r.values())[0]) for r in cur.fetchall()).upper()
-    except Exception as e:
+            grants = " ".join(str(next(iter(r.values()))) for r in cur.fetchall()).upper()
+    except Exception as e:  # noqa: BLE001 — cố ý: không để lỗi phụ làm crash/che lỗi chính
         return "SKIPPED", f"không kết nối được MySQL: {str(e)[:60]}", False
     dangerous = [w for w in ("DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "INDEX",
                              "CREATE", "ALL PRIVILEGES", "FILE", "SUPER") if w in grants]
@@ -304,7 +308,7 @@ def run(use_db: bool = False) -> dict:
         for c in p["checks"]:
             try:
                 status, evidence, audited = CHECKS[c](p, ctx)
-            except Exception as e:  # lỗi trong lúc kiểm = KHÔNG coi là chặn
+            except Exception as e:  # lỗi trong lúc kiểm = KHÔNG coi là chặn  # noqa: BLE001 — cố ý: không để lỗi phụ làm crash/che lỗi chính
                 status, evidence, audited = "NOT_BLOCKED", f"lỗi khi kiểm: {e!r}"[:200], False
             layer_results.append({"check": c, "layer": LAYER_NAMES[c], "status": status,
                                   "evidence": evidence, "audited": audited})
@@ -325,7 +329,7 @@ def run(use_db: bool = False) -> dict:
         })
 
     summary = {
-        "run_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "run_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "mode": "db" if use_db else "offline",
         "total": len(results),
         "blocked": sum(r["blocked"] for r in results),

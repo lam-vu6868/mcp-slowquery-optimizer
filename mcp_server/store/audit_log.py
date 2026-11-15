@@ -11,8 +11,7 @@ LƯU Ý:
     - Chỉ ghi thêm (append-only): trigger SQLite chặn UPDATE/DELETE.
     - KHÔNG BAO GIỜ ghi token vào log (hàm log() không có tham số token).
 """
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from mcp_server.store.meta_db import get_meta_conn
 
@@ -23,18 +22,18 @@ ACTION_REJECT = "user_reject"
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def log(
     action: str,
     result: str,
-    proposal_id: Optional[str] = None,
-    ddl_hash: Optional[str] = None,
-    error_code: Optional[str] = None,
-    message: Optional[str] = None,
-    actor: Optional[str] = None,
-    source: Optional[str] = None,
+    proposal_id: str | None = None,
+    ddl_hash: str | None = None,
+    error_code: str | None = None,
+    message: str | None = None,
+    actor: str | None = None,
+    source: str | None = None,
 ) -> str:
     """
     Ghi 1 dòng audit. Trả về audit_id dạng 'a_000123'.
@@ -54,7 +53,7 @@ def log(
         return f"a_{cur.lastrowid:06d}"
 
 
-def list_entries(limit: int = 200, action: Optional[str] = None) -> list[dict]:
+def list_entries(limit: int = 200, action: str | None = None) -> list[dict]:
     """Đọc audit log mới nhất trước (cho Dashboard tab 4)."""
     sql = "SELECT * FROM audit_log"
     params: list = []
@@ -73,7 +72,7 @@ def list_entries(limit: int = 200, action: Optional[str] = None) -> list[dict]:
     return out
 
 
-def count_by(error_code: Optional[str] = None, action: Optional[str] = None) -> int:
+def count_by(error_code: str | None = None, action: str | None = None) -> int:
     sql = "SELECT COUNT(*) FROM audit_log WHERE 1=1"
     params: list = []
     if error_code:

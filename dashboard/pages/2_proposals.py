@@ -20,16 +20,23 @@ LƯU Ý:
 import json
 
 import streamlit as st
-
-from common import STATUS_LABELS, badge, fmt_bytes, load_proposals, run_async, setup_page
+from common import (
+    STATUS_LABELS,
+    badge,
+    fmt_bytes,
+    load_proposals,
+    run_async,
+    setup_page,
+)
 
 setup_page("Đề xuất", "🧠")
 st.title("🧠 Tab 2 — Đề xuất của LLM")
 
-from mcp_server.store import audit_log, proposals as store  # noqa: E402
-from mcp_server.tools.apply import apply_optimization, build_ddl, rollback_ddl  # noqa: E402
-from security import approval  # noqa: E402
-from security.ast_whitelist import check as ast_check  # noqa: E402
+from mcp_server.store import audit_log
+from mcp_server.store import proposals as store
+from mcp_server.tools.apply import apply_optimization, build_ddl, rollback_ddl
+from security import approval
+from security.ast_whitelist import check as ast_check
 
 try:
     from mcp_server.validation.validator import validate_proposal  # Hải
@@ -158,7 +165,7 @@ for p in proposals:
                     try:
                         validate_proposal(pid)
                         st.session_state["last_action"] = ("success", f"Đã chạy validation cho {pid}")
-                    except Exception as e:
+                    except Exception as e:  # noqa: BLE001 — cố ý: không để lỗi phụ làm crash/che lỗi chính
                         st.session_state["last_action"] = ("error", f"Validation lỗi: {e}")
                 st.rerun()
 
@@ -186,8 +193,8 @@ for p in proposals:
                     if res["ok"]:
                         d = res["data"]
                         st.session_state["last_action"] = (
-                            "success", f"Đã áp dụng {pid}: {d.get('executed_ddl') or d['ddl']} "
-                                       f"(audit {d['audit_id']})")
+                            "success", (f"Đã áp dụng {pid}: {d.get('executed_ddl') or d['ddl']} "
+                                        f"(audit {d['audit_id']})"))
                     else:
                         e = res["error"]
                         st.session_state["last_action"] = ("error", f"Tool 6 từ chối [{e['code']}]: {e['message']}")

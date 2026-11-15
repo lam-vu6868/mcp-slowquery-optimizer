@@ -14,7 +14,6 @@ LƯU Ý:
 import altair as alt
 import pandas as pd
 import streamlit as st
-
 from common import GROUP_NAMES, load_query_catalog, load_slow_queries, setup_page
 
 setup_page("Slow query", "🐢")

@@ -30,12 +30,12 @@ import secrets
 import sqlite3
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
+
+from mcp_server.store.meta_db import get_meta_conn
 
 # Nạp .env (Config gọi load_dotenv khi import)
 from mcp_server.utils import config as _config  # noqa: F401
-from mcp_server.store.meta_db import get_meta_conn
 
 TOKEN_VERSION = "v1"
 DEFAULT_TTL_SECONDS = 600
@@ -98,7 +98,7 @@ def _b64(b: bytes) -> str:
 
 
 def _sign(secret: bytes, proposal_id: str, dhash: str, nonce: str, expires_at: int) -> str:
-    msg = f"{TOKEN_VERSION}|{proposal_id}|{dhash}|{nonce}|{expires_at}".encode("utf-8")
+    msg = f"{TOKEN_VERSION}|{proposal_id}|{dhash}|{nonce}|{expires_at}".encode()
     return _b64(hmac.new(secret, msg, hashlib.sha256).digest())
 
 
@@ -115,7 +115,7 @@ def is_configured() -> bool:
 # API CHÍNH
 # ============================================================
 
-def issue_token(proposal_id: str, ddl: str, now: Optional[float] = None) -> IssuedToken:
+def issue_token(proposal_id: str, ddl: str, now: float | None = None) -> IssuedToken:
     """
     Sinh token cho đúng (proposal_id, ddl). Chỉ backend Dashboard gọi, SAU KHI người bấm Approve.
     """
@@ -135,11 +135,11 @@ def issue_token(proposal_id: str, ddl: str, now: Optional[float] = None) -> Issu
 
 
 def verify_token(
-    token: Optional[str],
+    token: str | None,
     proposal_id: str,
     ddl: str,
     consume: bool = True,
-    now: Optional[float] = None,
+    now: float | None = None,
 ) -> TokenCheck:
     """
     Kiểm tra token. Thứ tự: định dạng → chữ ký → hạn → chưa dùng (và đánh dấu đã dùng).
@@ -179,7 +179,7 @@ def verify_token(
                 conn.execute(
                     "INSERT INTO used_tokens (nonce, proposal_id, used_at) VALUES (?, ?, ?)",
                     (nonce, proposal_id,
-                     datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")),
+                     datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")),
                 )
         except sqlite3.IntegrityError:
             return TokenCheck(False, "REUSED", "Token đã được sử dụng")

@@ -18,7 +18,6 @@ import sys
 import altair as alt
 import pandas as pd
 import streamlit as st
-
 from common import ROOT, load_audit, load_injection_results, setup_page
 
 setup_page("Bảo mật", "🛡️")
@@ -34,7 +33,7 @@ with tab_inj:
     if top[1].button("🔁 Chạy lại 20 kịch bản"):
         with st.spinner("Đang chạy…"):
             proc = subprocess.run([sys.executable, "-m", "security.injection_tests.run_tests"],
-                                  cwd=str(ROOT), capture_output=True, text=True, timeout=120)
+                                  cwd=str(ROOT), capture_output=True, text=True, timeout=120, check=False)
         (st.success if proc.returncode == 0 else st.error)(
             "Hoàn tất." if proc.returncode == 0 else "Có kịch bản lọt — xem chi tiết bên dưới.")
 

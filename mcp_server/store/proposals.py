@@ -17,8 +17,7 @@ LƯU Ý:
 """
 import json
 import secrets
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from mcp_server.store.meta_db import get_meta_conn
 
@@ -36,17 +35,17 @@ ALL_STATUSES = {
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def new_proposal_id() -> str:
-    return f"p_{datetime.now(timezone.utc):%Y%m%d}_{secrets.token_hex(3)}"
+    return f"p_{datetime.now(UTC):%Y%m%d}_{secrets.token_hex(3)}"
 
 
 def save_proposal(
     payload: dict,
-    query_id: Optional[str] = None,
-    proposal_id: Optional[str] = None,
+    query_id: str | None = None,
+    proposal_id: str | None = None,
     source: str = "llm",
 ) -> str:
     """Lưu proposal mới (trạng thái pending_validation). Trả về proposal_id."""
@@ -75,7 +74,7 @@ def _row_to_dict(row) -> dict:
     return d
 
 
-def get_proposal(proposal_id: str) -> Optional[dict]:
+def get_proposal(proposal_id: str) -> dict | None:
     with get_meta_conn() as conn:
         row = conn.execute(
             "SELECT * FROM proposals WHERE proposal_id = ?", (proposal_id,)
@@ -83,7 +82,7 @@ def get_proposal(proposal_id: str) -> Optional[dict]:
     return _row_to_dict(row) if row else None
 
 
-def list_proposals(status: Optional[str] = None, limit: int = 100) -> list[dict]:
+def list_proposals(status: str | None = None, limit: int = 100) -> list[dict]:
     sql = "SELECT * FROM proposals"
     params: list = []
     if status:
@@ -125,7 +124,7 @@ def save_validation_report(proposal_id: str, report: dict) -> None:
     )
 
 
-def get_validation_report(proposal_id: str) -> Optional[dict]:
+def get_validation_report(proposal_id: str) -> dict | None:
     with get_meta_conn() as conn:
         row = conn.execute(
             "SELECT report_json FROM validation_reports WHERE proposal_id = ?",

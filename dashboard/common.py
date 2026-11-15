@@ -86,6 +86,7 @@ def is_demo_meta() -> bool:
 # NGUỒN DỮ LIỆU
 # ============================================================
 
+@st.cache_data(ttl=60, show_spinner="Đang gọi Tool 1…")
 def load_slow_queries(limit: int = 50):
     """Tool 1 get_slow_queries. Trả (list | None, ghi chú)."""
     try:
@@ -98,7 +99,7 @@ def load_slow_queries(limit: int = 50):
         if not res.get("ok"):
             return None, f"Tool 1 lỗi: {res.get('error', {}).get('message')}"
         return res["data"]["queries"], None
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — cố ý: không để lỗi phụ làm crash/che lỗi chính
         return None, f"Không gọi được Tool 1: {str(e)[:150]}"
 
 
@@ -110,13 +111,13 @@ def load_query_catalog() -> pd.DataFrame:
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         df = pd.DataFrame(mod.get_all_queries())
-    except Exception:
+    except Exception:  # noqa: BLE001 — cố ý: không để lỗi phụ làm crash/che lỗi chính
         return pd.DataFrame()
     try:
         gt = json.loads(GROUND_TRUTH.read_text(encoding="utf-8")).get("queries", {})
         df["before_p95_ms"] = df["id"].map(
             lambda q: (gt.get(q, {}).get("measurement") or {}).get("before_p95_ms"))
-    except Exception:
+    except Exception:  # noqa: BLE001 — cố ý: không để lỗi phụ làm crash/che lỗi chính
         df["before_p95_ms"] = None
     df["group_name"] = df["group"].map(GROUP_NAMES)
     return df
@@ -126,7 +127,7 @@ def load_proposals(status=None):
     try:
         from mcp_server.store import proposals as store
         return store.list_proposals(status=status, limit=500), None
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — cố ý: không để lỗi phụ làm crash/che lỗi chính
         return [], f"Không đọc được store proposals: {str(e)[:150]}"
 
 
@@ -160,7 +161,7 @@ def load_validation_reports() -> pd.DataFrame:
                 "failure_reason": rep.get("failure_reason"),
             })
         return pd.DataFrame(rows)
-    except Exception:
+    except Exception:  # noqa: BLE001 — cố ý: không để lỗi phụ làm crash/che lỗi chính
         return pd.DataFrame()
 
 
@@ -169,7 +170,7 @@ def load_comparison_csv():
         return None, f"Chưa có `{COMPARISON_CSV.relative_to(ROOT)}` (Tường sinh từ data/metrics/metrics.py)."
     try:
         return pd.read_csv(COMPARISON_CSV), None
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — cố ý: không để lỗi phụ làm crash/che lỗi chính
         return None, f"Không đọc được comparison.csv: {str(e)[:150]}"
 
 
@@ -178,7 +179,7 @@ def load_injection_results():
         return None, "Chưa có kết quả. Chạy: `python -m security.injection_tests.run_tests`"
     try:
         return json.loads(INJECTION_RESULTS.read_text(encoding="utf-8")), None
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — cố ý: không để lỗi phụ làm crash/che lỗi chính
         return None, f"File kết quả hỏng: {str(e)[:150]}"
 
 
@@ -186,7 +187,7 @@ def load_audit(limit: int = 500) -> pd.DataFrame:
     try:
         from mcp_server.store import audit_log
         return pd.DataFrame(audit_log.list_entries(limit=limit))
-    except Exception:
+    except Exception:  # noqa: BLE001 — cố ý: không để lỗi phụ làm crash/che lỗi chính
         return pd.DataFrame()
 
 
@@ -196,22 +197,23 @@ def system_status() -> dict:
     try:
         from security import approval
         out["approval_secret"] = approval.is_configured()
-    except Exception:
+    except Exception:  # noqa: BLE001 — cố ý: không để lỗi phụ làm crash/che lỗi chính
         out["approval_secret"] = False
     try:
         import pymysql
+
         from mcp_server.utils.config import Config
         conn = pymysql.connect(host=Config.DB_HOST, port=Config.DB_PORT, user=Config.DB_USER,
                                password=Config.DB_PASSWORD, database=Config.DB_NAME,
                                connect_timeout=2)
         conn.close()
         out["mysql"] = True
-    except Exception:
+    except Exception:  # noqa: BLE001 — cố ý: không để lỗi phụ làm crash/che lỗi chính
         out["mysql"] = False
     try:
         from mcp_server.store.meta_db import meta_db_path
         out["meta_db"] = str(meta_db_path())
-    except Exception:
+    except Exception:  # noqa: BLE001 — cố ý: không để lỗi phụ làm crash/che lỗi chính
         out["meta_db"] = "?"
     return out
 

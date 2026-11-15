@@ -24,8 +24,8 @@ THỨ TỰ KIỂM TRA:
     Token chỉ bị "đốt" sau khi các kiểm tra không cần DB đã qua, để lỗi cấu hình không làm
     mất token oan.
 """
-import sys
 import os
+import sys
 
 sys.path.insert(
     0,
@@ -35,9 +35,10 @@ sys.path.insert(
 import json
 import re
 import time
-from typing import Optional, Protocol
+from typing import Protocol
 
-from mcp_server.store import audit_log, proposals as store
+from mcp_server.store import audit_log
+from mcp_server.store import proposals as store
 from mcp_server.utils.logger import get_logger
 from security import approval
 from security.ast_whitelist import check as ast_check
@@ -69,7 +70,7 @@ def _normalize_columns(columns) -> list[tuple[str, str]]:
         elif isinstance(c, dict):
             name, order = c.get("name"), (c.get("order") or "ASC")
         else:
-            raise ValueError(f"Cột không hợp lệ: {c!r}")
+            raise ValueError(f"Cột không hợp lệ: {c!r}")  # noqa: TRY004 — giữ ValueError để caller bắt chung lỗi cấu trúc proposal
         if not isinstance(name, str) or not IDENT_RE.fullmatch(name):
             raise ValueError(f"Tên cột không hợp lệ: {name!r}")
         order = str(order).upper()
@@ -111,9 +112,9 @@ def rollback_ddl(payload: dict) -> str:
 
 class IndexAdminDB(Protocol):
     def table_columns(self, table: str) -> set[str]: ...
-    def index_state(self, table: str, index_name: str) -> Optional[dict]: ...
+    def index_state(self, table: str, index_name: str) -> dict | None: ...
     def execute_ddl(self, ddl: str) -> None: ...
-    def index_size_bytes(self, table: str, index_name: str) -> Optional[int]: ...
+    def index_size_bytes(self, table: str, index_name: str) -> int | None: ...
 
 
 class MySQLIndexAdmin:
@@ -134,7 +135,7 @@ class MySQLIndexAdmin:
             )
             return {r["COLUMN_NAME"].lower() for r in cur.fetchall()}
 
-    def index_state(self, table: str, index_name: str) -> Optional[dict]:
+    def index_state(self, table: str, index_name: str) -> dict | None:
         with self._get_conn() as conn, conn.cursor() as cur:
             cur.execute(
                 "SELECT COLUMN_NAME, SEQ_IN_INDEX, IS_VISIBLE FROM information_schema.STATISTICS "
@@ -156,7 +157,7 @@ class MySQLIndexAdmin:
             cur.execute(ddl)
             conn.commit()
 
-    def index_size_bytes(self, table: str, index_name: str) -> Optional[int]:
+    def index_size_bytes(self, table: str, index_name: str) -> int | None:
         try:
             with self._get_conn() as conn, conn.cursor() as cur:
                 cur.execute(
@@ -167,7 +168,7 @@ class MySQLIndexAdmin:
                 )
                 row = cur.fetchone()
                 return int(row["size_bytes"]) if row and row["size_bytes"] is not None else None
-        except Exception:  # index_admin có thể không có quyền đọc mysql.* → bỏ qua
+        except Exception:  # index_admin có thể không có quyền đọc mysql.* → bỏ qua  # noqa: BLE001 — cố ý: không để lỗi phụ làm crash/che lỗi chính
             return None
 
 
@@ -187,7 +188,7 @@ def _reject(code: str, message: str, t_start: float, *, proposal_id=None, ddl_ha
             action=audit_log.ACTION_APPLY, result=result, proposal_id=proposal_id,
             ddl_hash=ddl_hash, error_code=code, message=message, actor=actor, source=source,
         )
-    except Exception as e:  # audit hỏng không được làm lộ lỗi khác, nhưng phải log
+    except Exception as e:  # audit hỏng không được làm lộ lỗi khác, nhưng phải log  # noqa: BLE001 — cố ý: không để lỗi phụ làm crash/che lỗi chính
         logger.error(f"Không ghi được audit_log: {e}")
         audit_id = None
     logger.warning(f"Tool 6 từ chối [{code}] proposal={proposal_id}: {message}")
@@ -207,9 +208,9 @@ async def apply_optimization(
     proposal_id: str,
     approval_token: str,
     *,
-    actor: Optional[str] = None,
+    actor: str | None = None,
     source: str = "dashboard",
-    db: Optional[IndexAdminDB] = None,
+    db: IndexAdminDB | None = None,
 ) -> str:
     """
     Áp dụng proposal index đã được duyệt.
@@ -302,7 +303,7 @@ async def apply_optimization(
             executed = None  # đã visible: không làm gì (idempotent)
 
         size = db.index_size_bytes(table, index_name)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — cố ý: không để lỗi phụ làm crash/che lỗi chính
         store.set_status(proposal_id, store.STATUS_APPLY_FAILED)
         return _reject("INTERNAL", f"Lỗi khi chạy DDL: {str(e)[:200]}", t_start,
                        proposal_id=proposal_id, ddl_hash=dhash, result="error", **ctx)

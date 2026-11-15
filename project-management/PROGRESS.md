@@ -144,15 +144,11 @@
 | 06/10 | Vũ      | Chốt api-contract + architecture + setup-guide                         |
 | 07/10 | Tình    | AST whitelist + 47 unit tests pass                                     |
 | 07/10 | Hải     | Tool 4 `explain_query` (7 tests pass)                                  |
-<<<<<<< Updated upstream
 | 07/10 | Tường   | Tool 5 `benchmark_query` bản đầu (7 tests pass)                        |
 | 19/10 | Hải     | Sửa Tool 5 theo cơ chế streaming, hash riêng; test 7/7 pass            |
 | 19/10 | Hải     | Đo P95 đủ 30 query: 29 valid, q23 timeout và giữ trạng thái INVALID    |
 | 28/10 | Codex   | Tool 1 có code + 11 unit tests; toàn bộ 58 tests pass, Ruff pass; chưa thử MySQL thật hoặc đăng ký MCP |
-=======
-| 07/10 | Tường   | Tool 5 `benchmark_query` (7 tests pass)                                |
 | 06/11 | Tình    | Tool 6 + approval token + audit log + sanitize; 20 injection 20/20 (vá 4 cách né AST); Dashboard 4 tab; chương Bảo mật (nháp) |
->>>>>>> Stashed changes
 
 ---
 

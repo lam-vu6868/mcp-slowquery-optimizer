@@ -16,54 +16,9 @@ API:
     untrusted_field(text)        {"value": ..., "untrusted": True, "flags": [...]}
 
 LƯU Ý:
-<<<<<<< Updated upstream
-    - Cắt mọi comment trong SQL lấy từ slow log.
+    - Cắt mọi comment trong SQL lấy từ slow log (Tool 1 dùng strip_sql_comments).
     - Lọc comment bảng/cột; gắn nhãn untrusted.
     - Chuẩn hóa Unicode để chống homoglyph.
-
-THAM KHẢO  : project-management/ROADMAP.md (mục 2.2), tests/test_sanitize.py
-"""
-
-
-def strip_sql_comments(sql: str) -> str:
-    """Bỏ comment MySQL mà không sửa nội dung chuỗi và tên được quote."""
-    out = []
-    i = 0
-    quote = None
-    while i < len(sql):
-        char = sql[i]
-        if quote:
-            out.append(char)
-            if char == "\\" and i + 1 < len(sql):
-                i += 1
-                out.append(sql[i])
-            elif char == quote:
-                if i + 1 < len(sql) and sql[i + 1] == quote:
-                    i += 1
-                    out.append(sql[i])
-                else:
-                    quote = None
-        elif char in "'\"`":
-            quote = char
-            out.append(char)
-        elif sql.startswith("/*", i):
-            end = sql.find("*/", i + 2)
-            i = len(sql) if end < 0 else end + 2
-            out.append(" ")
-            continue
-        elif char == "#" or (
-            sql.startswith("--", i)
-            and (i + 2 == len(sql) or sql[i + 2].isspace())
-        ):
-            end = sql.find("\n", i)
-            i = len(sql) if end < 0 else end
-            out.append(" ")
-            continue
-        else:
-            out.append(char)
-        i += 1
-    return "".join(out).strip()
-=======
     - Sanitize KHÔNG thay AST whitelist: nó giảm bề mặt cho LLM, còn AST/token mới là lớp chặn cứng.
     - Phát hiện bằng mẫu từ khóa là heuristic, có thể bị né bằng diễn đạt khác (ghi ở phần giới hạn).
 """
@@ -78,22 +33,22 @@ MAX_COMMENT_LEN = 200
 
 # Ký tự vô hình / điều khiển hướng chữ hay dùng để giấu chỉ thị
 _INVISIBLE = {
-    "​", "‌", "‍", "⁠", "﻿",           # zero-width
-    "‪", "‫", "‬", "‭", "‮",           # bidi embedding/override
-    "⁦", "⁧", "⁨", "⁩",                     # bidi isolate
-    "­",                                                   # soft hyphen
+    "\u200b", "\u200c", "\u200d", "\u2060", "\ufeff",           # zero-width
+    "\u202a", "\u202b", "\u202c", "\u202d", "\u202e",           # bidi embedding/override
+    "\u2066", "\u2067", "\u2068", "\u2069",                     # bidi isolate
+    "\u00ad",                                                   # soft hyphen
 }
 
 _SUSPICIOUS = [
     ("instruction", re.compile(
         r"\b(ignore|disregard|forget|override|bypass)\b.{0,40}\b(previous|prior|above|all|rules?|instructions?|system)\b"
         r"|\b(bỏ qua|phớt lờ|quên)\b.{0,40}\b(hướng dẫn|chỉ thị|quy tắc|luật)\b",
-        re.I | re.S)),
-    ("role_marker", re.compile(r"(^|\W)(system|assistant|developer)\s*:|<\s*/?\s*(system|instructions?)\s*>", re.I)),
+        re.IGNORECASE | re.DOTALL)),
+    ("role_marker", re.compile(r"(^|\W)(system|assistant|developer)\s*:|<\s*/?\s*(system|instructions?)\s*>", re.IGNORECASE)),
     ("ddl_dml", re.compile(
         r"\b(drop|truncate|delete|update|insert|alter|grant|revoke|create)\b\s+"
-        r"(table|index|database|schema|user|from|into|on|\w+\s+set)\b", re.I)),
-    ("approval", re.compile(r"\b(approved?|approval[_ ]?token|auto[- ]?approve|apply_optimization)\b", re.I)),
+        r"(table|index|database|schema|user|from|into|on|\w+\s+set)\b", re.IGNORECASE)),
+    ("approval", re.compile(r"\b(approved?|approval[_ ]?token|auto[- ]?approve|apply_optimization)\b", re.IGNORECASE)),
     ("exec_comment", re.compile(r"/\*[!mM]")),
 ]
 
@@ -173,7 +128,8 @@ def strip_sql_comments(sql: str) -> str:
             continue
         out.append(ch)
         i += 1
-    return "".join(out)
+    # .strip(): Tool 1 trả sql_text gọn, không dư khoảng trắng chỗ comment bị cắt
+    return "".join(out).strip()
 
 
 def sanitize_sql(sql: str) -> str:
@@ -243,4 +199,3 @@ def untrusted_field(text: str, kind: str = "comment") -> dict:
     flags = detect_injection(text)
     value = sanitize_sql(text) if kind == "sql" else sanitize_comment(text)
     return {"value": value, "untrusted": True, "label": UNTRUSTED_LABEL, "flags": flags}
->>>>>>> Stashed changes

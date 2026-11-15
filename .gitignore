@@ -49,3 +49,4 @@ structure.txt
 # --- Tình: dữ liệu meta (proposals/audit/token) & DB test injection ---
 data/meta/
 security/logs/*.sqlite3
+security/logs/*.sqlite3-journal

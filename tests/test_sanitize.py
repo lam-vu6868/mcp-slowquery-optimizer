@@ -10,8 +10,13 @@ import base64
 import pytest
 
 from mcp_server.utils.sanitize import (
-    FILTERED_PLACEHOLDER, detect_injection, normalize_unicode, sanitize_comment,
-    sanitize_sql, strip_sql_comments, untrusted_field,
+    FILTERED_PLACEHOLDER,
+    detect_injection,
+    normalize_unicode,
+    sanitize_comment,
+    sanitize_sql,
+    strip_sql_comments,
+    untrusted_field,
 )
 
 
@@ -47,10 +52,10 @@ class TestUnicode:
         assert normalize_unicode("ＤＲＯＰ ＴＡＢＬＥ") == "DROP TABLE"
 
     def test_zero_width_removed(self):
-        assert normalize_unicode("DR​OP‮") == "DROP"
+        assert normalize_unicode("DR\u200bOP\u202e") == "DROP"
 
     def test_detects_hidden_ddl_after_normalize(self):
-        flags = detect_injection("ＤＲＯＰ​ ＴＡＢＬＥ users")
+        flags = detect_injection("ＤＲＯＰ\u200b ＴＡＢＬＥ users")
         assert "ddl_dml" in flags and "invisible_chars" in flags
 
 

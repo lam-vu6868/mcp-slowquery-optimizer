@@ -19,10 +19,14 @@ LƯU Ý:
     - Dashboard KHÔNG tự chạy DDL: chỉ gọi Tool 6 kèm approval token sau khi người bấm Approve.
 """
 import streamlit as st
-
 from common import (
-    load_audit, load_injection_results, load_proposals, load_query_catalog,
-    load_slow_queries, setup_page, system_status,
+    load_audit,
+    load_injection_results,
+    load_proposals,
+    load_query_catalog,
+    load_slow_queries,
+    setup_page,
+    system_status,
 )
 
 setup_page("Tổng quan", "🛢️")
@@ -86,7 +90,7 @@ with right:
 
     if n_by_status:
         st.subheader("Đề xuất theo trạng thái")
-        from common import STATUS_LABELS
         import pandas as pd
+        from common import STATUS_LABELS
         st.bar_chart(pd.Series({STATUS_LABELS.get(k, (k,))[0]: v for k, v in n_by_status.items()},
                                name="số đề xuất"), horizontal=True, height=220)

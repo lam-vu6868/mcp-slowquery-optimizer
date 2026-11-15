@@ -13,7 +13,8 @@ import json
 
 import pytest
 
-from mcp_server.store import audit_log, proposals as store
+from mcp_server.store import audit_log
+from mcp_server.store import proposals as store
 from mcp_server.tools import apply as tool6
 from security import approval
 
