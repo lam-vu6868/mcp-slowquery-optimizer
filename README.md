@@ -18,9 +18,9 @@ Hệ thống hỗ trợ **tìm và đề xuất cách sửa các câu truy vấn
 
 ### 🎬 Case study: Sự cố Black Friday
 
-Một sàn TMĐT có **5 triệu giao dịch**, một query báo cáo doanh thu lọc theo `region` và `order_date` thiếu composite index phù hợp → **full table scan 5M dòng**, CPU database lên **98%**, sập cổng thanh toán.
+Đề bài mô tả nghẽn báo cáo doanh thu trên 12 triệu đơn hàng, CPU 98% và ảnh hưởng thanh toán. Đây là bối cảnh đề bài, không phải sự cố hoặc số đo của nhóm.
 
-Nhóm sẽ **kiểm chứng bằng số liệu thật** thứ tự cột tối ưu (`(order_date, region)` hay `(region, order_date)`) thay vì mặc định theo đề bài.
+Lab hiện dùng **5 bảng, tổng 5 triệu dòng**, trong đó `orders` có 1,5 triệu dòng. Nhóm đo truy vấn lọc `status` và `order_date`, đối chiếu thứ tự composite bằng EXPLAIN và benchmark. Kết quả lab không chứng minh đã tái hiện CPU 98% hoặc downtime.
 
 ---
 
@@ -28,7 +28,7 @@ Nhóm sẽ **kiểm chứng bằng số liệu thật** thứ tự cột tối �
 
 ```mermaid
 flowchart TD
-    A[MySQL 8.0<br/>5M sales_data] -->|slow log / performance_schema| B[MCP Server<br/>Tool 1-5]
+    A[MySQL 8.0<br/>5 bảng · tổng 5M dòng] -->|slow log / performance_schema| B[MCP Server<br/>Tool 1-5]
     B <-->|gọi tool| C[LLM host<br/>Claude]
     C -->|đề xuất có cấu trúc| V[Validation Layer]
     V --> V1[INVISIBLE INDEX<br/>đo P95 trước/sau]
@@ -77,12 +77,12 @@ flowchart TD
 | -------------------------------------- | :-------------: |
 | Setup môi trường                       |     ✅ Done     |
 | Chốt thiết kế (contract, architecture) |     ✅ Done     |
-| CSDL 5M records (sales_data)           |     ✅ Done     |
-| 30 query + ground truth                |     ✅ Done     |
+| CSDL 5 bảng, tổng 5M dòng              |     ✅ Đã nạp và kiểm tra     |
+| 30 query + ground truth                | 🟡 30 đáp án đạt đo kiểm chứng; chờ Hải review/GVHD ký |
 | AST whitelist + 47 unit tests          |     ✅ Done     |
 | Tool 4 `explain_query`                 |     ✅ Done     |
 | Tool 5 `benchmark_query`               |     ✅ Done     |
-| Đo P95 bộ 30 query                     | ✅ 29 valid · q23 timeout |
+| Đo P95 bộ 30 query                     | ✅ Baseline 30/30 valid; đáp án 30/30 đạt P95/hash |
 | Tool 1–3 MCP                           |   🟡 Đang làm   |
 | Validation Layer                       | ⬜ Chưa bắt đầu |
 | 20 Prompt Injection                    | ⬜ Chưa bắt đầu |
@@ -90,6 +90,8 @@ flowchart TD
 | Báo cáo + Demo                         | ⬜ Chưa bắt đầu |
 
 **Chú thích:** ✅ Done | 🟡 Đang làm | ⬜ Chưa làm | 🔴 Trễ hạn
+
+**Kiểm chứng ngày 21/11/2026:** mỗi phép đo chính thức có 3 warm-up + 20 lượt, hash/số dòng khớp và P95 giảm ít nhất 20%. Đã đo đối chứng thứ tự composite cho q07–q12; 125 unit tests pass. Đây là kết quả script lab, chưa phải luồng MCP–LLM–Dashboard hoàn chỉnh. Chưa đo đầy đủ dung lượng index/chi phí ghi hoặc metric LLM.
 
 > 📖 Chi tiết: [project-management/PROGRESS.md](project-management/PROGRESS.md) · Lịch và deadline: [project-management/ROADMAP.md](project-management/ROADMAP.md)
 
@@ -103,7 +105,7 @@ flowchart TD
 - Docker Desktop
 - Git
 - MySQL 8.0 (qua Docker) — cần 8.0 để dùng INVISIBLE INDEX
-- File dataset `data_5m.csv` (~450 MB) — xem hướng dẫn bên dưới
+- 5 file CSV của dataset: `customers`, `addresses`, `products`, `orders`, `order_items` — xem hướng dẫn bên dưới
 - (Tùy chọn) Percona Toolkit để chạy `pt-query-digest`
 
 ### Các bước
@@ -114,9 +116,9 @@ git clone https://github.com/lam-vu6868/mcp-slowquery-optimizer.git
 cd mcp-slowquery-optimizer
 
 # 2. Tạo môi trường ảo
-python -m venv .venv
-source .venv/bin/activate    # Mac/Linux
-.venv\Scripts\activate       # Windows
+python -m venv venv
+source venv/bin/activate    # Mac/Linux
+venv\Scripts\activate       # Windows
 
 # 3. Cài thư viện
 pip install -r requirements.txt
@@ -130,12 +132,12 @@ cp .env.example .env
 docker compose up -d
 timeout /t 30
 
-# 6. Import dataset sales_data 5M dòng
-#    - Copy file CSV vào container (~450 MB)
-#    - Import vào MySQL (~5-10 phút)
-#    - Chi tiết trong docs/setup-guide.md mục 5
+# 6. Chỉ với DB mới/rỗng: nạp 5 CSV theo thứ tự khóa ngoại
+#    customers → products → addresses → orders → order_items
+#    Chi tiết và số dòng trong docs/setup-guide.md mục 5
+#    DB đã có đủ dữ liệu: bỏ qua bước nạp
 
-# 7. Chạy MCP Server
+# 7–8. Các lệnh dự kiến khi hoàn tất tích hợp (server.py hiện còn khung)
 python -m mcp_server.server
 
 # 8. Chạy Dashboard (terminal khác)
@@ -181,6 +183,16 @@ mcp-slowquery-optimizer/
 
 ## 🧪 Testing
 
+Trên PowerShell, tạo thư mục tạm mới bằng chính tài khoản đang chạy để tránh lỗi quyền giữa user và sandbox:
+
+```powershell
+$pytestTemp = Join-Path $env:TEMP ("pytest-user-" + [guid]::NewGuid().ToString("N"))
+.\venv\Scripts\python.exe -m pytest tests/ -q -p no:cacheprovider --basetemp="$pytestTemp"
+.\venv\Scripts\python.exe scripts/verify_ground_truth.py --check
+```
+
+Đã xác nhận 125 tests pass và audit bằng chứng 30/30 pass. `--check` chỉ đối chiếu file, không đo lại DB. Giữ `data/outputs/` (gitignored) vì chứa bằng chứng raw. Chạy cả hai dòng tạo thư mục + pytest mỗi lần kiểm tra.
+
 ```bash
 # Chạy toàn bộ test
 pytest tests/ -v
@@ -188,14 +200,14 @@ pytest tests/ -v
 # Test AST whitelist (47 tests)
 pytest tests/test_ast_whitelist.py -v
 
-# Test từng tool (chạy trực tiếp)
-python -m mcp_server.tools.explain
-python -m mcp_server.tools.benchmark
-
 # Đo lại một nhóm/query P95 (kết quả raw nằm trong data/outputs và không commit)
 python scripts/measure_p95_baseline.py --group 1
-python scripts/measure_p95_baseline.py --ids q23 --force
+python scripts/measure_p95_baseline.py --ids q01 --force --output data/outputs/q01_baseline_recheck.json
 ```
+
+Luồng ground truth: `ground_truth_candidates.py` chứa ứng viên → `scripts/verify_ground_truth.py` thử index INVISIBLE và đo → chỉ phương án đạt mới lưu `ground_truth.json`. Script thử có thay đổi index tạm, chỉ chạy khi được cho phép trên lab; không phải Tool 6. Một số đáp án yêu cầu cả SQL rewrite/hint và index kèm theo. Không chạy hai benchmark đồng thời.
+
+Các ví dụ chạy trực tiếp trong `python -m mcp_server.tools.explain`, `python -m mcp_server.tools.benchmark` và script `verify_setup.py` còn SQL `sales_data` cũ; hiện dùng pytest và các script đo ở trên để kiểm tra bộ 5 bảng.
 
 ---
 

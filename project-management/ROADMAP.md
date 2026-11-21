@@ -7,6 +7,15 @@
 
 ---
 
+## Cập nhật quyết định ngày 21/11/2026
+
+- Dataset hiện tại là `shopdb.multitable-v1`: 5 bảng, tổng **5.000.000 dòng** (customers 500.000; addresses 500.000; products 50.000; orders 1.500.000; order_items 2.450.000). Thay thiết kế `sales_data` một bảng để có JOIN và khóa ngoại thực tế; không cần tăng lên 10–12M dòng cho lab.
+- Đã có baseline 30/30 valid và 30 phương án đạt kiểm chứng P95/hash, bao gồm đối chứng thứ tự composite cho q07–q12. Bằng chứng và trạng thái hiện tại ở [PROGRESS](PROGRESS.md); đây là kiểm chứng script lab, chưa hoàn tất Validation Layer tích hợp.
+- Ground truth vẫn cần Hải review và GVHD ký. Một số đáp án kết hợp index với rewrite/hint; khi đánh giá phải ghi rõ phần SQL bắt buộc, không quy toàn bộ mức cải thiện cho index riêng lẻ.
+- Giữ nguyên tiêu chí chất lượng, metric, deadline gốc và các mốc lịch sử bên dưới. Các mục import `sales_data` ở lịch tuần là công việc của bộ dữ liệu cũ, không phải hướng dẫn dùng hiện tại.
+
+---
+
 ## 0. NHỮNG GÌ ĐÃ SỬA SO VỚI BẢN CŨ
 
 |  #  | Vấn đề bản cũ                                                                                        | Cách sửa ở bản này                                                          |
@@ -156,7 +165,7 @@ Dashboard backend ──apply_optimization(proposal_id, token)──▶ Server k
 
 > Không đạt mức mong muốn vẫn báo cáo trung thực, phân tích nguyên nhân. Không chỉnh ground truth cho vừa kết quả.
 
-**Kiểm tra lại case study:** Với dataset `sales_data`, query case study có dạng `WHERE region = 'Asia' AND order_date >= '2024-01-01'`. Điều kiện `region` là **equality**, `order_date` là **range** → quy tắc là cột equality đứng trước: `(region, order_date)`. Tường + Hải **đo bằng EXPLAIN và benchmark thật** trên dữ liệu của nhóm, rồi ghi kết luận có số liệu vào báo cáo.
+**Kiểm tra lại case study:** Với dataset 5 bảng hiện tại, q07 lọc `o.status='paid'` và khoảng `o.order_date`, JOIN địa chỉ để tổng hợp theo thành phố. So sánh hai thứ tự đầu `(status, order_date)` và `(order_date, status)` với cùng các cột covering còn lại và cùng SQL; bằng chứng ở `ground_truth.json` mục q07. Đây là query đại diện trong lab, không phải bằng chứng đã tái hiện scan 12M đơn/CPU 98%/downtime của bối cảnh đề bài. Chờ Hải review cách diễn giải trước khi đưa vào báo cáo chính thức.
 
 ### 2.5. Baseline (2 loại, đúng bản chất)
 
@@ -169,11 +178,11 @@ Ghi rõ trong báo cáo: `pt-query-digest` **không** đề xuất index nên kh
 
 ### 2.6. Dữ liệu và slow log
 
-- **Dataset:** bảng `sales_data` (5M dòng), gồm 17 cột với đầy đủ `order_date` (DATE), `order_date_raw` (VARCHAR), `region`, `country`, `item_type`, `sales_channel`, `order_priority`, `total_revenue`, `total_cost`, `total_profit`, `units_sold`, `unit_price`, `unit_cost`, `ship_date`.
-- **Phân bố:** status (region) phân bố tương đối đều, `order_date` trải từ 2014 → 2024, có thể thêm phân bố lệch nếu cần.
+- **Dataset:** `customers`, `addresses`, `products`, `orders`, `order_items`, tổng 5M dòng; PK/FK và kiểu dữ liệu theo `db/schema.sql`. CSV giả lập hiện nằm ngoài repo tại `D:\labt2\data`.
+- **Phân bố:** bộ hiện tại khá đều, có tương quan city/status. Chưa chứng minh yêu cầu tải lệch/đỉnh Black Friday; cần nêu giới hạn và đánh giá bổ sung, không ghi yêu cầu này đã hoàn tất.
 - `log_output = FILE,TABLE` (file cho `pt-query-digest`, bảng `mysql.slow_log` cho tool). Nguồn chính nên là `performance_schema.events_statements_summary_by_digest` (có sẵn digest, `rows_examined`), `slow_log` là nguồn bổ sung.
 - **Xác nhận cả 30 query đều chạy > 0.5s** trên máy thật của nhóm — đã hoàn thành, 30/30 query pass.
-- Thời gian import dataset: **~5-10 phút** cho 5M dòng từ CSV.
+- Thời gian import phụ thuộc ổ đĩa, Docker và kiểm tra FK; chưa có số đo chuẩn cho bộ 5 bảng để cam kết thời gian.
 
 ---
 

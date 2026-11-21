@@ -5,367 +5,1953 @@
   "reviewer": "Hải",
   "gvhd_signature": null,
   "dataset": "shopdb.multitable-v1",
-  "verification_status": "pending",
-  "notes": "30 query đã chạy sàng lọc latency, chưa phải ground truth được chuyên gia xác nhận. Đáp án sales_data cũ đã bỏ vì không áp dụng cho schema mới. Cần kiểm chứng index/rewrite và tương đương kết quả trước khi điền acceptable_answers; chưa dùng để tính Precision/Recall. Nhóm 2 chưa dựng trường hợp index sai thứ tự.",
+  "verification_status": "performance_verified_pending_review",
+  "notes": "30/30 query có phương án đạt kiểm chứng P95/hash, còn chờ Hải review; không khẳng định tối ưu toàn cục. Đáp án có rewritten_sql/required_indexes/requires_rewrite phải dùng đủ SQL và index kèm theo. Các gt_trial index được dọn sau đo. Kiểm tra composite_order_check cho nhóm 2. Chưa đo đầy đủ chi phí ghi/dung lượng.",
   "queries": {
     "q01": {
       "group": 1,
       "answer_type": "index",
-      "acceptable_answers": [],
-      "verification_status": "pending",
+      "acceptable_answers": [
+        {
+          "type": "index",
+          "table": "order_items",
+          "columns": [
+            "product_id",
+            "quantity",
+            "unit_price"
+          ],
+          "index_name": "idx_gt_q01_cover",
+          "note": "Covering index đã giảm P95 88,61% và giữ nguyên hash kết quả; ứng viên chờ Hải review, chưa khẳng định tối ưu nhất. Index đang INVISIBLE."
+        }
+      ],
+      "verification_status": "performance_verified_pending_review",
       "measurement": {
-        "before_p95_ms": null,
-        "after_p95_ms": null,
-        "measured_by": null,
-        "measured_at": null
+        "before_p95_ms": 2843.99,
+        "after_p95_ms": 323.99,
+        "improvement_pct": 88.61,
+        "warmup_runs": 3,
+        "measured_runs": 20,
+        "timeout_ms": 60000,
+        "cache_state": "warm",
+        "before_timed_out_runs": 0,
+        "after_timed_out_runs": 0,
+        "before_use_invisible_indexes": false,
+        "after_use_invisible_indexes": true,
+        "result_equivalent": true,
+        "before_result_hash": "sha256:a944d83ed53456a6ca9577c0d4434f672b1b164e45c4f7d0a7ee8feed58b03fb",
+        "after_result_hash": "sha256:a944d83ed53456a6ca9577c0d4434f672b1b164e45c4f7d0a7ee8feed58b03fb",
+        "before_row_count": 1,
+        "after_row_count": 1,
+        "before_result_file": "data/outputs/q01_cover_before.json",
+        "after_result_file": "data/outputs/q01_cover_after.json",
+        "measured_by": "Người dùng (chạy terminal cục bộ)",
+        "measured_at": "2026-11-21T11:58:00+07:00"
+      },
+      "explain_check": {
+        "source": "EXPLAIN FORMAT=JSON kiểm tra sau khi đo, với use_invisible_indexes off/on",
+        "before_key": "fk_order_items_product",
+        "after_key": "idx_gt_q01_cover",
+        "after_using_index": true,
+        "before_query_cost": 90527.67,
+        "after_query_cost": 35189.62
       }
     },
     "q02": {
       "group": 1,
       "answer_type": "index",
-      "acceptable_answers": [],
-      "verification_status": "pending",
+      "acceptable_answers": [
+        {
+          "type": "index",
+          "table": "orders",
+          "index_name": "gt_trial_q02_good_0",
+          "columns": [
+            "customer_id",
+            "order_date",
+            "total_amount"
+          ],
+          "directions": [
+            "ASC",
+            "ASC",
+            "ASC"
+          ],
+          "rewritten_sql": "SELECT YEAR(o.order_date) AS y, MONTH(o.order_date) AS m, SUM(o.total_amount) AS revenue FROM orders AS o FORCE INDEX (gt_trial_q02_good_0) JOIN addresses AS a ON a.customer_id = o.customer_id WHERE a.city = 'Ha Noi' GROUP BY YEAR(o.order_date), MONTH(o.order_date)",
+          "requires_rewrite": true
+        }
+      ],
+      "verification_status": "performance_verified_pending_review",
       "measurement": {
-        "before_p95_ms": null,
-        "after_p95_ms": null,
-        "measured_by": null,
-        "measured_at": null
+        "before_p95_ms": 1299.51,
+        "after_p95_ms": 665.24,
+        "improvement_pct": 48.81,
+        "measured_runs": 20,
+        "warmup_runs": 3,
+        "timeout_ms": 60000,
+        "cache_state": "warm",
+        "before_timed_out_runs": 0,
+        "after_timed_out_runs": 0,
+        "result_equivalent": true,
+        "before_result_hash": "sha256:26a6e9fefb7e16c2106c51ea5ccf378507e6c5962c58a206944371f08407058e",
+        "after_result_hash": "sha256:26a6e9fefb7e16c2106c51ea5ccf378507e6c5962c58a206944371f08407058e",
+        "before_row_count": 33,
+        "after_row_count": 33,
+        "before_result_file": "data/outputs/p95_baseline_multitable_raw.json",
+        "after_result_file": "data/outputs/ground_truth_validation/q02/b9b862a74c_1795243910090898200/after.json",
+        "measured_by": "Codex (lab execution authorized by user)",
+        "measured_at": "2026-11-21T13:52:32+07:00",
+        "baseline_reused": true,
+        "trial_indexes_persisted": false
+      },
+      "explain_check": {
+        "before_query_cost": "102552.10",
+        "after_query_cost": "115496.78",
+        "before_selected_indexes": [
+          "fk_orders_customer"
+        ],
+        "after_selected_indexes": [
+          "gt_trial_q02_good_0"
+        ],
+        "evidence_file": "data/outputs/ground_truth_validation/report.json"
       }
     },
     "q03": {
       "group": 1,
       "answer_type": "index",
-      "acceptable_answers": [],
-      "verification_status": "pending",
+      "acceptable_answers": [
+        {
+          "type": "index",
+          "table": "order_items",
+          "index_name": "gt_trial_q03_good_0",
+          "columns": [
+            "product_id",
+            "quantity"
+          ],
+          "directions": [
+            "ASC",
+            "ASC"
+          ]
+        }
+      ],
+      "verification_status": "performance_verified_pending_review",
       "measurement": {
-        "before_p95_ms": null,
-        "after_p95_ms": null,
-        "measured_by": null,
-        "measured_at": null
+        "before_p95_ms": 880.7,
+        "after_p95_ms": 200.63,
+        "improvement_pct": 77.22,
+        "measured_runs": 20,
+        "warmup_runs": 3,
+        "timeout_ms": 60000,
+        "cache_state": "warm",
+        "before_timed_out_runs": 0,
+        "after_timed_out_runs": 0,
+        "result_equivalent": true,
+        "before_result_hash": "sha256:0e60cbc14dc16d811c55aa8c416adf923bb6734636fced8f73b626397835f340",
+        "after_result_hash": "sha256:0e60cbc14dc16d811c55aa8c416adf923bb6734636fced8f73b626397835f340",
+        "before_row_count": 5,
+        "after_row_count": 5,
+        "before_result_file": "data/outputs/p95_baseline_multitable_raw.json",
+        "after_result_file": "data/outputs/ground_truth_validation/q03_after.json",
+        "measured_by": "Codex (lab execution authorized by user)",
+        "measured_at": "2026-11-21T13:08:31+07:00",
+        "baseline_reused": true,
+        "trial_indexes_persisted": false
+      },
+      "explain_check": {
+        "before_query_cost": "289919.64",
+        "after_query_cost": "104344.85",
+        "before_selected_indexes": [
+          "fk_order_items_product"
+        ],
+        "after_selected_indexes": [
+          "gt_trial_q03_good_0"
+        ],
+        "evidence_file": "data/outputs/ground_truth_validation/report.json"
       }
     },
     "q04": {
       "group": 1,
       "answer_type": "index",
-      "acceptable_answers": [],
-      "verification_status": "pending",
+      "acceptable_answers": [
+        {
+          "type": "index",
+          "table": "order_items",
+          "index_name": "gt_trial_q04_good_0",
+          "columns": [
+            "order_id",
+            "product_id",
+            "quantity",
+            "unit_price"
+          ],
+          "directions": [
+            "ASC",
+            "ASC",
+            "ASC",
+            "ASC"
+          ],
+          "rewritten_sql": "SELECT p.category, SUM(s.revenue) AS revenue FROM products AS p JOIN (SELECT i.product_id, SUM(i.quantity * i.unit_price) AS revenue FROM orders AS o JOIN order_items AS i FORCE INDEX (gt_trial_q04_good_0) ON i.order_id = o.order_id WHERE o.total_amount > 100000 GROUP BY i.product_id) AS s ON s.product_id = p.product_id GROUP BY p.category",
+          "requires_rewrite": true
+        }
+      ],
+      "verification_status": "performance_verified_pending_review",
       "measurement": {
-        "before_p95_ms": null,
-        "after_p95_ms": null,
-        "measured_by": null,
-        "measured_at": null
+        "before_p95_ms": 7255.6,
+        "after_p95_ms": 2951.67,
+        "improvement_pct": 59.32,
+        "measured_runs": 20,
+        "warmup_runs": 3,
+        "timeout_ms": 60000,
+        "cache_state": "warm",
+        "before_timed_out_runs": 0,
+        "after_timed_out_runs": 0,
+        "result_equivalent": true,
+        "before_result_hash": "sha256:bbbd796c4f8a6905cc430530b834ed7961598dbac5125d6cf28fb1495ba5616f",
+        "after_result_hash": "sha256:bbbd796c4f8a6905cc430530b834ed7961598dbac5125d6cf28fb1495ba5616f",
+        "before_row_count": 5,
+        "after_row_count": 5,
+        "before_result_file": "data/outputs/p95_baseline_multitable_raw.json",
+        "after_result_file": "data/outputs/ground_truth_validation/q04/9ad0bed259_1795246382679097700/after.json",
+        "measured_by": "Codex (lab execution authorized by user)",
+        "measured_at": "2026-11-21T14:35:00+07:00",
+        "baseline_reused": true,
+        "trial_indexes_persisted": false
+      },
+      "explain_check": {
+        "before_query_cost": "731543.26",
+        "after_query_cost": "283886.45",
+        "before_selected_indexes": [
+          "PRIMARY",
+          "fk_order_items_order"
+        ],
+        "after_selected_indexes": [
+          "<auto_key0>",
+          "gt_trial_q04_good_0"
+        ],
+        "evidence_file": "data/outputs/ground_truth_validation/report.json"
       }
     },
     "q05": {
       "group": 1,
       "answer_type": "index",
-      "acceptable_answers": [],
-      "verification_status": "pending",
+      "acceptable_answers": [
+        {
+          "type": "index",
+          "table": "order_items",
+          "index_name": "gt_trial_q05_good_0",
+          "columns": [
+            "unit_price",
+            "product_id",
+            "quantity"
+          ],
+          "directions": [
+            "ASC",
+            "ASC",
+            "ASC"
+          ]
+        }
+      ],
+      "verification_status": "performance_verified_pending_review",
       "measurement": {
-        "before_p95_ms": null,
-        "after_p95_ms": null,
-        "measured_by": null,
-        "measured_at": null
+        "before_p95_ms": 3337.98,
+        "after_p95_ms": 1145.51,
+        "improvement_pct": 65.68,
+        "measured_runs": 20,
+        "warmup_runs": 3,
+        "timeout_ms": 60000,
+        "cache_state": "warm",
+        "before_timed_out_runs": 0,
+        "after_timed_out_runs": 0,
+        "result_equivalent": true,
+        "before_result_hash": "sha256:c252ce4a630f115a26da1d7ea4930febbe65267e61afd55e0caf2bad5b894a16",
+        "after_result_hash": "sha256:c252ce4a630f115a26da1d7ea4930febbe65267e61afd55e0caf2bad5b894a16",
+        "before_row_count": 5,
+        "after_row_count": 5,
+        "before_result_file": "data/outputs/p95_baseline_multitable_raw.json",
+        "after_result_file": "data/outputs/ground_truth_validation/q05_after.json",
+        "measured_by": "Codex (lab execution authorized by user)",
+        "measured_at": "2026-11-21T13:10:34+07:00",
+        "baseline_reused": true,
+        "trial_indexes_persisted": false
+      },
+      "explain_check": {
+        "before_query_cost": "341208.36",
+        "after_query_cost": "675616.14",
+        "before_selected_indexes": [
+          "PRIMARY"
+        ],
+        "after_selected_indexes": [
+          "PRIMARY",
+          "gt_trial_q05_good_0"
+        ],
+        "evidence_file": "data/outputs/ground_truth_validation/report.json"
       }
     },
     "q06": {
       "group": 1,
       "answer_type": "index",
-      "acceptable_answers": [],
-      "verification_status": "pending",
+      "acceptable_answers": [
+        {
+          "type": "index_set",
+          "indexes": [
+            {
+              "type": "index",
+              "table": "orders",
+              "index_name": "gt_trial_q06_good_0",
+              "columns": [
+                "order_date",
+                "customer_id",
+                "total_amount"
+              ],
+              "directions": [
+                "ASC",
+                "ASC",
+                "ASC"
+              ]
+            },
+            {
+              "type": "index",
+              "table": "addresses",
+              "index_name": "gt_trial_q06_good_1",
+              "columns": [
+                "customer_id",
+                "city"
+              ],
+              "directions": [
+                "ASC",
+                "ASC"
+              ]
+            }
+          ],
+          "rewritten_sql": "SELECT a.city, SUM(o.total_amount) AS revenue FROM orders AS o FORCE INDEX (gt_trial_q06_good_0) JOIN addresses AS a FORCE INDEX (gt_trial_q06_good_1) ON a.customer_id = o.customer_id WHERE o.order_date >= '2024-01-01' AND o.order_date < '2025-01-01' GROUP BY a.city",
+          "requires_rewrite": true
+        }
+      ],
+      "verification_status": "performance_verified_pending_review",
       "measurement": {
-        "before_p95_ms": null,
-        "after_p95_ms": null,
-        "measured_by": null,
-        "measured_at": null
+        "before_p95_ms": 9436.26,
+        "after_p95_ms": 4339.83,
+        "improvement_pct": 54.01,
+        "measured_runs": 20,
+        "warmup_runs": 3,
+        "timeout_ms": 60000,
+        "cache_state": "warm",
+        "before_timed_out_runs": 0,
+        "after_timed_out_runs": 0,
+        "result_equivalent": true,
+        "before_result_hash": "sha256:208123b8dd8358f82f5bd88686292c3f78e1ddd3ad082508fbd63af1b75384c3",
+        "after_result_hash": "sha256:208123b8dd8358f82f5bd88686292c3f78e1ddd3ad082508fbd63af1b75384c3",
+        "before_row_count": 5,
+        "after_row_count": 5,
+        "before_result_file": "data/outputs/p95_baseline_multitable_raw.json",
+        "after_result_file": "data/outputs/ground_truth_validation/q06/fa86e1d8c1_1795244032907711800/after.json",
+        "measured_by": "Codex (lab execution authorized by user)",
+        "measured_at": "2026-11-21T13:56:33+07:00",
+        "baseline_reused": true,
+        "trial_indexes_persisted": false
+      },
+      "explain_check": {
+        "before_query_cost": "208976.95",
+        "after_query_cost": "974281.35",
+        "before_selected_indexes": [
+          "fk_addresses_customer"
+        ],
+        "after_selected_indexes": [
+          "gt_trial_q06_good_0",
+          "gt_trial_q06_good_1"
+        ],
+        "evidence_file": "data/outputs/ground_truth_validation/report.json"
       }
     },
     "q07": {
       "group": 2,
       "answer_type": "index",
-      "acceptable_answers": [],
-      "verification_status": "pending",
+      "acceptable_answers": [
+        {
+          "type": "index_set",
+          "indexes": [
+            {
+              "type": "index",
+              "table": "orders",
+              "index_name": "gt_trial_q07_good_0",
+              "columns": [
+                "status",
+                "order_date",
+                "customer_id",
+                "total_amount"
+              ],
+              "directions": [
+                "ASC",
+                "ASC",
+                "ASC",
+                "ASC"
+              ]
+            },
+            {
+              "type": "index",
+              "table": "addresses",
+              "index_name": "gt_trial_q07_good_1",
+              "columns": [
+                "customer_id",
+                "city"
+              ],
+              "directions": [
+                "ASC",
+                "ASC"
+              ]
+            }
+          ],
+          "rewritten_sql": "SELECT a.city, SUM(o.total_amount) AS revenue FROM orders AS o FORCE INDEX (gt_trial_q07_good_0) JOIN addresses AS a FORCE INDEX (gt_trial_q07_good_1) ON a.customer_id = o.customer_id WHERE o.status = 'paid' AND o.order_date >= '2024-01-01' AND o.order_date < '2025-01-01' GROUP BY a.city",
+          "requires_rewrite": true
+        }
+      ],
+      "verification_status": "performance_verified_pending_review",
       "measurement": {
-        "before_p95_ms": null,
-        "after_p95_ms": null,
-        "measured_by": null,
-        "measured_at": null
+        "before_p95_ms": 1435.89,
+        "after_p95_ms": 843.73,
+        "improvement_pct": 41.24,
+        "measured_runs": 20,
+        "warmup_runs": 3,
+        "timeout_ms": 60000,
+        "cache_state": "warm",
+        "before_timed_out_runs": 0,
+        "after_timed_out_runs": 0,
+        "result_equivalent": true,
+        "before_result_hash": "sha256:d22c12bda57d2be5769ce342071de21d6027db4e8c173257b6dd2bfc3807fb62",
+        "after_result_hash": "sha256:d22c12bda57d2be5769ce342071de21d6027db4e8c173257b6dd2bfc3807fb62",
+        "before_row_count": 1,
+        "after_row_count": 1,
+        "before_result_file": "data/outputs/p95_baseline_multitable_raw.json",
+        "after_result_file": "data/outputs/ground_truth_validation/q07/f920c8046f_1795244194854097500/after.json",
+        "measured_by": "Codex (lab execution authorized by user)",
+        "measured_at": "2026-11-21T13:57:35+07:00",
+        "baseline_reused": true,
+        "trial_indexes_persisted": false
+      },
+      "explain_check": {
+        "before_query_cost": "156663.50",
+        "after_query_cost": "429651.28",
+        "before_selected_indexes": [
+          "fk_addresses_customer"
+        ],
+        "after_selected_indexes": [
+          "gt_trial_q07_good_0",
+          "gt_trial_q07_good_1"
+        ],
+        "evidence_file": "data/outputs/ground_truth_validation/report.json"
+      },
+      "composite_order_check": {
+        "passed": true,
+        "reason": "passed",
+        "wrong_order_p95_ms": 1149.12,
+        "evidence_file": "data/outputs/ground_truth_validation/q07/f920c8046f_1795244194854097500/wrong_order.json"
       }
     },
     "q08": {
       "group": 2,
       "answer_type": "index",
-      "acceptable_answers": [],
-      "verification_status": "pending",
+      "acceptable_answers": [
+        {
+          "type": "index",
+          "table": "order_items",
+          "index_name": "gt_trial_q08_good_0",
+          "columns": [
+            "order_id",
+            "product_id",
+            "quantity",
+            "unit_price"
+          ],
+          "directions": [
+            "ASC",
+            "ASC",
+            "ASC",
+            "ASC"
+          ],
+          "rewritten_sql": "SELECT p.category, SUM(s.revenue) AS revenue FROM products AS p JOIN (SELECT i.product_id, SUM(i.quantity * i.unit_price) AS revenue FROM orders AS o JOIN order_items AS i FORCE INDEX (gt_trial_q08_good_0) ON i.order_id = o.order_id WHERE o.status = 'completed' AND o.total_amount > 10000 GROUP BY i.product_id) AS s ON s.product_id = p.product_id GROUP BY p.category",
+          "requires_rewrite": true
+        }
+      ],
+      "verification_status": "performance_verified_pending_review",
       "measurement": {
-        "before_p95_ms": null,
-        "after_p95_ms": null,
-        "measured_by": null,
-        "measured_at": null
+        "before_p95_ms": 3302.05,
+        "after_p95_ms": 1685.21,
+        "improvement_pct": 48.96,
+        "measured_runs": 20,
+        "warmup_runs": 3,
+        "timeout_ms": 60000,
+        "cache_state": "warm",
+        "before_timed_out_runs": 0,
+        "after_timed_out_runs": 0,
+        "result_equivalent": true,
+        "before_result_hash": "sha256:f49b03868de03e410742904a1bf53075cb17d3c27764653b26d456a4c9828566",
+        "after_result_hash": "sha256:f49b03868de03e410742904a1bf53075cb17d3c27764653b26d456a4c9828566",
+        "before_row_count": 2,
+        "after_row_count": 2,
+        "before_result_file": "data/outputs/p95_baseline_multitable_raw.json",
+        "after_result_file": "data/outputs/ground_truth_validation/q08/bedc115b03_1795246500953896400/after.json",
+        "measured_by": "Codex (lab execution authorized by user)",
+        "measured_at": "2026-11-21T14:36:11+07:00",
+        "baseline_reused": true,
+        "trial_indexes_persisted": false
+      },
+      "explain_check": {
+        "before_query_cost": "208920.13",
+        "after_query_cost": "36847.10",
+        "before_selected_indexes": [
+          "PRIMARY",
+          "fk_order_items_order"
+        ],
+        "after_selected_indexes": [
+          "PRIMARY",
+          "gt_trial_q08_good_0"
+        ],
+        "evidence_file": "data/outputs/ground_truth_validation/report.json"
+      },
+      "composite_order_check": {
+        "passed": true,
+        "reason": "passed",
+        "wrong_order_p95_ms": 7717.96,
+        "evidence_file": "data/outputs/ground_truth_validation/q08/bedc115b03_1795246500953896400/wrong_order.json"
       }
     },
     "q09": {
       "group": 2,
       "answer_type": "index",
-      "acceptable_answers": [],
-      "verification_status": "pending",
+      "acceptable_answers": [
+        {
+          "type": "index",
+          "table": "order_items",
+          "index_name": "gt_trial_q09_good_0",
+          "columns": [
+            "quantity",
+            "unit_price",
+            "product_id"
+          ],
+          "directions": [
+            "ASC",
+            "ASC",
+            "ASC"
+          ]
+        }
+      ],
+      "verification_status": "performance_verified_pending_review",
       "measurement": {
-        "before_p95_ms": null,
-        "after_p95_ms": null,
-        "measured_by": null,
-        "measured_at": null
+        "before_p95_ms": 2339.85,
+        "after_p95_ms": 961.18,
+        "improvement_pct": 58.92,
+        "measured_runs": 20,
+        "warmup_runs": 3,
+        "timeout_ms": 60000,
+        "cache_state": "warm",
+        "before_timed_out_runs": 0,
+        "after_timed_out_runs": 0,
+        "result_equivalent": true,
+        "before_result_hash": "sha256:a5d2758be1d06582d4a66af6d5b67b867bef93c37a6bfb2df7f8ef44eae80955",
+        "after_result_hash": "sha256:a5d2758be1d06582d4a66af6d5b67b867bef93c37a6bfb2df7f8ef44eae80955",
+        "before_row_count": 5,
+        "after_row_count": 5,
+        "before_result_file": "data/outputs/p95_baseline_multitable_raw.json",
+        "after_result_file": "data/outputs/ground_truth_validation/q09_after.json",
+        "measured_by": "Codex (lab execution authorized by user)",
+        "measured_at": "2026-11-21T13:16:20+07:00",
+        "baseline_reused": true,
+        "trial_indexes_persisted": false
+      },
+      "explain_check": {
+        "before_query_cost": "274733.55",
+        "after_query_cost": "675616.14",
+        "before_selected_indexes": [
+          "PRIMARY"
+        ],
+        "after_selected_indexes": [
+          "PRIMARY",
+          "gt_trial_q09_good_0"
+        ],
+        "evidence_file": "data/outputs/ground_truth_validation/report.json"
+      },
+      "composite_order_check": {
+        "passed": true,
+        "reason": "passed",
+        "wrong_order_p95_ms": 1476.15,
+        "evidence_file": "data/outputs/ground_truth_validation/q09_wrong_order.json"
       }
     },
     "q10": {
       "group": 2,
       "answer_type": "index",
-      "acceptable_answers": [],
-      "verification_status": "pending",
+      "acceptable_answers": [
+        {
+          "type": "index",
+          "table": "order_items",
+          "index_name": "gt_trial_q10_good_0",
+          "columns": [
+            "product_id",
+            "order_id",
+            "quantity"
+          ],
+          "directions": [
+            "ASC",
+            "ASC",
+            "ASC"
+          ],
+          "rewritten_sql": "SELECT o.status, SUM(i.quantity) AS sold FROM products AS p JOIN order_items AS i FORCE INDEX (gt_trial_q10_good_0) ON i.product_id = p.product_id JOIN orders AS o ON o.order_id = i.order_id WHERE p.category = 'Sach' AND p.price > 1000 GROUP BY o.status",
+          "requires_rewrite": true
+        }
+      ],
+      "verification_status": "performance_verified_pending_review",
       "measurement": {
-        "before_p95_ms": null,
-        "after_p95_ms": null,
-        "measured_by": null,
-        "measured_at": null
+        "before_p95_ms": 3347.25,
+        "after_p95_ms": 1904.59,
+        "improvement_pct": 43.1,
+        "measured_runs": 20,
+        "warmup_runs": 3,
+        "timeout_ms": 60000,
+        "cache_state": "warm",
+        "before_timed_out_runs": 0,
+        "after_timed_out_runs": 0,
+        "result_equivalent": true,
+        "before_result_hash": "sha256:ebe01a90192fc262002cee4a65f44ec687a067751ed9b014da7cb1e0b2025aae",
+        "after_result_hash": "sha256:ebe01a90192fc262002cee4a65f44ec687a067751ed9b014da7cb1e0b2025aae",
+        "before_row_count": 2,
+        "after_row_count": 2,
+        "before_result_file": "data/outputs/p95_baseline_multitable_raw.json",
+        "after_result_file": "data/outputs/ground_truth_validation/q10/68d75dd71c_1795246765199931000/after.json",
+        "measured_by": "Codex (lab execution authorized by user)",
+        "measured_at": "2026-11-21T14:40:44+07:00",
+        "baseline_reused": true,
+        "trial_indexes_persisted": false
+      },
+      "explain_check": {
+        "before_query_cost": "62033.33",
+        "after_query_cost": "44125.27",
+        "before_selected_indexes": [
+          "PRIMARY",
+          "fk_order_items_product"
+        ],
+        "after_selected_indexes": [
+          "PRIMARY",
+          "gt_trial_q10_good_0"
+        ],
+        "evidence_file": "data/outputs/ground_truth_validation/report.json"
+      },
+      "composite_order_check": {
+        "passed": true,
+        "reason": "passed",
+        "wrong_order_p95_ms": 6636.43,
+        "evidence_file": "data/outputs/ground_truth_validation/q10/68d75dd71c_1795246765199931000/wrong_order.json"
       }
     },
     "q11": {
       "group": 2,
       "answer_type": "index",
-      "acceptable_answers": [],
-      "verification_status": "pending",
+      "acceptable_answers": [
+        {
+          "type": "index",
+          "table": "orders",
+          "index_name": "gt_trial_q11_good_0",
+          "columns": [
+            "customer_id",
+            "status",
+            "total_amount"
+          ],
+          "directions": [
+            "ASC",
+            "ASC",
+            "ASC"
+          ],
+          "rewritten_sql": "SELECT o.status, SUM(o.total_amount) AS revenue FROM addresses AS a JOIN orders AS o FORCE INDEX (gt_trial_q11_good_0) ON o.customer_id = a.customer_id WHERE a.city = 'Ho Chi Minh' AND a.address_id > 100000 GROUP BY o.status",
+          "requires_rewrite": true
+        }
+      ],
+      "verification_status": "performance_verified_pending_review",
       "measurement": {
-        "before_p95_ms": null,
-        "after_p95_ms": null,
-        "measured_by": null,
-        "measured_at": null
+        "before_p95_ms": 1167.06,
+        "after_p95_ms": 650.34,
+        "improvement_pct": 44.28,
+        "measured_runs": 20,
+        "warmup_runs": 3,
+        "timeout_ms": 60000,
+        "cache_state": "warm",
+        "before_timed_out_runs": 0,
+        "after_timed_out_runs": 0,
+        "result_equivalent": true,
+        "before_result_hash": "sha256:0c2b650b33da00710369dc41cc79c1a806484d71ddc4447de6a28575e5978614",
+        "after_result_hash": "sha256:0c2b650b33da00710369dc41cc79c1a806484d71ddc4447de6a28575e5978614",
+        "before_row_count": 1,
+        "after_row_count": 1,
+        "before_result_file": "data/outputs/ground_truth_validation/q11/cda2b1987c_1795244431419265000/before.json",
+        "after_result_file": "data/outputs/ground_truth_validation/q11/cda2b1987c_1795244431419265000/after.json",
+        "measured_by": "Codex (lab execution authorized by user)",
+        "measured_at": "2026-11-21T14:01:14+07:00",
+        "baseline_reused": false,
+        "trial_indexes_persisted": false
+      },
+      "explain_check": {
+        "before_query_cost": "75922.95",
+        "after_query_cost": "83572.34",
+        "before_selected_indexes": [
+          "PRIMARY",
+          "fk_orders_customer"
+        ],
+        "after_selected_indexes": [
+          "PRIMARY",
+          "gt_trial_q11_good_0"
+        ],
+        "evidence_file": "data/outputs/ground_truth_validation/report.json"
+      },
+      "composite_order_check": {
+        "passed": true,
+        "reason": "passed",
+        "wrong_order_p95_ms": 6666.8,
+        "evidence_file": "data/outputs/ground_truth_validation/q11/cda2b1987c_1795244431419265000/wrong_order.json"
       }
     },
     "q12": {
       "group": 2,
       "answer_type": "index",
-      "acceptable_answers": [],
-      "verification_status": "pending",
+      "acceptable_answers": [
+        {
+          "type": "index",
+          "table": "order_items",
+          "index_name": "gt_trial_q12_good_0",
+          "columns": [
+            "order_id",
+            "product_id",
+            "quantity",
+            "unit_price"
+          ],
+          "directions": [
+            "ASC",
+            "ASC",
+            "ASC",
+            "ASC"
+          ],
+          "rewritten_sql": "SELECT p.category, SUM(s.revenue) AS revenue FROM products AS p JOIN (SELECT i.product_id, SUM(i.quantity * i.unit_price) AS revenue FROM orders AS o JOIN order_items AS i FORCE INDEX (gt_trial_q12_good_0) ON i.order_id = o.order_id WHERE o.status = 'shipped' AND o.order_date >= '2023-06-01' AND o.order_date < '2025-01-01' GROUP BY i.product_id) AS s ON s.product_id = p.product_id GROUP BY p.category",
+          "requires_rewrite": true
+        }
+      ],
+      "verification_status": "performance_verified_pending_review",
       "measurement": {
-        "before_p95_ms": null,
-        "after_p95_ms": null,
-        "measured_by": null,
-        "measured_at": null
+        "before_p95_ms": 2544.32,
+        "after_p95_ms": 1526.19,
+        "improvement_pct": 40.02,
+        "measured_runs": 20,
+        "warmup_runs": 3,
+        "timeout_ms": 60000,
+        "cache_state": "warm",
+        "before_timed_out_runs": 0,
+        "after_timed_out_runs": 0,
+        "result_equivalent": true,
+        "before_result_hash": "sha256:bb8f29c7a907f6f4e88fa3c753b19919142a19d6731e617d7348125fe88a0aff",
+        "after_result_hash": "sha256:bb8f29c7a907f6f4e88fa3c753b19919142a19d6731e617d7348125fe88a0aff",
+        "before_row_count": 2,
+        "after_row_count": 2,
+        "before_result_file": "data/outputs/p95_baseline_multitable_raw.json",
+        "after_result_file": "data/outputs/ground_truth_validation/q12/edd6b20b9b_1795247011241829700/after.json",
+        "measured_by": "Codex (lab execution authorized by user)",
+        "measured_at": "2026-11-21T14:44:36+07:00",
+        "baseline_reused": true,
+        "trial_indexes_persisted": false
+      },
+      "explain_check": {
+        "before_query_cost": "170205.38",
+        "after_query_cost": "12282.80",
+        "before_selected_indexes": [
+          "PRIMARY",
+          "fk_order_items_order"
+        ],
+        "after_selected_indexes": [
+          "PRIMARY",
+          "gt_trial_q12_good_0"
+        ],
+        "evidence_file": "data/outputs/ground_truth_validation/report.json"
+      },
+      "composite_order_check": {
+        "passed": true,
+        "reason": "passed",
+        "wrong_order_p95_ms": 7705.65,
+        "evidence_file": "data/outputs/ground_truth_validation/q12/edd6b20b9b_1795247011241829700/wrong_order.json"
       }
     },
     "q13": {
       "group": 3,
       "answer_type": "rewrite",
-      "acceptable_answers": [],
-      "verification_status": "pending",
+      "acceptable_answers": [
+        {
+          "type": "rewrite",
+          "rewritten_sql": "SELECT p.category, SUM(i.quantity * i.unit_price) AS revenue FROM orders AS o FORCE INDEX (gt_trial_q13_good_0) JOIN order_items AS i FORCE INDEX (gt_trial_q13_good_1) ON i.order_id = o.order_id JOIN products AS p ON p.product_id = i.product_id WHERE o.order_date >= '2024-01-01' AND o.order_date < '2025-01-01' GROUP BY p.category",
+          "required_indexes": [
+            {
+              "type": "index",
+              "table": "orders",
+              "index_name": "gt_trial_q13_good_0",
+              "columns": [
+                "order_date"
+              ],
+              "directions": [
+                "ASC"
+              ]
+            },
+            {
+              "type": "index",
+              "table": "order_items",
+              "index_name": "gt_trial_q13_good_1",
+              "columns": [
+                "order_id",
+                "product_id",
+                "quantity",
+                "unit_price"
+              ],
+              "directions": [
+                "ASC",
+                "ASC",
+                "ASC",
+                "ASC"
+              ]
+            }
+          ]
+        }
+      ],
+      "verification_status": "performance_verified_pending_review",
       "measurement": {
-        "before_p95_ms": null,
-        "after_p95_ms": null,
-        "measured_by": null,
-        "measured_at": null
+        "before_p95_ms": 15343.42,
+        "after_p95_ms": 8987.62,
+        "improvement_pct": 41.42,
+        "measured_runs": 20,
+        "warmup_runs": 3,
+        "timeout_ms": 60000,
+        "cache_state": "warm",
+        "before_timed_out_runs": 0,
+        "after_timed_out_runs": 0,
+        "result_equivalent": true,
+        "before_result_hash": "sha256:9bd6c2627014966968d15dd14c21e4c22a76081171703f5484d3defdd2834e50",
+        "after_result_hash": "sha256:9bd6c2627014966968d15dd14c21e4c22a76081171703f5484d3defdd2834e50",
+        "before_row_count": 5,
+        "after_row_count": 5,
+        "before_result_file": "data/outputs/p95_baseline_multitable_raw.json",
+        "after_result_file": "data/outputs/ground_truth_validation/q13/2dfb840881_1795244711082031800/after.json",
+        "measured_by": "Codex (lab execution authorized by user)",
+        "measured_at": "2026-11-21T14:09:52+07:00",
+        "baseline_reused": true,
+        "trial_indexes_persisted": false
+      },
+      "explain_check": {
+        "before_query_cost": "1714380.08",
+        "after_query_cost": "1460452.37",
+        "before_selected_indexes": [
+          "PRIMARY",
+          "fk_order_items_product"
+        ],
+        "after_selected_indexes": [
+          "PRIMARY",
+          "gt_trial_q13_good_0",
+          "gt_trial_q13_good_1"
+        ],
+        "evidence_file": "data/outputs/ground_truth_validation/report.json"
       }
     },
     "q14": {
       "group": 3,
       "answer_type": "rewrite",
-      "acceptable_answers": [],
-      "verification_status": "pending",
+      "acceptable_answers": [
+        {
+          "type": "rewrite",
+          "rewritten_sql": "SELECT a.city, SUM(o.total_amount) AS revenue FROM orders o JOIN addresses a ON a.customer_id=o.customer_id WHERE o.order_date>='2024-11-01' AND o.order_date<'2024-12-01' GROUP BY a.city",
+          "required_indexes": [
+            {
+              "type": "index",
+              "table": "orders",
+              "index_name": "gt_trial_q14_good_0",
+              "columns": [
+                "order_date",
+                "customer_id",
+                "total_amount"
+              ],
+              "directions": [
+                "ASC",
+                "ASC",
+                "ASC"
+              ]
+            }
+          ]
+        }
+      ],
+      "verification_status": "performance_verified_pending_review",
       "measurement": {
-        "before_p95_ms": null,
-        "after_p95_ms": null,
-        "measured_by": null,
-        "measured_at": null
+        "before_p95_ms": 4605.85,
+        "after_p95_ms": 668.61,
+        "improvement_pct": 85.48,
+        "measured_runs": 20,
+        "warmup_runs": 3,
+        "timeout_ms": 60000,
+        "cache_state": "warm",
+        "before_timed_out_runs": 0,
+        "after_timed_out_runs": 0,
+        "result_equivalent": true,
+        "before_result_hash": "sha256:0ebfe553415f3201bb6d313349506c432446ee54db272ae0f72400b4e0f09ae0",
+        "after_result_hash": "sha256:0ebfe553415f3201bb6d313349506c432446ee54db272ae0f72400b4e0f09ae0",
+        "before_row_count": 5,
+        "after_row_count": 5,
+        "before_result_file": "data/outputs/p95_baseline_multitable_raw.json",
+        "after_result_file": "data/outputs/ground_truth_validation/q14_after.json",
+        "measured_by": "Codex (lab execution authorized by user)",
+        "measured_at": "2026-11-21T13:26:55+07:00",
+        "baseline_reused": true,
+        "trial_indexes_persisted": false
+      },
+      "explain_check": {
+        "before_query_cost": "571471.47",
+        "after_query_cost": "67215.22",
+        "before_selected_indexes": [
+          "fk_orders_customer"
+        ],
+        "after_selected_indexes": [
+          "fk_addresses_customer",
+          "gt_trial_q14_good_0"
+        ],
+        "evidence_file": "data/outputs/ground_truth_validation/report.json"
       }
     },
     "q15": {
       "group": 3,
       "answer_type": "rewrite",
-      "acceptable_answers": [],
-      "verification_status": "pending",
+      "acceptable_answers": [
+        {
+          "type": "rewrite",
+          "rewritten_sql": "SELECT p.category, SUM(i.quantity) AS sold FROM orders AS o FORCE INDEX (gt_trial_q15_good_0) JOIN order_items AS i FORCE INDEX (gt_trial_q15_good_1) ON i.order_id = o.order_id JOIN products AS p ON p.product_id = i.product_id WHERE o.order_date >= '2024-01-01' AND o.order_date < '2025-01-01' GROUP BY p.category",
+          "required_indexes": [
+            {
+              "type": "index",
+              "table": "orders",
+              "index_name": "gt_trial_q15_good_0",
+              "columns": [
+                "order_date"
+              ],
+              "directions": [
+                "ASC"
+              ]
+            },
+            {
+              "type": "index",
+              "table": "order_items",
+              "index_name": "gt_trial_q15_good_1",
+              "columns": [
+                "order_id",
+                "product_id",
+                "quantity"
+              ],
+              "directions": [
+                "ASC",
+                "ASC",
+                "ASC"
+              ]
+            }
+          ]
+        }
+      ],
+      "verification_status": "performance_verified_pending_review",
       "measurement": {
-        "before_p95_ms": null,
-        "after_p95_ms": null,
-        "measured_by": null,
-        "measured_at": null
+        "before_p95_ms": 16791.76,
+        "after_p95_ms": 7811.83,
+        "improvement_pct": 53.48,
+        "measured_runs": 20,
+        "warmup_runs": 3,
+        "timeout_ms": 60000,
+        "cache_state": "warm",
+        "before_timed_out_runs": 0,
+        "after_timed_out_runs": 0,
+        "result_equivalent": true,
+        "before_result_hash": "sha256:8ec46d42e116e2248a3f1109993b60a48f614340650b0025a3c082dc50d741ce",
+        "after_result_hash": "sha256:8ec46d42e116e2248a3f1109993b60a48f614340650b0025a3c082dc50d741ce",
+        "before_row_count": 5,
+        "after_row_count": 5,
+        "before_result_file": "data/outputs/p95_baseline_multitable_raw.json",
+        "after_result_file": "data/outputs/ground_truth_validation/q15/a44561a5f7_1795244993611750100/after.json",
+        "measured_by": "Codex (lab execution authorized by user)",
+        "measured_at": "2026-11-21T14:14:26+07:00",
+        "baseline_reused": true,
+        "trial_indexes_persisted": false
+      },
+      "explain_check": {
+        "before_query_cost": "1714380.08",
+        "after_query_cost": "1459869.01",
+        "before_selected_indexes": [
+          "PRIMARY",
+          "fk_order_items_product"
+        ],
+        "after_selected_indexes": [
+          "PRIMARY",
+          "gt_trial_q15_good_0",
+          "gt_trial_q15_good_1"
+        ],
+        "evidence_file": "data/outputs/ground_truth_validation/report.json"
       }
     },
     "q16": {
       "group": 3,
       "answer_type": "rewrite",
-      "acceptable_answers": [],
-      "verification_status": "pending",
+      "acceptable_answers": [
+        {
+          "type": "rewrite",
+          "rewritten_sql": "SELECT p.category, SUM(i.quantity*i.unit_price) AS revenue FROM orders o JOIN order_items i ON i.order_id=o.order_id JOIN products p ON p.product_id=i.product_id WHERE o.status='completed' GROUP BY p.category",
+          "required_indexes": [
+            {
+              "type": "index",
+              "table": "orders",
+              "index_name": "gt_trial_q16_good_0",
+              "columns": [
+                "status"
+              ],
+              "directions": [
+                "ASC"
+              ]
+            }
+          ]
+        }
+      ],
+      "verification_status": "performance_verified_pending_review",
       "measurement": {
-        "before_p95_ms": null,
-        "after_p95_ms": null,
-        "measured_by": null,
-        "measured_at": null
+        "before_p95_ms": 17573.22,
+        "after_p95_ms": 4285.8,
+        "improvement_pct": 75.61,
+        "measured_runs": 20,
+        "warmup_runs": 3,
+        "timeout_ms": 60000,
+        "cache_state": "warm",
+        "before_timed_out_runs": 0,
+        "after_timed_out_runs": 0,
+        "result_equivalent": true,
+        "before_result_hash": "sha256:203084fe81d9986749f6cecc024404747af343b5b7c63f7fb64cbcf076a5c6ed",
+        "after_result_hash": "sha256:203084fe81d9986749f6cecc024404747af343b5b7c63f7fb64cbcf076a5c6ed",
+        "before_row_count": 2,
+        "after_row_count": 2,
+        "before_result_file": "data/outputs/p95_baseline_multitable_raw.json",
+        "after_result_file": "data/outputs/ground_truth_validation/q16_after.json",
+        "measured_by": "Codex (lab execution authorized by user)",
+        "measured_at": "2026-11-21T13:31:45+07:00",
+        "baseline_reused": true,
+        "trial_indexes_persisted": false
+      },
+      "explain_check": {
+        "before_query_cost": "1714380.08",
+        "after_query_cost": "809696.34",
+        "before_selected_indexes": [
+          "PRIMARY",
+          "fk_order_items_product"
+        ],
+        "after_selected_indexes": [
+          "PRIMARY",
+          "fk_order_items_order",
+          "gt_trial_q16_good_0"
+        ],
+        "evidence_file": "data/outputs/ground_truth_validation/report.json"
       }
     },
     "q17": {
       "group": 3,
       "answer_type": "rewrite",
-      "acceptable_answers": [],
-      "verification_status": "pending",
+      "acceptable_answers": [
+        {
+          "type": "rewrite",
+          "rewritten_sql": "SELECT p.category, SUM(s.revenue) AS revenue FROM products p JOIN (SELECT product_id, SUM(quantity*unit_price) AS revenue FROM order_items WHERE unit_price>4900 GROUP BY product_id) s ON s.product_id=p.product_id GROUP BY p.category",
+          "required_indexes": [
+            {
+              "type": "index",
+              "table": "order_items",
+              "index_name": "gt_trial_q17_good_0",
+              "columns": [
+                "product_id",
+                "quantity",
+                "unit_price"
+              ],
+              "directions": [
+                "ASC",
+                "ASC",
+                "ASC"
+              ]
+            }
+          ]
+        }
+      ],
+      "verification_status": "performance_verified_pending_review",
       "measurement": {
-        "before_p95_ms": null,
-        "after_p95_ms": null,
-        "measured_by": null,
-        "measured_at": null
+        "before_p95_ms": 9267.22,
+        "after_p95_ms": 984.18,
+        "improvement_pct": 89.38,
+        "measured_runs": 20,
+        "warmup_runs": 3,
+        "timeout_ms": 60000,
+        "cache_state": "warm",
+        "before_timed_out_runs": 0,
+        "after_timed_out_runs": 0,
+        "result_equivalent": true,
+        "before_result_hash": "sha256:b2e025c2735df83aea1bcfbbd1e060c25d659f9cdc7b67dd02dace9124d64583",
+        "after_result_hash": "sha256:b2e025c2735df83aea1bcfbbd1e060c25d659f9cdc7b67dd02dace9124d64583",
+        "before_row_count": 5,
+        "after_row_count": 5,
+        "before_result_file": "data/outputs/p95_baseline_multitable_raw.json",
+        "after_result_file": "data/outputs/ground_truth_validation/q17_after.json",
+        "measured_by": "Codex (lab execution authorized by user)",
+        "measured_at": "2026-11-21T13:32:44+07:00",
+        "baseline_reused": true,
+        "trial_indexes_persisted": false
+      },
+      "explain_check": {
+        "before_query_cost": "859720.91",
+        "after_query_cost": "289953.70",
+        "before_selected_indexes": [
+          "fk_order_items_product"
+        ],
+        "after_selected_indexes": [
+          "<auto_key0>",
+          "gt_trial_q17_good_0"
+        ],
+        "evidence_file": "data/outputs/ground_truth_validation/report.json"
       }
     },
     "q18": {
       "group": 3,
       "answer_type": "rewrite",
-      "acceptable_answers": [],
-      "verification_status": "pending",
+      "acceptable_answers": [
+        {
+          "type": "rewrite",
+          "rewritten_sql": "SELECT o.status, SUM(i.quantity*i.unit_price) AS revenue FROM products p JOIN order_items i ON i.product_id=p.product_id JOIN orders o ON o.order_id=i.order_id WHERE p.category LIKE 'Dien%' GROUP BY o.status",
+          "required_indexes": [
+            {
+              "type": "index",
+              "table": "order_items",
+              "index_name": "gt_trial_q18_good_0",
+              "columns": [
+                "product_id",
+                "order_id",
+                "quantity",
+                "unit_price"
+              ],
+              "directions": [
+                "ASC",
+                "ASC",
+                "ASC",
+                "ASC"
+              ]
+            }
+          ]
+        }
+      ],
+      "verification_status": "performance_verified_pending_review",
       "measurement": {
-        "before_p95_ms": null,
-        "after_p95_ms": null,
-        "measured_by": null,
-        "measured_at": null
+        "before_p95_ms": 3733.13,
+        "after_p95_ms": 2138.26,
+        "improvement_pct": 42.72,
+        "measured_runs": 20,
+        "warmup_runs": 3,
+        "timeout_ms": 60000,
+        "cache_state": "warm",
+        "before_timed_out_runs": 0,
+        "after_timed_out_runs": 0,
+        "result_equivalent": true,
+        "before_result_hash": "sha256:2d25af5aee70857f9bc310b0708526d59e2511bce57bb977a0b68f465cc2574e",
+        "after_result_hash": "sha256:2d25af5aee70857f9bc310b0708526d59e2511bce57bb977a0b68f465cc2574e",
+        "before_row_count": 2,
+        "after_row_count": 2,
+        "before_result_file": "data/outputs/p95_baseline_multitable_raw.json",
+        "after_result_file": "data/outputs/ground_truth_validation/q18_after.json",
+        "measured_by": "Codex (lab execution authorized by user)",
+        "measured_at": "2026-11-21T13:34:20+07:00",
+        "baseline_reused": true,
+        "trial_indexes_persisted": false
+      },
+      "explain_check": {
+        "before_query_cost": "1714380.08",
+        "after_query_cost": "134526.33",
+        "before_selected_indexes": [
+          "PRIMARY",
+          "fk_order_items_product"
+        ],
+        "after_selected_indexes": [
+          "PRIMARY",
+          "gt_trial_q18_good_0"
+        ],
+        "evidence_file": "data/outputs/ground_truth_validation/report.json"
       }
     },
     "q19": {
       "group": 4,
       "answer_type": "index",
-      "acceptable_answers": [],
-      "verification_status": "pending",
+      "acceptable_answers": [
+        {
+          "type": "index",
+          "table": "orders",
+          "index_name": "gt_trial_q19_good_0",
+          "columns": [
+            "status",
+            "order_date",
+            "order_id",
+            "customer_id",
+            "total_amount"
+          ],
+          "directions": [
+            "ASC",
+            "DESC",
+            "DESC",
+            "ASC",
+            "ASC"
+          ],
+          "rewritten_sql": "SELECT o.* FROM orders AS o FORCE INDEX (gt_trial_q19_good_0) STRAIGHT_JOIN addresses AS a ON a.customer_id = o.customer_id WHERE o.status = 'paid' AND a.city = 'Ho Chi Minh' ORDER BY o.order_date DESC, o.order_id DESC LIMIT 1000",
+          "requires_rewrite": true
+        }
+      ],
+      "verification_status": "performance_verified_pending_review",
       "measurement": {
-        "before_p95_ms": null,
-        "after_p95_ms": null,
-        "measured_by": null,
-        "measured_at": null
+        "before_p95_ms": 1277.91,
+        "after_p95_ms": 21.07,
+        "improvement_pct": 98.35,
+        "measured_runs": 20,
+        "warmup_runs": 3,
+        "timeout_ms": 60000,
+        "cache_state": "warm",
+        "before_timed_out_runs": 0,
+        "after_timed_out_runs": 0,
+        "result_equivalent": true,
+        "before_result_hash": "sha256:13919637b6d3f3b7983db1ba1103022ab60cbe6abe9317a396b5116b5fa1cee5",
+        "after_result_hash": "sha256:13919637b6d3f3b7983db1ba1103022ab60cbe6abe9317a396b5116b5fa1cee5",
+        "before_row_count": 1000,
+        "after_row_count": 1000,
+        "before_result_file": "data/outputs/p95_baseline_multitable_raw.json",
+        "after_result_file": "data/outputs/ground_truth_validation/q19/2b059f2423_1795247282326870400/after.json",
+        "measured_by": "Codex (lab execution authorized by user)",
+        "measured_at": "2026-11-21T14:48:19+07:00",
+        "baseline_reused": true,
+        "trial_indexes_persisted": false
+      },
+      "explain_check": {
+        "before_query_cost": "117438.43",
+        "after_query_cost": "283857.96",
+        "before_selected_indexes": [
+          "fk_orders_customer"
+        ],
+        "after_selected_indexes": [
+          "fk_addresses_customer",
+          "gt_trial_q19_good_0"
+        ],
+        "evidence_file": "data/outputs/ground_truth_validation/report.json"
       }
     },
     "q20": {
       "group": 4,
       "answer_type": "index",
-      "acceptable_answers": [],
-      "verification_status": "pending",
+      "acceptable_answers": [
+        {
+          "type": "index",
+          "table": "order_items",
+          "index_name": "gt_trial_q20_good_0",
+          "columns": [
+            "unit_price",
+            "order_item_id",
+            "product_id",
+            "order_id",
+            "quantity"
+          ],
+          "directions": [
+            "DESC",
+            "DESC",
+            "ASC",
+            "ASC",
+            "ASC"
+          ],
+          "rewritten_sql": "SELECT i.* FROM order_items AS i FORCE INDEX (gt_trial_q20_good_0) STRAIGHT_JOIN products AS p ON p.product_id = i.product_id WHERE p.category = 'Dien tu' ORDER BY i.unit_price DESC, i.order_item_id DESC LIMIT 1000",
+          "requires_rewrite": true
+        }
+      ],
+      "verification_status": "performance_verified_pending_review",
       "measurement": {
-        "before_p95_ms": null,
-        "after_p95_ms": null,
-        "measured_by": null,
-        "measured_at": null
+        "before_p95_ms": 1792.67,
+        "after_p95_ms": 13.18,
+        "improvement_pct": 99.26,
+        "measured_runs": 20,
+        "warmup_runs": 3,
+        "timeout_ms": 60000,
+        "cache_state": "warm",
+        "before_timed_out_runs": 0,
+        "after_timed_out_runs": 0,
+        "result_equivalent": true,
+        "before_result_hash": "sha256:7e7e143ad998502c22edfff9450b356619fba28a9a9141fd9753c1902f3785bf",
+        "after_result_hash": "sha256:7e7e143ad998502c22edfff9450b356619fba28a9a9141fd9753c1902f3785bf",
+        "before_row_count": 1000,
+        "after_row_count": 1000,
+        "before_result_file": "data/outputs/p95_baseline_multitable_raw.json",
+        "after_result_file": "data/outputs/ground_truth_validation/q20/c1e3ee4622_1795247299691180900/after.json",
+        "measured_by": "Codex (lab execution authorized by user)",
+        "measured_at": "2026-11-21T14:48:57+07:00",
+        "baseline_reused": true,
+        "trial_indexes_persisted": false
+      },
+      "explain_check": {
+        "before_query_cost": "334716.00",
+        "after_query_cost": "1709523.45",
+        "before_selected_indexes": [
+          "fk_order_items_product"
+        ],
+        "after_selected_indexes": [
+          "PRIMARY",
+          "gt_trial_q20_good_0"
+        ],
+        "evidence_file": "data/outputs/ground_truth_validation/report.json"
       }
     },
     "q21": {
       "group": 4,
       "answer_type": "index",
-      "acceptable_answers": [],
-      "verification_status": "pending",
+      "acceptable_answers": [
+        {
+          "type": "index",
+          "table": "orders",
+          "index_name": "gt_trial_q21_good_0",
+          "columns": [
+            "total_amount",
+            "order_id",
+            "customer_id",
+            "order_date",
+            "status"
+          ],
+          "directions": [
+            "DESC",
+            "DESC",
+            "ASC",
+            "ASC",
+            "ASC"
+          ],
+          "rewritten_sql": "SELECT o.* FROM orders AS o FORCE INDEX (gt_trial_q21_good_0) STRAIGHT_JOIN addresses AS a ON a.customer_id = o.customer_id WHERE a.city = 'Da Nang' ORDER BY o.total_amount DESC, o.order_id DESC LIMIT 1000",
+          "requires_rewrite": true
+        }
+      ],
+      "verification_status": "performance_verified_pending_review",
       "measurement": {
-        "before_p95_ms": null,
-        "after_p95_ms": null,
-        "measured_by": null,
-        "measured_at": null
+        "before_p95_ms": 1323.41,
+        "after_p95_ms": 36.5,
+        "improvement_pct": 97.24,
+        "measured_runs": 20,
+        "warmup_runs": 3,
+        "timeout_ms": 60000,
+        "cache_state": "warm",
+        "before_timed_out_runs": 0,
+        "after_timed_out_runs": 0,
+        "result_equivalent": true,
+        "before_result_hash": "sha256:06b669937f2a7174c9350febd3d7a66c346ce94f7c33eb32db15864e55cca0ce",
+        "after_result_hash": "sha256:06b669937f2a7174c9350febd3d7a66c346ce94f7c33eb32db15864e55cca0ce",
+        "before_row_count": 1000,
+        "after_row_count": 1000,
+        "before_result_file": "data/outputs/p95_baseline_multitable_raw.json",
+        "after_result_file": "data/outputs/ground_truth_validation/q21/6727616a8a_1795247338467565700/after.json",
+        "measured_by": "Codex (lab execution authorized by user)",
+        "measured_at": "2026-11-21T14:49:25+07:00",
+        "baseline_reused": true,
+        "trial_indexes_persisted": false
+      },
+      "explain_check": {
+        "before_query_cost": "251415.38",
+        "after_query_cost": "1046478.55",
+        "before_selected_indexes": [
+          "fk_orders_customer"
+        ],
+        "after_selected_indexes": [
+          "fk_addresses_customer",
+          "gt_trial_q21_good_0"
+        ],
+        "evidence_file": "data/outputs/ground_truth_validation/report.json"
       }
     },
     "q22": {
       "group": 4,
       "answer_type": "index",
-      "acceptable_answers": [],
-      "verification_status": "pending",
+      "acceptable_answers": [
+        {
+          "type": "index",
+          "table": "order_items",
+          "index_name": "gt_trial_q22_good_0",
+          "columns": [
+            "quantity",
+            "unit_price",
+            "order_item_id",
+            "order_id",
+            "product_id"
+          ],
+          "directions": [
+            "DESC",
+            "DESC",
+            "DESC",
+            "ASC",
+            "ASC"
+          ],
+          "rewritten_sql": "SELECT i.* FROM order_items AS i FORCE INDEX (gt_trial_q22_good_0) STRAIGHT_JOIN orders AS o ON o.order_id = i.order_id WHERE o.status = 'completed' ORDER BY i.quantity DESC, i.unit_price DESC, i.order_item_id DESC LIMIT 1000",
+          "requires_rewrite": true
+        }
+      ],
+      "verification_status": "performance_verified_pending_review",
       "measurement": {
-        "before_p95_ms": null,
-        "after_p95_ms": null,
-        "measured_by": null,
-        "measured_at": null
+        "before_p95_ms": 2162.49,
+        "after_p95_ms": 31.41,
+        "improvement_pct": 98.55,
+        "measured_runs": 20,
+        "warmup_runs": 3,
+        "timeout_ms": 60000,
+        "cache_state": "warm",
+        "before_timed_out_runs": 0,
+        "after_timed_out_runs": 0,
+        "result_equivalent": true,
+        "before_result_hash": "sha256:f5f221b14098d5e8422b50333c3b76a61942d8a1301b91cd76954f5fdd319c36",
+        "after_result_hash": "sha256:f5f221b14098d5e8422b50333c3b76a61942d8a1301b91cd76954f5fdd319c36",
+        "before_row_count": 1000,
+        "after_row_count": 1000,
+        "before_result_file": "data/outputs/p95_baseline_multitable_raw.json",
+        "after_result_file": "data/outputs/ground_truth_validation/q22/dc942aca67_1795247366603962900/after.json",
+        "measured_by": "Codex (lab execution authorized by user)",
+        "measured_at": "2026-11-21T14:50:01+07:00",
+        "baseline_reused": true,
+        "trial_indexes_persisted": false
+      },
+      "explain_check": {
+        "before_query_cost": "486856.52",
+        "after_query_cost": "1709523.45",
+        "before_selected_indexes": [
+          "fk_order_items_order"
+        ],
+        "after_selected_indexes": [
+          "PRIMARY",
+          "gt_trial_q22_good_0"
+        ],
+        "evidence_file": "data/outputs/ground_truth_validation/report.json"
       }
     },
     "q23": {
       "group": 4,
       "answer_type": "index",
-      "acceptable_answers": [],
-      "verification_status": "pending",
+      "acceptable_answers": [
+        {
+          "type": "index",
+          "table": "order_items",
+          "index_name": "gt_trial_q23_good_0",
+          "columns": [
+            "unit_price",
+            "quantity",
+            "order_item_id",
+            "product_id",
+            "order_id"
+          ],
+          "directions": [
+            "DESC",
+            "DESC",
+            "DESC",
+            "ASC",
+            "ASC"
+          ],
+          "rewritten_sql": "SELECT i.* FROM order_items AS i FORCE INDEX (gt_trial_q23_good_0) STRAIGHT_JOIN products AS p ON p.product_id = i.product_id WHERE p.category = 'Thoi trang' ORDER BY i.unit_price DESC, i.quantity DESC, i.order_item_id DESC LIMIT 1000",
+          "requires_rewrite": true
+        }
+      ],
+      "verification_status": "performance_verified_pending_review",
       "measurement": {
-        "before_p95_ms": null,
-        "after_p95_ms": null,
-        "measured_by": null,
-        "measured_at": null
+        "before_p95_ms": 1612.57,
+        "after_p95_ms": 14.05,
+        "improvement_pct": 99.13,
+        "measured_runs": 20,
+        "warmup_runs": 3,
+        "timeout_ms": 60000,
+        "cache_state": "warm",
+        "before_timed_out_runs": 0,
+        "after_timed_out_runs": 0,
+        "result_equivalent": true,
+        "before_result_hash": "sha256:e3e555cfc56ba4b420ae643275eb0760c2076fb665ef09597d71ae0c77c198ac",
+        "after_result_hash": "sha256:e3e555cfc56ba4b420ae643275eb0760c2076fb665ef09597d71ae0c77c198ac",
+        "before_row_count": 1000,
+        "after_row_count": 1000,
+        "before_result_file": "data/outputs/p95_baseline_multitable_raw.json",
+        "after_result_file": "data/outputs/ground_truth_validation/q23/bee7b19d53_1795247402407934200/after.json",
+        "measured_by": "Codex (lab execution authorized by user)",
+        "measured_at": "2026-11-21T14:50:34+07:00",
+        "baseline_reused": true,
+        "trial_indexes_persisted": false
+      },
+      "explain_check": {
+        "before_query_cost": "334716.00",
+        "after_query_cost": "1709523.45",
+        "before_selected_indexes": [
+          "fk_order_items_product"
+        ],
+        "after_selected_indexes": [
+          "PRIMARY",
+          "gt_trial_q23_good_0"
+        ],
+        "evidence_file": "data/outputs/ground_truth_validation/report.json"
       }
     },
     "q24": {
       "group": 4,
       "answer_type": "index",
-      "acceptable_answers": [],
-      "verification_status": "pending",
+      "acceptable_answers": [
+        {
+          "type": "index",
+          "table": "orders",
+          "index_name": "gt_trial_q24_good_0",
+          "columns": [
+            "order_date",
+            "total_amount",
+            "order_id",
+            "customer_id",
+            "status"
+          ],
+          "directions": [
+            "DESC",
+            "DESC",
+            "DESC",
+            "ASC",
+            "ASC"
+          ],
+          "rewritten_sql": "SELECT o.* FROM orders AS o FORCE INDEX (gt_trial_q24_good_0) STRAIGHT_JOIN order_items AS i ON i.order_id = o.order_id STRAIGHT_JOIN products AS p ON p.product_id = i.product_id WHERE p.category = 'The thao' ORDER BY o.order_date DESC, o.total_amount DESC, o.order_id DESC LIMIT 1000",
+          "requires_rewrite": true,
+          "note": "Bỏ khóa phụ i.order_item_id: các dòng cùng o.order_id có o.* giống hệt nhau, giữ nguyên thứ tự giá trị và số lần lặp của kết quả."
+        }
+      ],
+      "verification_status": "performance_verified_pending_review",
       "measurement": {
-        "before_p95_ms": null,
-        "after_p95_ms": null,
-        "measured_by": null,
-        "measured_at": null
+        "before_p95_ms": 3787.62,
+        "after_p95_ms": 54.12,
+        "improvement_pct": 98.57,
+        "measured_runs": 20,
+        "warmup_runs": 3,
+        "timeout_ms": 60000,
+        "cache_state": "warm",
+        "before_timed_out_runs": 0,
+        "after_timed_out_runs": 0,
+        "result_equivalent": true,
+        "before_result_hash": "sha256:0931ade25fdbbf66644ac96eb7e3ae6b215dfdb885b442a0fa2ab5b2cd172a29",
+        "after_result_hash": "sha256:0931ade25fdbbf66644ac96eb7e3ae6b215dfdb885b442a0fa2ab5b2cd172a29",
+        "before_row_count": 1000,
+        "after_row_count": 1000,
+        "before_result_file": "data/outputs/p95_baseline_multitable_raw.json",
+        "after_result_file": "data/outputs/ground_truth_validation/q24/7b89c24fad_1795247435032635800/after.json",
+        "measured_by": "Codex (lab execution authorized by user)",
+        "measured_at": "2026-11-21T14:51:00+07:00",
+        "baseline_reused": true,
+        "trial_indexes_persisted": false
+      },
+      "explain_check": {
+        "before_query_cost": "175993.58",
+        "after_query_cost": "2265490.75",
+        "before_selected_indexes": [
+          "PRIMARY",
+          "fk_order_items_product"
+        ],
+        "after_selected_indexes": [
+          "PRIMARY",
+          "fk_order_items_order",
+          "gt_trial_q24_good_0"
+        ],
+        "evidence_file": "data/outputs/ground_truth_validation/report.json"
       }
     },
     "q25": {
       "group": 5,
       "answer_type": "rewrite",
-      "acceptable_answers": [],
-      "verification_status": "pending",
+      "acceptable_answers": [
+        {
+          "type": "rewrite",
+          "rewritten_sql": "SELECT o.status, COUNT(*) AS n FROM orders o JOIN (SELECT customer_id, AVG(total_amount) AS avg_amount FROM orders GROUP BY customer_id) s ON s.customer_id=o.customer_id WHERE o.total_amount>s.avg_amount GROUP BY o.status",
+          "required_indexes": [
+            {
+              "type": "index",
+              "table": "orders",
+              "index_name": "gt_trial_q25_good_0",
+              "columns": [
+                "customer_id",
+                "total_amount",
+                "status"
+              ],
+              "directions": [
+                "ASC",
+                "ASC",
+                "ASC"
+              ]
+            }
+          ]
+        }
+      ],
+      "verification_status": "performance_verified_pending_review",
       "measurement": {
-        "before_p95_ms": null,
-        "after_p95_ms": null,
-        "measured_by": null,
-        "measured_at": null
+        "before_p95_ms": 13126.75,
+        "after_p95_ms": 6875.37,
+        "improvement_pct": 47.62,
+        "measured_runs": 20,
+        "warmup_runs": 3,
+        "timeout_ms": 60000,
+        "cache_state": "warm",
+        "before_timed_out_runs": 0,
+        "after_timed_out_runs": 0,
+        "result_equivalent": true,
+        "before_result_hash": "sha256:29776bf8331d8e0371fef95375948a27853d1efc5ba863bfd0519b14fbe186f3",
+        "after_result_hash": "sha256:29776bf8331d8e0371fef95375948a27853d1efc5ba863bfd0519b14fbe186f3",
+        "before_row_count": 5,
+        "after_row_count": 5,
+        "before_result_file": "data/outputs/p95_baseline_multitable_raw.json",
+        "after_result_file": "data/outputs/ground_truth_validation/q25_after.json",
+        "measured_by": "Codex (lab execution authorized by user)",
+        "measured_at": "2026-11-21T13:40:32+07:00",
+        "baseline_reused": true,
+        "trial_indexes_persisted": false
+      },
+      "explain_check": {
+        "before_query_cost": "150850.90",
+        "after_query_cost": "1732745.55",
+        "before_selected_indexes": [
+          "fk_orders_customer"
+        ],
+        "after_selected_indexes": [
+          "fk_orders_customer",
+          "gt_trial_q25_good_0"
+        ],
+        "evidence_file": "data/outputs/ground_truth_validation/report.json"
       }
     },
     "q26": {
       "group": 5,
       "answer_type": "rewrite",
-      "acceptable_answers": [],
-      "verification_status": "pending",
+      "acceptable_answers": [
+        {
+          "type": "rewrite",
+          "rewritten_sql": "SELECT p.category, SUM(i.quantity) AS sold FROM order_items AS i FORCE INDEX (gt_trial_q26_good_0) JOIN products AS p ON p.product_id = i.product_id JOIN orders AS o FORCE INDEX (gt_trial_q26_good_1) ON o.order_id = i.order_id WHERE o.status = 'paid' GROUP BY p.category",
+          "required_indexes": [
+            {
+              "type": "index",
+              "table": "order_items",
+              "index_name": "gt_trial_q26_good_0",
+              "columns": [
+                "order_id",
+                "product_id",
+                "quantity"
+              ],
+              "directions": [
+                "ASC",
+                "ASC",
+                "ASC"
+              ]
+            },
+            {
+              "type": "index",
+              "table": "orders",
+              "index_name": "gt_trial_q26_good_1",
+              "columns": [
+                "status"
+              ],
+              "directions": [
+                "ASC"
+              ]
+            }
+          ]
+        }
+      ],
+      "verification_status": "performance_verified_pending_review",
       "measurement": {
-        "before_p95_ms": null,
-        "after_p95_ms": null,
-        "measured_by": null,
-        "measured_at": null
+        "before_p95_ms": 3500.31,
+        "after_p95_ms": 2242.34,
+        "improvement_pct": 35.94,
+        "measured_runs": 20,
+        "warmup_runs": 3,
+        "timeout_ms": 60000,
+        "cache_state": "warm",
+        "before_timed_out_runs": 0,
+        "after_timed_out_runs": 0,
+        "result_equivalent": true,
+        "before_result_hash": "sha256:092199e0079daf345ff928178792844600c96402f777da03975a371a53a72d7f",
+        "after_result_hash": "sha256:092199e0079daf345ff928178792844600c96402f777da03975a371a53a72d7f",
+        "before_row_count": 2,
+        "after_row_count": 2,
+        "before_result_file": "data/outputs/ground_truth_validation/q26/511b568528_1795245479885256300/before.json",
+        "after_result_file": "data/outputs/ground_truth_validation/q26/511b568528_1795245479885256300/after.json",
+        "measured_by": "Codex (lab execution authorized by user)",
+        "measured_at": "2026-11-21T14:19:49+07:00",
+        "baseline_reused": false,
+        "trial_indexes_persisted": false
+      },
+      "explain_check": {
+        "before_query_cost": "325076.04",
+        "after_query_cost": "1029377.97",
+        "before_selected_indexes": [
+          "PRIMARY",
+          "fk_order_items_order"
+        ],
+        "after_selected_indexes": [
+          "PRIMARY",
+          "gt_trial_q26_good_0",
+          "gt_trial_q26_good_1"
+        ],
+        "evidence_file": "data/outputs/ground_truth_validation/report.json"
       }
     },
     "q27": {
       "group": 5,
       "answer_type": "rewrite",
-      "acceptable_answers": [],
-      "verification_status": "pending",
+      "acceptable_answers": [
+        {
+          "type": "rewrite",
+          "rewritten_sql": "SELECT o.status, COUNT(*) AS n FROM orders AS o LEFT JOIN order_items AS i FORCE INDEX (gt_trial_q27_good_0) ON i.order_id = o.order_id AND i.quantity = 4 WHERE i.order_item_id IS NULL GROUP BY o.status",
+          "required_indexes": [
+            {
+              "type": "index",
+              "table": "order_items",
+              "index_name": "gt_trial_q27_good_0",
+              "columns": [
+                "order_id",
+                "quantity"
+              ],
+              "directions": [
+                "ASC",
+                "ASC"
+              ]
+            }
+          ]
+        }
+      ],
+      "verification_status": "performance_verified_pending_review",
       "measurement": {
-        "before_p95_ms": null,
-        "after_p95_ms": null,
-        "measured_by": null,
-        "measured_at": null
+        "before_p95_ms": 6966.82,
+        "after_p95_ms": 3633.58,
+        "improvement_pct": 47.84,
+        "measured_runs": 20,
+        "warmup_runs": 3,
+        "timeout_ms": 60000,
+        "cache_state": "warm",
+        "before_timed_out_runs": 0,
+        "after_timed_out_runs": 0,
+        "result_equivalent": true,
+        "before_result_hash": "sha256:7b119f9056781edba1f176e784ab668af8430d63ec2b860715e053d2b3552262",
+        "after_result_hash": "sha256:7b119f9056781edba1f176e784ab668af8430d63ec2b860715e053d2b3552262",
+        "before_row_count": 5,
+        "after_row_count": 5,
+        "before_result_file": "data/outputs/p95_baseline_multitable_raw.json",
+        "after_result_file": "data/outputs/ground_truth_validation/q27/676a8c25a2_1795247461841347400/after.json",
+        "measured_by": "Codex (lab execution authorized by user)",
+        "measured_at": "2026-11-21T14:53:09+07:00",
+        "baseline_reused": true,
+        "trial_indexes_persisted": false
+      },
+      "explain_check": {
+        "before_query_cost": "1021976.57",
+        "after_query_cost": "1795316.80",
+        "before_selected_indexes": [
+          "fk_order_items_order"
+        ],
+        "after_selected_indexes": [
+          "gt_trial_q27_good_0"
+        ],
+        "evidence_file": "data/outputs/ground_truth_validation/report.json"
       }
     },
     "q28": {
       "group": 5,
       "answer_type": "rewrite",
-      "acceptable_answers": [],
-      "verification_status": "pending",
+      "acceptable_answers": [
+        {
+          "type": "rewrite",
+          "rewritten_sql": "SELECT a.city, COUNT(*) AS n FROM customers c JOIN addresses a ON a.customer_id=c.customer_id JOIN (SELECT DISTINCT customer_id FROM orders WHERE status='completed') s ON s.customer_id=c.customer_id GROUP BY a.city",
+          "required_indexes": [
+            {
+              "type": "index",
+              "table": "orders",
+              "index_name": "gt_trial_q28_good_0",
+              "columns": [
+                "status",
+                "customer_id"
+              ],
+              "directions": [
+                "ASC",
+                "ASC"
+              ]
+            }
+          ]
+        }
+      ],
+      "verification_status": "performance_verified_pending_review",
       "measurement": {
-        "before_p95_ms": null,
-        "after_p95_ms": null,
-        "measured_by": null,
-        "measured_at": null
+        "before_p95_ms": 4356.26,
+        "after_p95_ms": 755.44,
+        "improvement_pct": 82.66,
+        "measured_runs": 20,
+        "warmup_runs": 3,
+        "timeout_ms": 60000,
+        "cache_state": "warm",
+        "before_timed_out_runs": 0,
+        "after_timed_out_runs": 0,
+        "result_equivalent": true,
+        "before_result_hash": "sha256:d4d91a305a8dd4a83cdfa6983f83559cc11b02c9eb907eede8dc3d55a526b1fd",
+        "after_result_hash": "sha256:d4d91a305a8dd4a83cdfa6983f83559cc11b02c9eb907eede8dc3d55a526b1fd",
+        "before_row_count": 1,
+        "after_row_count": 1,
+        "before_result_file": "data/outputs/p95_baseline_multitable_raw.json",
+        "after_result_file": "data/outputs/ground_truth_validation/q28_after.json",
+        "measured_by": "Codex (lab execution authorized by user)",
+        "measured_at": "2026-11-21T13:45:22+07:00",
+        "baseline_reused": true,
+        "trial_indexes_persisted": false
+      },
+      "explain_check": {
+        "before_query_cost": "224512.65",
+        "after_query_cost": "486690.00",
+        "before_selected_indexes": [
+          "fk_addresses_customer",
+          "fk_orders_customer",
+          "uq_customers_email"
+        ],
+        "after_selected_indexes": [
+          "PRIMARY",
+          "fk_addresses_customer",
+          "gt_trial_q28_good_0"
+        ],
+        "evidence_file": "data/outputs/ground_truth_validation/report.json"
       }
     },
     "q29": {
       "group": 5,
       "answer_type": "rewrite",
-      "acceptable_answers": [],
-      "verification_status": "pending",
+      "acceptable_answers": [
+        {
+          "type": "rewrite",
+          "rewritten_sql": "SELECT o.status, COUNT(*) AS n FROM orders o JOIN (SELECT DISTINCT i.order_id FROM order_items i JOIN products p ON p.product_id=i.product_id WHERE p.category='Dien tu') s ON s.order_id=o.order_id GROUP BY o.status",
+          "required_indexes": [
+            {
+              "type": "index",
+              "table": "order_items",
+              "index_name": "gt_trial_q29_good_0",
+              "columns": [
+                "product_id",
+                "order_id"
+              ],
+              "directions": [
+                "ASC",
+                "ASC"
+              ]
+            }
+          ]
+        }
+      ],
+      "verification_status": "performance_verified_pending_review",
       "measurement": {
-        "before_p95_ms": null,
-        "after_p95_ms": null,
-        "measured_by": null,
-        "measured_at": null
+        "before_p95_ms": 4839.36,
+        "after_p95_ms": 2708.0,
+        "improvement_pct": 44.04,
+        "measured_runs": 20,
+        "warmup_runs": 3,
+        "timeout_ms": 60000,
+        "cache_state": "warm",
+        "before_timed_out_runs": 0,
+        "after_timed_out_runs": 0,
+        "result_equivalent": true,
+        "before_result_hash": "sha256:2aeb8b93a188b16a6c02c2f308d3f8c45526f6a0f9315c97b48f1162d37ac322",
+        "after_result_hash": "sha256:2aeb8b93a188b16a6c02c2f308d3f8c45526f6a0f9315c97b48f1162d37ac322",
+        "before_row_count": 2,
+        "after_row_count": 2,
+        "before_result_file": "data/outputs/p95_baseline_multitable_raw.json",
+        "after_result_file": "data/outputs/ground_truth_validation/q29_after.json",
+        "measured_by": "Codex (lab execution authorized by user)",
+        "measured_at": "2026-11-21T13:47:09+07:00",
+        "baseline_reused": true,
+        "trial_indexes_persisted": false
+      },
+      "explain_check": {
+        "before_query_cost": "224832.25",
+        "after_query_cost": "113659.10",
+        "before_selected_indexes": [
+          "PRIMARY",
+          "fk_order_items_product"
+        ],
+        "after_selected_indexes": [
+          "PRIMARY",
+          "gt_trial_q29_good_0"
+        ],
+        "evidence_file": "data/outputs/ground_truth_validation/report.json"
       }
     },
     "q30": {
       "group": 5,
       "answer_type": "rewrite",
-      "acceptable_answers": [],
-      "verification_status": "pending",
+      "acceptable_answers": [
+        {
+          "type": "rewrite",
+          "rewritten_sql": "SELECT o.status, COUNT(*) AS n FROM (SELECT DISTINCT customer_id FROM addresses FORCE INDEX (gt_trial_q30_good_0) WHERE city = 'Ha Noi') AS a STRAIGHT_JOIN orders AS o FORCE INDEX (gt_trial_q30_good_1) ON o.customer_id = a.customer_id STRAIGHT_JOIN LATERAL (SELECT 1 AS found FROM order_items AS i FORCE INDEX (gt_trial_q30_good_2) WHERE i.order_id = o.order_id AND i.unit_price > 5000 LIMIT 1) AS hit ON TRUE GROUP BY o.status",
+          "required_indexes": [
+            {
+              "type": "index",
+              "table": "addresses",
+              "index_name": "gt_trial_q30_good_0",
+              "columns": [
+                "city",
+                "customer_id"
+              ],
+              "directions": [
+                "ASC",
+                "ASC"
+              ]
+            },
+            {
+              "type": "index",
+              "table": "orders",
+              "index_name": "gt_trial_q30_good_1",
+              "columns": [
+                "customer_id",
+                "status"
+              ],
+              "directions": [
+                "ASC",
+                "ASC"
+              ]
+            },
+            {
+              "type": "index",
+              "table": "order_items",
+              "index_name": "gt_trial_q30_good_2",
+              "columns": [
+                "order_id",
+                "unit_price"
+              ],
+              "directions": [
+                "ASC",
+                "ASC"
+              ]
+            }
+          ],
+          "note": "MySQL >=8.0.14: JOIN LATERAL lấy tối đa một dòng hàng khớp cho mỗi đơn, DISTINCT customer_id tránh nhân bản vì nhiều địa chỉ; giữ ngữ nghĩa IN khi có NULL/trùng. Phải dùng đầy đủ SQL và các index kèm theo."
+        }
+      ],
+      "verification_status": "performance_verified_pending_review",
       "measurement": {
-        "before_p95_ms": null,
-        "after_p95_ms": null,
-        "measured_by": null,
-        "measured_at": null
+        "before_p95_ms": 3664.36,
+        "after_p95_ms": 1717.09,
+        "improvement_pct": 53.14,
+        "measured_runs": 20,
+        "warmup_runs": 3,
+        "timeout_ms": 60000,
+        "cache_state": "warm",
+        "before_timed_out_runs": 0,
+        "after_timed_out_runs": 0,
+        "result_equivalent": true,
+        "before_result_hash": "sha256:e04fa4982684a43b7f99c6041fd1c003bb75dd17f3883aac5a6ff164e2b494ba",
+        "after_result_hash": "sha256:e04fa4982684a43b7f99c6041fd1c003bb75dd17f3883aac5a6ff164e2b494ba",
+        "before_row_count": 1,
+        "after_row_count": 1,
+        "before_result_file": "data/outputs/p95_baseline_multitable_raw.json",
+        "after_result_file": "data/outputs/ground_truth_validation/q30/539f92d77f_1795248387408269300/after.json",
+        "measured_by": "Codex (lab execution authorized by user)",
+        "measured_at": "2026-11-21T15:07:54+07:00",
+        "baseline_reused": true,
+        "trial_indexes_persisted": false
+      },
+      "explain_check": {
+        "before_query_cost": "112511.78",
+        "after_query_cost": "1881367.43",
+        "before_selected_indexes": [
+          "fk_order_items_order",
+          "fk_orders_customer"
+        ],
+        "after_selected_indexes": [
+          "gt_trial_q30_good_0",
+          "gt_trial_q30_good_1",
+          "gt_trial_q30_good_2"
+        ],
+        "evidence_file": "data/outputs/ground_truth_validation/report.json"
       }
     }
   }

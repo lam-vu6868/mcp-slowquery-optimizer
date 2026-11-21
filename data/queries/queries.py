@@ -2,12 +2,13 @@
 30 query chậm — Tường phụ trách.
 Dataset: shopdb — customers, addresses, products, orders, order_items (tổng 5M dòng).
 Đã sàng lọc trên MySQL: 1 warm-up + 3 lượt đo phía server đều >= 500 ms.
-Chưa đo P95 chính thức hoặc kiểm chứng đáp án tối ưu.
+Đã đo P95: 3 warm-up + 20 lượt; bằng chứng trước/sau nằm trong ground_truth.json.
+Các phương án đạt kiểm chứng hiệu năng/hash, còn chờ Hải review; không khẳng định tối ưu toàn cục.
 Người làm: Tường
 Reviewer: Hải
 
 Nhóm 1: Thiếu index (q01-q06)
-Nhóm 2: Ứng viên composite (q07-q12), chưa dựng index sai thứ tự.
+Nhóm 2: Composite (q07-q12), đã đo đối chứng hoán đổi thứ tự cùng tập cột.
 Nhóm 3: Hàm bọc cột - non-sargable (q13-q18)
 Nhóm 4: SELECT * + filesort (q19-q24)
 Nhóm 5: Subquery → JOIN giữa các bảng (q25-q30)
@@ -62,15 +63,15 @@ QUERIES = [
         "description": "Composite status equality + order_date range",
         "sql": "SELECT a.city, SUM(o.total_amount) AS revenue FROM orders o JOIN addresses a ON a.customer_id=o.customer_id WHERE o.status='paid' AND o.order_date>='2024-01-01' AND o.order_date<'2025-01-01' GROUP BY a.city",
         "expected_answer_type": "index",
-        "note": "Đã sàng lọc latency; chưa tạo index sai thứ tự hoặc kiểm chứng thứ tự composite tối ưu."
+        "note": "Đã đo đối chứng thứ tự composite, cùng SQL và tập cột; xem composite_order_check trong ground_truth.json. Chờ Hải review."
     },
     {
         "id": "q08",
         "group": 2,
-        "description": "Composite status equality + total_amount range",
+        "description": "Composite order_items: order_id trước product_id; lọc status và total_amount",
         "sql": "SELECT p.category, SUM(i.quantity*i.unit_price) AS revenue FROM orders o JOIN order_items i ON i.order_id=o.order_id JOIN products p ON p.product_id=i.product_id WHERE o.status='completed' AND o.total_amount>10000 GROUP BY p.category",
         "expected_answer_type": "index",
-        "note": "Đã sàng lọc latency; chưa tạo index sai thứ tự hoặc kiểm chứng thứ tự composite tối ưu."
+        "note": "Đã đo đối chứng thứ tự composite, cùng SQL và tập cột; xem composite_order_check trong ground_truth.json. Chờ Hải review."
     },
     {
         "id": "q09",
@@ -78,31 +79,31 @@ QUERIES = [
         "description": "Composite quantity equality + unit_price range",
         "sql": "SELECT p.category, SUM(i.quantity*i.unit_price) AS revenue FROM order_items i JOIN products p ON p.product_id=i.product_id WHERE i.quantity=4 AND i.unit_price>1000 GROUP BY p.category",
         "expected_answer_type": "index",
-        "note": "Đã sàng lọc latency; chưa tạo index sai thứ tự hoặc kiểm chứng thứ tự composite tối ưu."
+        "note": "Đã đo đối chứng thứ tự composite, cùng SQL và tập cột; xem composite_order_check trong ground_truth.json. Chờ Hải review."
     },
     {
         "id": "q10",
         "group": 2,
-        "description": "Composite category equality + price range",
+        "description": "Composite order_items: product_id trước order_id; lọc category và price",
         "sql": "SELECT o.status, SUM(i.quantity) AS sold FROM products p JOIN order_items i ON i.product_id=p.product_id JOIN orders o ON o.order_id=i.order_id WHERE p.category='Sach' AND p.price>1000 GROUP BY o.status",
         "expected_answer_type": "index",
-        "note": "Đã sàng lọc latency; chưa tạo index sai thứ tự hoặc kiểm chứng thứ tự composite tối ưu."
+        "note": "Đã đo đối chứng thứ tự composite, cùng SQL và tập cột; xem composite_order_check trong ground_truth.json. Chờ Hải review."
     },
     {
         "id": "q11",
         "group": 2,
-        "description": "Composite city equality + address_id range",
+        "description": "Composite orders: customer_id trước status; lọc city và address_id",
         "sql": "SELECT o.status, SUM(o.total_amount) AS revenue FROM addresses a JOIN orders o ON o.customer_id=a.customer_id WHERE a.city='Ho Chi Minh' AND a.address_id>100000 GROUP BY o.status",
         "expected_answer_type": "index",
-        "note": "Đã sàng lọc latency; chưa tạo index sai thứ tự hoặc kiểm chứng thứ tự composite tối ưu."
+        "note": "Đã đo đối chứng thứ tự composite, cùng SQL và tập cột; xem composite_order_check trong ground_truth.json. Chờ Hải review."
     },
     {
         "id": "q12",
         "group": 2,
-        "description": "Composite status equality + order_date range, doanh thu sản phẩm",
+        "description": "Composite order_items: order_id trước product_id; lọc status và order_date",
         "sql": "SELECT p.category, SUM(i.quantity*i.unit_price) AS revenue FROM orders o JOIN order_items i ON i.order_id=o.order_id JOIN products p ON p.product_id=i.product_id WHERE o.status='shipped' AND o.order_date>='2023-06-01' AND o.order_date<'2025-01-01' GROUP BY p.category",
         "expected_answer_type": "index",
-        "note": "Đã sàng lọc latency; chưa tạo index sai thứ tự hoặc kiểm chứng thứ tự composite tối ưu."
+        "note": "Đã đo đối chứng thứ tự composite, cùng SQL và tập cột; xem composite_order_check trong ground_truth.json. Chờ Hải review."
     },
     {
         "id": "q13",

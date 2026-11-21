@@ -3,6 +3,7 @@
 > **Trạng thái:** DRAFT v1 — cần cả nhóm review và chốt trước **03/10**.
 > **Người giữ file:** Vũ. Sửa contract sau khi chốt → phải tạo PR và báo cả nhóm (vì đổi contract là đổi code của 3–4 người).
 > Căn cứ thiết kế: [ROADMAP.md](../project-management/ROADMAP.md) mục 2.
+> **Bổ sung 21/11/2026:** làm rõ OFF/ON theo session ở Tool 4–5 và giới hạn của proxy Handler_read*. Không thay đổi trường input/output hoặc quy trình phê duyệt.
 
 ---
 
@@ -249,6 +250,7 @@ Parser (`llm/parsers.py`) kiểm tra bằng JSON Schema. Sai schema → retry t�
 - `estimate`: `EXPLAIN FORMAT=JSON` (không chạy query).
 - `analyze`: `EXPLAIN ANALYZE` (**có chạy** query, luôn bị `MAX_EXECUTION_TIME`). Chỉ cho phép sau khi qua AST.
 - `use_invisible_indexes`: dùng cho Validation Layer, LLM không được đặt `true`.
+- Trên mỗi kết nối, đặt rõ `SET SESSION optimizer_switch='use_invisible_indexes=off'` khi `false`, hoặc `on` khi `true`; không kế thừa giá trị global cho phép đo trước tối ưu. Không đổi input/output hoặc cấu hình global.
 
 **Output `data`:**
 
@@ -298,6 +300,8 @@ Giới hạn: `measured_runs` 5–50, `timeout_ms` ≤ 60000.
 - Hash được tính trong một lượt riêng, không tính vào P50/P95.
 - Query không có `ORDER BY` được chuẩn hóa và sắp xếp trên ổ đĩa trước khi hash.
 - Kết quả thiếu số lượt yêu cầu hoặc có timeout không được dùng làm baseline chính thức.
+- `use_invisible_indexes` cũng được đặt OFF/ON rõ ràng theo session như Tool 4. `true` cho phép optimizer cân nhắc index INVISIBLE, không đảm bảo index được chọn; cần đối chiếu EXPLAIN. Chỉ dùng nội bộ validation/lab, không cấp quyền bật cho LLM.
+- `rows_examined` từ `Handler_read*` là số đo thay thế của hoạt động đọc, không phải số `ROWS_EXAMINED` chính xác từ Performance Schema; cần ghi rõ khi báo cáo.
 
 **Output `data`:**
 
