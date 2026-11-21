@@ -2,42 +2,70 @@
 -- -------------
 --
 -- CHỨC NĂNG :
---     Định nghĩa 1 bảng thực nghiệm duy nhất: sales_data (dữ liệu 5 triệu dòng).
+--     Định nghĩa 5 bảng bán hàng: customers, addresses, products, orders, order_items.
+--     Bộ CSV hiện tại có tổng cộng 5 triệu dòng.
 --
 -- PHỤ TRÁCH  : Hải    |    REVIEW: Tường
 --
 -- LƯU Ý:
---     - Chỉ tạo PRIMARY KEY (id tự tăng).
---     - CỐ Ý KHÔNG tạo các index mà 30 query cần: để LLM đề xuất, ground truth mới có ý nghĩa.
+--     - Chỉ tạo index bắt buộc cho PRIMARY KEY, UNIQUE và FOREIGN KEY.
+--     - Các index tối ưu bổ sung do LLM đề xuất và phải được kiểm chứng.
 --     - Engine InnoDB, MySQL 8.0, charset utf8mb4.
---     - sales_data đã chứa order_date, order_priority, region, country... (đáp ứng case study Black Friday và đủ 5 nhóm slow query).
+--     - VARCHAR không tự mã hóa; dữ liệu cần được mã hóa trước khi nạp nếu có yêu cầu.
+--     - Chạy khi khởi tạo DB mới; không xóa bảng hoặc dữ liệu đã tồn tại.
 --
 -- THAM KHẢO  : db/init.sql, data/seed/
 --
 
 USE shopdb;
 
-DROP TABLE IF EXISTS sales_data;
-
-CREATE TABLE sales_data (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    region VARCHAR(100) NOT NULL,
-    country VARCHAR(100) NOT NULL,
-    item_type VARCHAR(100) NOT NULL,
-    sales_channel VARCHAR(50) NOT NULL,
-    order_priority VARCHAR(10) NOT NULL,
-    order_date_raw VARCHAR(50),
-    order_date DATE,
-    order_id BIGINT NOT NULL,
-    ship_date_raw VARCHAR(50),
-    ship_date DATE,
-    units_sold INT NOT NULL,
-    unit_price DECIMAL(10, 2) NOT NULL,
-    unit_cost DECIMAL(10, 2) NOT NULL,
-    total_revenue DECIMAL(15, 2) NOT NULL,
-    total_cost DECIMAL(15, 2) NOT NULL,
-    total_profit DECIMAL(15, 2) NOT NULL
+CREATE TABLE customers (
+    customer_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    full_name VARCHAR(100) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    phone VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_customers_email (email)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- LƯU Ý: CỐ Ý KHÔNG tạo các index (ngoài PRIMARY KEY id)
--- để LLM đề xuất index trong quá trình chạy thực nghiệm.
+CREATE TABLE products (
+    product_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    product_name VARCHAR(200) NOT NULL,
+    category VARCHAR(100),
+    price DECIMAL(12, 2) NOT NULL,
+    stock_quantity INT DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE addresses (
+    address_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    customer_id BIGINT,
+    street VARCHAR(255) NOT NULL,
+    city VARCHAR(100) NOT NULL,
+    state VARCHAR(100),
+    postal_code VARCHAR(255),
+    country VARCHAR(100) NOT NULL,
+    CONSTRAINT fk_addresses_customer FOREIGN KEY (customer_id)
+        REFERENCES customers (customer_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE orders (
+    order_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    customer_id BIGINT,
+    order_date TIMESTAMP NOT NULL,
+    total_amount DECIMAL(14, 2) NOT NULL,
+    status VARCHAR(50),
+    CONSTRAINT fk_orders_customer FOREIGN KEY (customer_id)
+        REFERENCES customers (customer_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE order_items (
+    order_item_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    order_id BIGINT,
+    product_id BIGINT,
+    quantity INT NOT NULL,
+    unit_price DECIMAL(12, 2) NOT NULL,
+    CONSTRAINT fk_order_items_order FOREIGN KEY (order_id)
+        REFERENCES orders (order_id),
+    CONSTRAINT fk_order_items_product FOREIGN KEY (product_id)
+        REFERENCES products (product_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
