@@ -1,277 +1,235 @@
 """
 30 query chậm — Tường phụ trách.
-Dataset: shopdb.sales_data (5M dòng)
+Dataset: shopdb — customers, addresses, products, orders, order_items (tổng 5M dòng).
+Đã sàng lọc trên MySQL: 1 warm-up + 3 lượt đo phía server đều >= 500 ms.
+Chưa đo P95 chính thức hoặc kiểm chứng đáp án tối ưu.
 Người làm: Tường
 Reviewer: Hải
 
 Nhóm 1: Thiếu index (q01-q06)
-Nhóm 2: Sai thứ tự cột composite (q07-q12)
+Nhóm 2: Ứng viên composite (q07-q12), chưa dựng index sai thứ tự.
 Nhóm 3: Hàm bọc cột - non-sargable (q13-q18)
 Nhóm 4: SELECT * + filesort (q19-q24)
-Nhóm 5: Subquery → JOIN (self-join, q25-q30)
+Nhóm 5: Subquery → JOIN giữa các bảng (q25-q30)
 """
 
 QUERIES = [
-    # ============================================================
-    # NHÓM 1: THIẾU INDEX (6 query)
-    # ============================================================
     {
         "id": "q01",
         "group": 1,
-        "description": "Lọc theo region, không có index → full scan 5M dòng",
-        "sql": "SELECT id, country, item_type, total_revenue FROM sales_data WHERE region = 'Asia'",
-        "expected_answer_type": "index",
-        "expected_index_hint": ["region"],
+        "description": "Doanh thu theo nhóm sản phẩm, thiếu lọc category",
+        "sql": "SELECT p.category, SUM(i.quantity*i.unit_price) AS revenue FROM products p JOIN order_items i ON i.product_id=p.product_id WHERE p.category='Dien tu' GROUP BY p.category",
+        "expected_answer_type": "index"
     },
     {
         "id": "q02",
         "group": 1,
-        "description": "Lọc theo country, không có index",
-        "sql": "SELECT id, region, item_type, total_profit FROM sales_data WHERE country = 'Vietnam'",
-        "expected_answer_type": "index",
-        "expected_index_hint": ["country"],
+        "description": "Doanh thu theo tháng của khách ở Hà Nội",
+        "sql": "SELECT YEAR(o.order_date) AS y, MONTH(o.order_date) AS m, SUM(o.total_amount) AS revenue FROM orders o JOIN addresses a ON a.customer_id=o.customer_id WHERE a.city='Ha Noi' GROUP BY YEAR(o.order_date), MONTH(o.order_date)",
+        "expected_answer_type": "index"
     },
     {
         "id": "q03",
         "group": 1,
-        "description": "Lọc theo item_type, không có index",
-        "sql": "SELECT id, region, country, total_revenue FROM sales_data WHERE item_type = 'Fruits'",
-        "expected_answer_type": "index",
-        "expected_index_hint": ["item_type"],
+        "description": "Số lượng bán theo nhóm sản phẩm sắp hết tồn kho",
+        "sql": "SELECT p.category, SUM(i.quantity) AS sold FROM products p JOIN order_items i ON i.product_id=p.product_id WHERE p.stock_quantity<100 GROUP BY p.category",
+        "expected_answer_type": "index"
     },
     {
         "id": "q04",
         "group": 1,
-        "description": "Lọc theo sales_channel, không có index",
-        "sql": "SELECT id, region, total_revenue, total_profit FROM sales_data WHERE sales_channel = 'Online'",
-        "expected_answer_type": "index",
-        "expected_index_hint": ["sales_channel"],
+        "description": "Sản phẩm thuộc các đơn hàng giá trị cao",
+        "sql": "SELECT p.category, SUM(i.quantity*i.unit_price) AS revenue FROM orders o JOIN order_items i ON i.order_id=o.order_id JOIN products p ON p.product_id=i.product_id WHERE o.total_amount>100000 GROUP BY p.category",
+        "expected_answer_type": "index"
     },
     {
         "id": "q05",
         "group": 1,
-        "description": "Lọc theo order_priority, không có index",
-        "sql": "SELECT id, region, total_revenue FROM sales_data WHERE order_priority = 'H'",
-        "expected_answer_type": "index",
-        "expected_index_hint": ["order_priority"],
+        "description": "Doanh thu theo nhóm ở một khoảng đơn giá",
+        "sql": "SELECT p.category, SUM(i.quantity*i.unit_price) AS revenue FROM order_items i JOIN products p ON p.product_id=i.product_id WHERE i.unit_price BETWEEN 1000 AND 20000 GROUP BY p.category",
+        "expected_answer_type": "index"
     },
     {
         "id": "q06",
         "group": 1,
-        "description": "Lọc theo order_id, không có index (order_id không phải PK)",
-        "sql": "SELECT id, region, item_type, total_revenue FROM sales_data WHERE order_id = 123456789",
-        "expected_answer_type": "index",
-        "expected_index_hint": ["order_id"],
+        "description": "Doanh thu năm 2024 theo thành phố",
+        "sql": "SELECT a.city, SUM(o.total_amount) AS revenue FROM orders o JOIN addresses a ON a.customer_id=o.customer_id WHERE o.order_date>='2024-01-01' AND o.order_date<'2025-01-01' GROUP BY a.city",
+        "expected_answer_type": "index"
     },
-
-    # ============================================================
-    # NHÓM 2: SAI THỨ TỰ CỘT COMPOSITE (6 query)
-    # ============================================================
     {
         "id": "q07",
         "group": 2,
-        "description": "CASE STUDY: equality region + range order_date. Đề bài ghi (order_date, region) nhưng quy tắc là (region, order_date)",
-        "sql": "SELECT id, country, item_type, total_revenue FROM sales_data WHERE region = 'Asia' AND order_date >= '2024-01-01' AND order_date < '2025-01-01'",
+        "description": "Composite status equality + order_date range",
+        "sql": "SELECT a.city, SUM(o.total_amount) AS revenue FROM orders o JOIN addresses a ON a.customer_id=o.customer_id WHERE o.status='paid' AND o.order_date>='2024-01-01' AND o.order_date<'2025-01-01' GROUP BY a.city",
         "expected_answer_type": "index",
-        "expected_index_hint": ["region", "order_date"],
-        "note": "PHẢI đo thật ở tuần 3 để kết luận có số liệu — điểm ăn tiền học thuật",
+        "note": "Đã sàng lọc latency; chưa tạo index sai thứ tự hoặc kiểm chứng thứ tự composite tối ưu."
     },
     {
         "id": "q08",
         "group": 2,
-        "description": "2 equality: region + country",
-        "sql": "SELECT id, item_type, total_revenue FROM sales_data WHERE region = 'Asia' AND country = 'Vietnam'",
+        "description": "Composite status equality + total_amount range",
+        "sql": "SELECT p.category, SUM(i.quantity*i.unit_price) AS revenue FROM orders o JOIN order_items i ON i.order_id=o.order_id JOIN products p ON p.product_id=i.product_id WHERE o.status='completed' AND o.total_amount>10000 GROUP BY p.category",
         "expected_answer_type": "index",
-        "expected_index_hint": ["region", "country"],
+        "note": "Đã sàng lọc latency; chưa tạo index sai thứ tự hoặc kiểm chứng thứ tự composite tối ưu."
     },
     {
         "id": "q09",
         "group": 2,
-        "description": "equality region + range total_revenue",
-        "sql": "SELECT id, country, total_profit FROM sales_data WHERE region = 'Asia' AND total_revenue > 5000",
+        "description": "Composite quantity equality + unit_price range",
+        "sql": "SELECT p.category, SUM(i.quantity*i.unit_price) AS revenue FROM order_items i JOIN products p ON p.product_id=i.product_id WHERE i.quantity=4 AND i.unit_price>1000 GROUP BY p.category",
         "expected_answer_type": "index",
-        "expected_index_hint": ["region", "total_revenue"],
+        "note": "Đã sàng lọc latency; chưa tạo index sai thứ tự hoặc kiểm chứng thứ tự composite tối ưu."
     },
     {
         "id": "q10",
         "group": 2,
-        "description": "equality order_priority + range order_date",
-        "sql": "SELECT id, region, total_revenue FROM sales_data WHERE order_priority = 'H' AND order_date > '2024-06-01'",
+        "description": "Composite category equality + price range",
+        "sql": "SELECT o.status, SUM(i.quantity) AS sold FROM products p JOIN order_items i ON i.product_id=p.product_id JOIN orders o ON o.order_id=i.order_id WHERE p.category='Sach' AND p.price>1000 GROUP BY o.status",
         "expected_answer_type": "index",
-        "expected_index_hint": ["order_priority", "order_date"],
+        "note": "Đã sàng lọc latency; chưa tạo index sai thứ tự hoặc kiểm chứng thứ tự composite tối ưu."
     },
     {
         "id": "q11",
         "group": 2,
-        "description": "equality item_type + range total_profit",
-        "sql": "SELECT id, region, total_revenue FROM sales_data WHERE item_type = 'Fruits' AND total_profit > 500",
+        "description": "Composite city equality + address_id range",
+        "sql": "SELECT o.status, SUM(o.total_amount) AS revenue FROM addresses a JOIN orders o ON o.customer_id=a.customer_id WHERE a.city='Ho Chi Minh' AND a.address_id>100000 GROUP BY o.status",
         "expected_answer_type": "index",
-        "expected_index_hint": ["item_type", "total_profit"],
+        "note": "Đã sàng lọc latency; chưa tạo index sai thứ tự hoặc kiểm chứng thứ tự composite tối ưu."
     },
     {
         "id": "q12",
         "group": 2,
-        "description": "equality sales_channel + range order_date",
-        "sql": "SELECT id, region, total_revenue FROM sales_data WHERE sales_channel = 'Online' AND order_date > '2024-06-01'",
+        "description": "Composite status equality + order_date range, doanh thu sản phẩm",
+        "sql": "SELECT p.category, SUM(i.quantity*i.unit_price) AS revenue FROM orders o JOIN order_items i ON i.order_id=o.order_id JOIN products p ON p.product_id=i.product_id WHERE o.status='shipped' AND o.order_date>='2023-06-01' AND o.order_date<'2025-01-01' GROUP BY p.category",
         "expected_answer_type": "index",
-        "expected_index_hint": ["sales_channel", "order_date"],
+        "note": "Đã sàng lọc latency; chưa tạo index sai thứ tự hoặc kiểm chứng thứ tự composite tối ưu."
     },
-
-    # ============================================================
-    # NHÓM 3: HÀM BỌC CỘT - NON-SARGABLE (6 query)
-    # ============================================================
     {
         "id": "q13",
         "group": 3,
-        "description": "YEAR() bọc cột order_date → không dùng được index",
-        "sql": "SELECT COUNT(*) AS total FROM sales_data WHERE YEAR(order_date) = 2024 AND region = 'Asia'",
-        "expected_answer_type": "rewrite",
-        "rewrite_hint": "Chuyển YEAR(order_date) = 2024 thành order_date >= '2024-01-01' AND order_date < '2025-01-01'",
+        "description": "YEAR bọc order_date",
+        "sql": "SELECT p.category, SUM(i.quantity*i.unit_price) AS revenue FROM orders o JOIN order_items i ON i.order_id=o.order_id JOIN products p ON p.product_id=i.product_id WHERE YEAR(o.order_date)=2024 GROUP BY p.category",
+        "expected_answer_type": "rewrite"
     },
     {
         "id": "q14",
         "group": 3,
-        "description": "MONTH() bọc cột order_date",
-        "sql": "SELECT COUNT(*) FROM sales_data WHERE MONTH(order_date) = 11",
-        "expected_answer_type": "rewrite",
-        "rewrite_hint": "MONTH() không có năm → cần query riêng theo năm hoặc UNION. Có thể chuyển thành range nếu biết năm",
+        "description": "DATE_FORMAT bọc order_date",
+        "sql": "SELECT a.city, SUM(o.total_amount) AS revenue FROM orders o JOIN addresses a ON a.customer_id=o.customer_id WHERE DATE_FORMAT(o.order_date,'%Y-%m')='2024-11' GROUP BY a.city",
+        "expected_answer_type": "rewrite"
     },
     {
         "id": "q15",
         "group": 3,
-        "description": "DATE() bọc cột order_date",
-        "sql": "SELECT id, region, total_revenue FROM sales_data WHERE DATE(order_date) = '2024-05-15'",
-        "expected_answer_type": "rewrite",
-        "rewrite_hint": "Chuyển thành order_date = '2024-05-15' (vì order_date đã là DATE, DATE() thừa)",
+        "description": "DATE bọc TIMESTAMP, phải rewrite bằng khoảng thời gian",
+        "sql": "SELECT p.category, SUM(i.quantity) AS sold FROM orders o JOIN order_items i ON i.order_id=o.order_id JOIN products p ON p.product_id=i.product_id WHERE DATE(o.order_date)>='2024-01-01' AND DATE(o.order_date)<='2024-12-31' GROUP BY p.category",
+        "expected_answer_type": "rewrite"
     },
     {
         "id": "q16",
         "group": 3,
-        "description": "UPPER() bọc cột country",
-        "sql": "SELECT id, region, total_revenue FROM sales_data WHERE UPPER(country) = 'VIETNAM'",
-        "expected_answer_type": "rewrite",
-        "rewrite_hint": "Dùng collation case-insensitive (utf8mb4_general_ci) hoặc lưu lowercase",
+        "description": "UPPER bọc status trong collation không phân biệt hoa thường",
+        "sql": "SELECT p.category, SUM(i.quantity*i.unit_price) AS revenue FROM orders o JOIN order_items i ON i.order_id=o.order_id JOIN products p ON p.product_id=i.product_id WHERE UPPER(o.status)='COMPLETED' GROUP BY p.category",
+        "expected_answer_type": "rewrite"
     },
     {
         "id": "q17",
         "group": 3,
-        "description": "Toán tử + trên cột total_revenue",
-        "sql": "SELECT id, region, country FROM sales_data WHERE total_revenue + 100 > 5000",
-        "expected_answer_type": "rewrite",
-        "rewrite_hint": "Chuyển thành total_revenue > 4900 (đảo phép toán)",
+        "description": "Phép cộng trên cột unit_price",
+        "sql": "SELECT p.category, SUM(i.quantity*i.unit_price) AS revenue FROM order_items i JOIN products p ON p.product_id=i.product_id WHERE i.unit_price+100>5000 GROUP BY p.category",
+        "expected_answer_type": "rewrite"
     },
     {
         "id": "q18",
         "group": 3,
-        "description": "LEFT() bọc cột region",
-        "sql": "SELECT id, country, total_revenue FROM sales_data WHERE LEFT(region, 3) = 'Asi'",
-        "expected_answer_type": "rewrite",
-        "rewrite_hint": "Dùng region LIKE 'Asi%' — MySQL dùng được index prefix",
+        "description": "LEFT bọc category",
+        "sql": "SELECT o.status, SUM(i.quantity*i.unit_price) AS revenue FROM products p JOIN order_items i ON i.product_id=p.product_id JOIN orders o ON o.order_id=i.order_id WHERE LEFT(p.category,4)='Dien' GROUP BY o.status",
+        "expected_answer_type": "rewrite"
     },
-
-    # ============================================================
-    # NHÓM 4: SELECT * + FILESORT (6 query)
-    # ============================================================
     {
         "id": "q19",
         "group": 4,
-        "description": "SELECT * + ORDER BY order_date DESC",
-        "sql": "SELECT * FROM sales_data WHERE region = 'Asia' ORDER BY order_date DESC LIMIT 50",
-        "expected_answer_type": "index",
-        "expected_index_hint": ["region", "order_date"],
+        "description": "SELECT o.* lọc status và filesort theo ngày",
+        "sql": "SELECT o.* FROM orders o JOIN addresses a ON a.customer_id=o.customer_id WHERE o.status='paid' AND a.city='Ho Chi Minh' ORDER BY o.order_date DESC, o.order_id DESC LIMIT 1000",
+        "expected_answer_type": "index"
     },
     {
         "id": "q20",
         "group": 4,
-        "description": "SELECT * + ORDER BY units_sold DESC",
-        "sql": "SELECT * FROM sales_data WHERE country = 'Vietnam' ORDER BY units_sold DESC",
-        "expected_answer_type": "index",
-        "expected_index_hint": ["country", "units_sold"],
+        "description": "SELECT i.* theo category, filesort đơn giá",
+        "sql": "SELECT i.* FROM order_items i JOIN products p ON p.product_id=i.product_id WHERE p.category='Dien tu' ORDER BY i.unit_price DESC, i.order_item_id DESC LIMIT 1000",
+        "expected_answer_type": "index"
     },
     {
         "id": "q21",
         "group": 4,
-        "description": "SELECT * + ORDER BY total_revenue DESC",
-        "sql": "SELECT * FROM sales_data WHERE item_type = 'Fruits' ORDER BY total_revenue DESC",
-        "expected_answer_type": "index",
-        "expected_index_hint": ["item_type", "total_revenue"],
+        "description": "SELECT o.* theo thành phố, filesort tổng tiền",
+        "sql": "SELECT o.* FROM orders o JOIN addresses a ON a.customer_id=o.customer_id WHERE a.city='Da Nang' ORDER BY o.total_amount DESC, o.order_id DESC LIMIT 1000",
+        "expected_answer_type": "index"
     },
     {
         "id": "q22",
         "group": 4,
-        "description": "SELECT * + ORDER BY order_date ASC",
-        "sql": "SELECT id, region, total_revenue FROM sales_data WHERE sales_channel = 'Online' ORDER BY order_date ASC LIMIT 5000",
-        "expected_answer_type": "index",
-        "expected_index_hint": ["sales_channel", "order_date"],
+        "description": "SELECT i.* theo status, filesort số lượng và giá",
+        "sql": "SELECT i.* FROM order_items i JOIN orders o ON o.order_id=i.order_id WHERE o.status='completed' ORDER BY i.quantity DESC, i.unit_price DESC, i.order_item_id DESC LIMIT 1000",
+        "expected_answer_type": "index"
     },
     {
         "id": "q23",
         "group": 4,
-        "description": "SELECT * + ORDER BY total_profit DESC",
-        "sql": "SELECT * FROM sales_data WHERE order_priority = 'H' ORDER BY total_profit DESC",
-        "expected_answer_type": "index",
-        "expected_index_hint": ["order_priority", "total_profit"],
+        "description": "SELECT i.* theo category, filesort đơn giá và số lượng",
+        "sql": "SELECT i.* FROM order_items i JOIN products p ON p.product_id=i.product_id WHERE p.category='Thoi trang' ORDER BY i.unit_price DESC, i.quantity DESC, i.order_item_id DESC LIMIT 1000",
+        "expected_answer_type": "index"
     },
     {
         "id": "q24",
         "group": 4,
-        "description": "SELECT * KHÔNG WHERE → full scan + filesort toàn bảng",
-        "sql": "SELECT * FROM sales_data ORDER BY order_date DESC LIMIT 100",
-        "expected_answer_type": "index",
-        "expected_index_hint": ["order_date"],
+        "description": "SELECT o.* cho sản phẩm, filesort ngày và tổng tiền",
+        "sql": "SELECT o.* FROM orders o JOIN order_items i ON i.order_id=o.order_id JOIN products p ON p.product_id=i.product_id WHERE p.category='The thao' ORDER BY o.order_date DESC, o.total_amount DESC, o.order_id DESC, i.order_item_id DESC LIMIT 1000",
+        "expected_answer_type": "index"
     },
-
-    # ============================================================
-    # NHÓM 5: SUBQUERY → JOIN (SELF-JOIN vì chỉ có 1 bảng) (6 query)
-    # ============================================================
     {
         "id": "q25",
         "group": 5,
-        "description": "IN subquery → chuyển self-join",
-        "sql": "SELECT id, region, country FROM sales_data WHERE region IN (SELECT region FROM sales_data WHERE total_profit > 10000)",
-        "expected_answer_type": "rewrite",
-        "rewrite_hint": "Chuyển thành self-join sales_data s1 JOIN sales_data s2 ON s2.region = s1.region WHERE s2.total_profit > 10000, kèm DISTINCT",
+        "description": "Correlated AVG đơn hàng theo khách → JOIN bảng tổng hợp",
+        "sql": "SELECT o.status, COUNT(*) AS n FROM orders o WHERE o.total_amount>(SELECT AVG(o2.total_amount) FROM orders o2 WHERE o2.customer_id=o.customer_id) GROUP BY o.status",
+        "expected_answer_type": "rewrite"
     },
     {
         "id": "q26",
         "group": 5,
-        "description": "NOT IN subquery → chuyển LEFT JOIN IS NULL",
-        "sql": "SELECT id, region FROM sales_data WHERE order_id NOT IN (SELECT order_id FROM sales_data WHERE order_priority = 'C')",
-        "expected_answer_type": "rewrite",
-        "rewrite_hint": "Chuyển thành LEFT JOIN sales_data s2 ON s2.order_id = s1.order_id AND s2.order_priority = 'C' WHERE s2.id IS NULL",
+        "description": "IN đơn đã thanh toán → JOIN orders",
+        "sql": "SELECT p.category, SUM(i.quantity) AS sold FROM order_items i JOIN products p ON p.product_id=i.product_id WHERE i.order_id IN (SELECT o.order_id FROM orders o WHERE o.status='paid') GROUP BY p.category",
+        "expected_answer_type": "rewrite"
     },
     {
         "id": "q27",
         "group": 5,
-        "description": "EXISTS correlated subquery → chuyển self-join",
-        "sql": "SELECT id, region, total_profit FROM sales_data s1 WHERE EXISTS (SELECT 1 FROM sales_data s2 WHERE s2.region = s1.region AND s2.total_revenue > 50000)",
-        "expected_answer_type": "rewrite",
-        "rewrite_hint": "Chuyển thành self-join kèm DISTINCT",
+        "description": "NOT EXISTS mặt hàng số lượng lớn → LEFT JOIN IS NULL",
+        "sql": "SELECT o.status, COUNT(*) AS n FROM orders o WHERE NOT EXISTS (SELECT 1 FROM order_items i WHERE i.order_id=o.order_id AND i.quantity=4) GROUP BY o.status",
+        "expected_answer_type": "rewrite"
     },
     {
         "id": "q28",
         "group": 5,
-        "description": "Scalar subquery trong WHERE → chạy 1 lần cho toàn bộ query",
-        "sql": "SELECT id, region, country, total_revenue FROM sales_data WHERE total_revenue > (SELECT AVG(total_revenue) FROM sales_data) LIMIT 1000",
-        "expected_answer_type": "rewrite",
-        "rewrite_hint": "Chuyển thành JOIN với derived table (AVG)",
+        "description": "Correlated COUNT đơn hoàn tất → JOIN tập khách DISTINCT",
+        "sql": "SELECT a.city, COUNT(*) AS n FROM customers c JOIN addresses a ON a.customer_id=c.customer_id WHERE (SELECT COUNT(*) FROM orders o WHERE o.customer_id=c.customer_id AND o.status='completed')>0 GROUP BY a.city",
+        "expected_answer_type": "rewrite"
     },
     {
         "id": "q29",
         "group": 5,
-        "description": "IN subquery lồng 2 cấp",
-        "sql": "SELECT id, region, item_type FROM sales_data WHERE item_type IN (SELECT item_type FROM sales_data WHERE sales_channel = 'Online') LIMIT 5000",
-        "expected_answer_type": "rewrite",
-        "rewrite_hint": "Chuyển thành self-join 2 lần sales_data s1/s2, kèm DISTINCT",
+        "description": "EXISTS mặt hàng điện tử → JOIN tập order_id DISTINCT",
+        "sql": "SELECT o.status, COUNT(*) AS n FROM orders o WHERE EXISTS (SELECT 1 FROM order_items i JOIN products p ON p.product_id=i.product_id WHERE i.order_id=o.order_id AND p.category='Dien tu') GROUP BY o.status",
+        "expected_answer_type": "rewrite"
     },
     {
         "id": "q30",
         "group": 5,
-        "description": "Subquery trong FROM → derived table",
-        "sql": "SELECT * FROM (SELECT region, SUM(total_revenue) AS total FROM sales_data GROUP BY region) AS t WHERE t.total > 1000000",
-        "expected_answer_type": "rewrite",
-        "rewrite_hint": "Chuyển thành GROUP BY region HAVING SUM(total_revenue) > 1000000",
-    },
+        "description": "Hai IN subquery địa chỉ và mặt hàng → JOIN tập DISTINCT",
+        "sql": "SELECT o.status, COUNT(*) AS n FROM orders o WHERE o.customer_id IN (SELECT a.customer_id FROM addresses a WHERE a.city='Ha Noi') AND o.order_id IN (SELECT i.order_id FROM order_items i WHERE i.unit_price>5000) GROUP BY o.status",
+        "expected_answer_type": "rewrite"
+    }
 ]
 
 
@@ -318,7 +276,7 @@ def get_rewrite_queries():
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("KIỂM TRA 30 QUERY — DATASET sales_data")
+    print("KIỂM TRA 30 QUERY — SHOPDB 5 BẢNG")
     print("=" * 60)
 
     print(f"\n📊 Tổng số query: {len(QUERIES)}")

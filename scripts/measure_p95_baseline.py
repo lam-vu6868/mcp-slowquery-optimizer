@@ -23,7 +23,7 @@ CÁCH DÙNG:
 QUY TẮC:
     - Mặc định bỏ qua query đã có status=valid; --force dùng để đo lại.
     - Kết quả được ghi nguyên tử sau từng query vào
-      data/outputs/p95_baseline_raw.json.
+      data/outputs/p95_baseline_multitable_raw.json (schema mới).
     - data/outputs là dữ liệu tạm, đã bị .gitignore bỏ qua; không dùng
       git add -f để commit file raw.
     - Chỉ đánh dấu valid khi đủ 20 lượt thành công, không timeout và có
@@ -31,7 +31,7 @@ QUY TẮC:
     - Không sửa JSON thủ công, không tăng timeout quá 60000 ms và không
       thay đổi SQL chỉ để biến kết quả invalid thành valid.
 
-KẾT QUẢ ĐO NGÀY 19/10/2026:
+KẾT QUẢ LỊCH SỬ NGÀY 19/10/2026 (sales_data cũ, không áp dụng schema mới):
     - Đã chạy đủ 30 query: 29 query valid.
     - q23 invalid do timeout: lần đo xác nhận gần nhất thành công 16/20,
       timeout 4/20. Không dùng P95 của các lượt thành công làm baseline
@@ -51,15 +51,13 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from data.queries.queries import QUERIES
 from mcp_server.tools.benchmark import benchmark_query
 
-
-DEFAULT_OUTPUT = PROJECT_ROOT / "data" / "outputs" / "p95_baseline_raw.json"
+DEFAULT_OUTPUT = PROJECT_ROOT / "data" / "outputs" / "p95_baseline_multitable_raw.json"
 
 
 def now_iso() -> str:
@@ -89,7 +87,7 @@ def load_output(path: Path) -> dict:
 
     return {
         "meta": {
-            "dataset": "shopdb.sales_data",
+            "dataset": "shopdb.multitable-v1",
             "method": "streaming end-to-end latency; separate result hash pass",
             "warmup_runs": 3,
             "measured_runs": 20,
@@ -143,7 +141,8 @@ async def run(args) -> int:
     for position, query in enumerate(selected, start=1):
         query_id = query["id"]
         existing = payload["results"].get(query_id)
-        if existing and existing.get("status") == "valid" and not args.force:
+        if (existing and existing.get("status") == "valid"
+                and existing.get("sql") == query["sql"] and not args.force):
             valid_count += 1
             print(f"[{position}/{len(selected)}] {query_id}: bo qua (da valid)")
             continue
@@ -196,7 +195,7 @@ async def run(args) -> int:
             save_output(output_path, payload)
             print("\nDa luu ket qua truoc khi dung.")
             raise
-        except Exception as exc:
+        except (OSError, ValueError, TypeError, KeyError, RuntimeError) as exc:
             entry = {
                 "id": query_id,
                 "group": query["group"],
