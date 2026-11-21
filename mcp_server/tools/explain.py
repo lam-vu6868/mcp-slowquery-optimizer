@@ -262,11 +262,11 @@ async def explain_query(
                     f"SET SESSION MAX_EXECUTION_TIME = {Config.MAX_EXECUTION_TIME}"
                 )
 
-                # Bật use_invisible_indexes (chỉ Validation Layer)
-                if use_invisible_indexes:
-                    cur.execute(
-                        "SET SESSION optimizer_switch = 'use_invisible_indexes=on'"
-                    )
+                # Cố định mode cho cả phép đo trước và sau, không kế thừa cờ global.
+                switch = "on" if use_invisible_indexes else "off"
+                cur.execute(
+                    f"SET SESSION optimizer_switch = 'use_invisible_indexes={switch}'"
+                )
 
                 # Chạy EXPLAIN
                 cur.execute(explain_sql)
