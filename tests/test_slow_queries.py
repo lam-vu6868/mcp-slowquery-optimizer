@@ -67,6 +67,7 @@ async def test_get_slow_queries_returns_sanitized_limited_contract(monkeypatch):
     assert result["data"]["queries"] == [{
         "query_id": "abc",
         "digest": "abc",
+        "source": "performance_schema",
         "sql_text": "SELECT 1",
         "untrusted": True,
         "exec_count": 2,

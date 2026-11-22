@@ -1,10 +1,10 @@
 # 🏗️ KIẾN TRÚC HỆ THỐNG — MCP Slow Query Optimizer
 
 > **Người giữ file:** Vũ · **Reviewer:** Cả nhóm
-> **Cập nhật:** 21/11/2026
-> **Trạng thái:** Thiết kế mục tiêu; đồng bộ dataset 5 bảng và cách đo Tool 4–5 theo session. Chưa xác nhận luồng end-to-end.
+> **Cập nhật:** 22/11/2026
+> **Trạng thái:** Thiết kế mục tiêu theo contract v2 (DRAFT, chờ nhóm review). Chưa xác nhận luồng end-to-end.
 >
-> File này mô tả **chi tiết kiến trúc** — làm cơ sở cho việc code 6 tool.
+> File này mô tả **luồng và ranh giới giữa các thành phần**; [api-contract.md](api-contract.md) quy định input/output của 6 tool. Cần giữ cả hai file.
 > Đọc kèm: [api-contract.md](api-contract.md) · [../project-management/ROADMAP.md](../project-management/ROADMAP.md) mục 2.
 
 ---
@@ -52,12 +52,14 @@ Xây dựng hệ thống **tự động tìm và đề xuất cách sửa các q
 
 Lab hiện tại có 5 bảng, tổng 5M dòng: customers 500.000, addresses 500.000, products 50.000, orders 1.500.000 và order_items 2.450.000. Các sơ đồ MCP/LLM/approval bên dưới là thiết kế, không phải tuyên bố mọi thành phần đã triển khai.
 
+Code hiện tại: Tool 1 đọc `performance_schema`, Tool 2 đọc schema, Tool 4–5 chạy độc lập và có wrapper giới hạn tham số LLM. Tool 3, `server.py`, LLM agent, Validation Layer, Tool 6 và Dashboard còn là khung; wrapper chưa được đăng ký MCP. Nhánh `mysql.slow_log` của Tool 1 chờ cấp quyền SELECT phù hợp.
+
 Luồng đã kiểm chứng offline: `ground_truth_candidates.py` → `scripts/verify_ground_truth.py` → EXPLAIN/benchmark/hash → `ground_truth.json` và bằng chứng trong `data/outputs/`. Có 30/30 phương án đạt đo kiểm chứng, còn chờ Hải review/GVHD ký. Script chỉ nhận ứng viên cố định trong repo, dùng readonly cho SELECT và index_admin cho index thử theo ủy quyền lab; không đăng ký MCP hoặc gọi đường apply của LLM. Index thử được dọn và cấu hình ban đầu được khôi phục sau batch. Kết quả script offline chưa chứng minh luồng Validation Layer + Dashboard đã hoạt động.
 
 | # | Thành phần | Vai trò | Người phụ trách |
 |:---:|---|---|---|
 | 1 | **MySQL 8.0** (Docker) | CSDL thực nghiệm, 5 bảng/tổng 5M dòng | Hải |
-| 2 | **MCP Server** | Cung cấp 6 tool cho LLM và Dashboard | Vũ + Hải + Tường + Tình |
+| 2 | **MCP Server** | Cung cấp Tool 1–5 cho LLM và Tool 6 cho backend Dashboard | Vũ + Hải + Tường + Tình |
 | 3 | **LLM Host (Claude)** | Phân tích và đề xuất (chỉ được gọi Tool 1–5) | Vũ |
 | 4 | **Validation Layer** | Chạy thử INVISIBLE INDEX, đo P95, hash kết quả | Hải |
 | 5 | **Dashboard (Streamlit)** | Hiển thị đề xuất, nút Approve/Reject | Tình |
@@ -81,9 +83,10 @@ flowchart TB
             T1["Tool 1: get_slow_queries"]
             T2["Tool 2: get_schema"]
             T3["Tool 3: get_table_stats"]
-            T4["Tool 4: explain_query"]
-            T5["Tool 5: benchmark_query"]
+            T4["Tool 4: explain_for_llm<br/>→ explain_query"]
+            T5["Tool 5: benchmark_for_llm<br/>→ benchmark_query"]
             T6["Tool 6: apply_optimization<br/>⚠️ CHỈ Dashboard gọi"]
+            IH["Helper DDL nội bộ<br/>apply.py · index_admin"]
         end
 
         subgraph VL["🛡️ Validation Layer"]
@@ -135,6 +138,8 @@ flowchart TB
 
     LLM -.->|"đề xuất JSON"| VL
     VL --> V1
+    V1 -->|"tạo/dọn index thử"| IH
+    IH --> DB
     V1 --> V2
     V2 --> V3
     V3 --> V4
@@ -143,7 +148,7 @@ flowchart TB
     D2 -->|"Người bấm Approve"| TK1
     TK1 -->|"token"| TK2
     TK2 -->|"verify"| T6
-    T6 -->|"ALTER INDEX VISIBLE"| DB
+    T6 -->|"ALTER INDEX VISIBLE"| IH
     T6 --> AL
 
     style DB fill:#e1f5ff
@@ -194,8 +199,8 @@ sequenceDiagram
     DB-->>MCP: CREATE TABLE ...
     MCP-->>PY: JSON schema
     PY->>CL: "Kết quả T2: {schema}"
-    CL-->>PY: "Gọi T4 explain_query(sql='...')"
-    PY->>MCP: explain_query("SELECT ...")
+    CL-->>PY: "Gọi T4 explain_for_llm(sql='...')"
+    PY->>MCP: explain_for_llm("SELECT ...")
     MCP->>DB: EXPLAIN FORMAT=JSON ...
     DB-->>MCP: query plan
     MCP-->>PY: JSON plan
@@ -205,13 +210,15 @@ sequenceDiagram
 
 ### 3.4. Danh sách tool cấp cho LLM
 
+Bảng này là quyền dự kiến khi `server.py` được triển khai; dấu ✅ không có nghĩa tool đã đăng ký MCP ở thời điểm hiện tại.
+
 | Tool | Cấp cho LLM? | Lý do |
 |---|:---:|---|
-| Tool 1 `get_slow_queries` | ✅ | Đọc slow log |
+| Tool 1 `get_slow_queries` | ✅ | Hiện đọc digest từ `performance_schema`; `mysql.slow_log` chưa triển khai |
 | Tool 2 `get_schema` | ✅ | Đọc cấu trúc bảng |
 | Tool 3 `get_table_stats` | ✅ | Đọc thống kê |
-| Tool 4 `explain_query` | ✅ | Chỉ `mode=estimate` (không ANALYZE) |
-| Tool 5 `benchmark_query` | ✅ | Đo P95 |
+| Tool 4 `explain_for_llm` | ✅ | Wrapper gọi `explain_query` với `mode=estimate`, không bật invisible index |
+| Tool 5 `benchmark_for_llm` | ✅ | Wrapper gọi `benchmark_query` với tham số đo cố định; chưa đăng ký MCP |
 | **Tool 6 `apply_optimization`** | ❌ | **Chỉ Dashboard backend gọi** |
 
 **→ Tool 6 KHÔNG nằm trong danh sách LLM thấy → không thể tự apply.**
@@ -224,20 +231,20 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    S([🚀 Bắt đầu]) --> B1["1. MySQL ghi slow query log<br/>(query > 0.5s)"]
+    S([🚀 Bắt đầu]) --> B1["1. MySQL ghi slow log<br/>Tool 1 hiện đọc performance_schema"]
     B1 --> B2["2. Kỹ sư mở Dashboard<br/>xem Tab 1"]
     B2 --> B3["3. Dashboard gọi Tool 1<br/>get_slow_queries()"]
     B3 --> B4["4. LLM Host phân tích<br/>gọi Tool 2,3,4,5"]
     B4 --> B5["5. LLM trả JSON đề xuất<br/>{type, columns, rationale}"]
     B5 --> B6["6. Validation Layer<br/>tạo INVISIBLE INDEX<br/>đo P95 trước/sau"]
-    B6 --> B7{"7. Pass?<br/>(P95↓≥20% AND hash equal)"}
+    B6 --> B7{"7. Pass?<br/>(đủ bằng chứng, index được dùng,<br/>P95↓≥20%, hash equal)"}
     B7 -->|Không| B8["8a. ROLLBACK<br/>DROP INDEX"]
     B7 -->|Có| B9["8b. Lưu validation_report"]
     B8 --> END([🛑 Từ chối])
     B9 --> B10["9. Dashboard hiển thị<br/>Tab 2 — chờ duyệt"]
     B10 --> B11{"10. Người duyệt?"}
-    B11 -->|Reject| END2([🛑 Không áp dụng])
-    B11 -->|Approve| B12["11. Sinh approval token<br/>HMAC(secret, hash(DDL))"]
+    B11 -->|Reject| END2([🛑 Dọn index thử, không áp dụng])
+    B11 -->|Approve| B12["11. Sinh approval token<br/>gắn proposal + DDL áp dụng"]
     B12 --> B13["12. Dashboard gọi Tool 6<br/>apply_optimization(id, token)"]
     B13 --> B14["13. Verify token + ALTER INDEX VISIBLE"]
     B14 --> B15["14. Ghi audit_log"]
@@ -289,7 +296,7 @@ LLM ngây thơ đọc → tự gọi tool với approved=True → QUA MẶT
 
 **Nguyên tắc:**
 - Token do **Dashboard backend** sinh (không phải LLM)
-- Token gắn với **hash của đúng DDL** đã duyệt
+- Token gắn với **proposal ID, phiên bản proposal và hash của đúng DDL áp dụng** đã duyệt
 - Token **dùng 1 lần**, **hết hạn 10 phút**
 
 ### 5.3. Công thức sinh token
@@ -297,12 +304,13 @@ LLM ngây thơ đọc → tự gọi tool với approved=True → QUA MẶT
 ```
 token = HMAC-SHA256(
     secret   = APPROVAL_SECRET (từ .env),
-    message  = sha256(ddl) + "|" + nonce + "|" + expires_at
+    message  = proposal_id + "|" + proposal_version + "|" + sha256(apply_ddl) + "|" + nonce + "|" + expires_at
 )
 ```
 
 **Trong đó:**
-- `ddl` = câu SQL sẽ chạy (VD: `CREATE INDEX idx_x ON orders(status)`)
+- `apply_ddl` = câu SQL Tool 6 sẽ chạy, ví dụ `ALTER TABLE orders ALTER INDEX idx_x VISIBLE`; đây không phải DDL tạo index thử.
+- `proposal_id` và `proposal_version` trỏ tới proposal đã qua Validation Layer.
 - `nonce` = số random 16 bytes
 - `expires_at` = UNIX timestamp + 600 giây
 - `secret` = chuỗi 64 ký tự trong `.env`
@@ -321,13 +329,13 @@ sequenceDiagram
 
     Note over D: Proposal đã pass validation
     U->>D: Bấm nút "Approve"
-    D->>D: Lấy DDL từ proposal<br/>vd: CREATE INDEX idx_x ON orders(status)
-    D->>D: Tính ddl_hash = sha256(ddl)
-    D->>S: Sinh token(ddl_hash, expires=+10min)
-    S->>S: token = HMAC(secret, ddl_hash|nonce|expires)
+    D->>D: Lấy proposal đã pass và DDL áp dụng<br/>ALTER TABLE orders ALTER INDEX idx_x VISIBLE
+    D->>D: Tính ddl_hash = sha256(apply_ddl)
+    D->>S: Sinh token(proposal_id, version, ddl_hash, expires=+10min)
+    S->>S: token = HMAC(secret, proposal_id|version|ddl_hash|nonce|expires)
     S-->>D: token + expires_at
     D->>T6: apply_optimization(proposal_id, token)
-    T6->>T6: Verify token:<br/>1. HMAC đúng?<br/>2. Chưa dùng?<br/>3. Chưa hết hạn?<br/>4. DDL hash khớp?
+    T6->>T6: Verify token và proposal:<br/>HMAC, nonce, hạn dùng, ID/version/hash khớp?<br/>validation passed + đủ bằng chứng?
     alt Token OK
         T6->>DB: ALTER INDEX idx_x VISIBLE
         DB-->>T6: OK
@@ -379,13 +387,15 @@ Tool 4 và Tool 5 luôn đặt rõ OFF cho phép đo trước, ON cho phép đo 
 sequenceDiagram
     autonumber
     participant V as Validation Layer
+    participant IH as Helper DDL nội bộ (apply.py)
     participant DB as MySQL
     participant Cache as Session Cache
 
     Note over V: Nhận proposal từ LLM
     V->>V: Sinh DDL từ proposal<br/>CREATE INDEX idx_test ON orders(status, order_date) INVISIBLE
-    V->>DB: CREATE INDEX ... INVISIBLE
-    DB-->>V: OK
+    V->>IH: create_trial_index(proposal)
+    IH->>DB: CREATE INDEX ... INVISIBLE
+    DB-->>IH: OK
 
     Note over V: Đo TRƯỚC (không dùng invisible)
     V->>Cache: SET SESSION optimizer_switch='use_invisible_indexes=off'
@@ -405,18 +415,21 @@ sequenceDiagram
 
     Note over V: So sánh
     V->>V: improvement = (1736-815)/1736 = 53% ≥ 20% ✅
-    V->>V: hash_before == hash_after? ✅
+    V->>V: hash_before == hash_after? ✅<br/>đủ lượt đo, index được dùng, metric đầy đủ?
 
     alt Pass
         V->>V: Lưu validation_report (status=passed)
         Note over V: Chờ người duyệt trên Dashboard
     else Fail
-        V->>DB: DROP INDEX idx_test
+        V->>IH: drop_trial_index(proposal)
+        IH->>DB: DROP INDEX idx_test
         Note over V: Rollback hoàn toàn
     end
 ```
 
 ### 6.4. Quy trình đo P95 chuẩn
+
+Để đo trade-off theo contract v2, ghi chênh lệch `information_schema.TABLES.INDEX_LENGTH` trước/sau trên cùng bảng; đây là ước lượng dung lượng index cấp bảng, không phải số byte chính xác của một index. Đo tác động ghi trên bản sao lab riêng. Thiếu lượt đo, hash, EXPLAIN xác nhận index được dùng hoặc metric bắt buộc thì báo `inconclusive`, không phát hành approval token.
 
 | Bước | Việc | Số lần |
 | :---: | ---- | :----: |
@@ -515,7 +528,7 @@ flowchart LR
     L2["🧹 Lớp 2<br/>sanitize<br/>(cắt comment)"] --> L3
     L3["🌳 Lớp 3<br/>AST whitelist<br/>(fail-closed)"] --> L4
     L4["🔑 Lớp 4<br/>approval token<br/>(HMAC)"] --> L5
-    L5["👤 Lớp 5<br/>index_admin<br/>(chỉ CREATE/DROP INDEX)"] --> L6
+    L5["👤 Lớp 5<br/>index_admin qua helper nội bộ<br/>(CREATE/DROP/ALTER INDEX)"] --> L6
     L6["📋 Lớp 6<br/>audit log<br/>(ghi mọi hành động)"] --> OUT["📤 Output"]
 
     style L1 fill:#e3f2fd
@@ -534,7 +547,7 @@ flowchart LR
 | 2 | **Sanitize** | Cắt comment, chèn nhãn "untrusted" | Prompt injection qua log/schema | Vũ + Tình |
 | 3 | **AST whitelist** | Parse SQL qua `sqlglot`, chặn nguy hiểm | Multi-statement, INTO OUTFILE, SLEEP... | Tình |
 | 4 | **Approval token** | HMAC với secret, 1 lần, hết hạn | LLM tự apply, replay attack | Tình |
-| 5 | **index_admin** | User MySQL chỉ có `INDEX`, `ALTER` | DROP TABLE, DELETE, UPDATE | Hải |
+| 5 | **index_admin** | Chỉ Tool 6 và helper DDL nội bộ dùng để tạo/dọn index thử và áp dụng index đã duyệt | DROP TABLE, DELETE, UPDATE | Hải + Tình |
 | 6 | **Audit log** | Ghi mọi lần gọi Tool 6 | Truy vết, forensics | Tình |
 
 ### 7.3. Quy tắc AST whitelist (Tình viết test cho từng dòng)
@@ -603,6 +616,7 @@ sequenceDiagram
     participant CL as Claude API
     participant VL as Validation
     participant TS as Token Service
+    participant IH as Helper DDL nội bộ
     participant DB as MySQL
     participant AL as Audit Log
 
@@ -616,18 +630,18 @@ sequenceDiagram
     D-->>U: Hiển thị Tab 1
 
     U->>D: Bấm "Phân tích bằng LLM"
-    D->>LLM: analyze_slow_query(q07)
+    D->>LLM: analyze_slow_query(query_id=digest từ Tool 1)
 
     Note over LLM: Agent loop bắt đầu
     LLM->>CL: messages.create(tools=[T1-T5])
     CL-->>LLM: Gọi T2 get_schema
     LLM->>MCP: T2.get_schema(orders)
-    MCP->>DB: SHOW CREATE TABLE
+    MCP->>DB: SELECT metadata FROM information_schema
     DB-->>MCP: schema
     MCP-->>LLM: JSON
     LLM->>CL: Kết quả T2
-    CL-->>LLM: Gọi T4 explain_query
-    LLM->>MCP: T4.explain_query(sql)
+    CL-->>LLM: Gọi T4 explain_for_llm
+    LLM->>MCP: T4.explain_for_llm(sql)
     MCP->>DB: EXPLAIN FORMAT=JSON
     DB-->>MCP: plan
     MCP-->>LLM: JSON plan
@@ -637,21 +651,23 @@ sequenceDiagram
     LLM-->>D: proposal {type:index, cols:[status,order_date]}
 
     D->>VL: validate_proposal(proposal)
-    VL->>DB: CREATE INDEX idx_test INVISIBLE
+    VL->>IH: create_trial_index(proposal)
+    IH->>DB: CREATE INDEX idx_test INVISIBLE
     Note over VL: Đo trước/sau 20 lần
     VL->>VL: before_p95=1736, after_p95=815
     VL->>VL: hash_before==hash_after ✅
-    VL-->>D: validation_report {passed:true}
+    VL-->>D: validation_report {status:passed, evidence_complete:true}
 
     D-->>U: Tab 2 — hiển thị đề xuất + validation
 
     U->>D: Bấm "Approve"
-    D->>TS: create_token(ddl_hash)
+    D->>TS: create_token(proposal_id, version, hash(apply_ddl))
     TS-->>D: token
 
     D->>MCP: T6.apply_optimization(proposal_id, token)
     MCP->>MCP: Verify token ✅
-    MCP->>DB: ALTER INDEX idx_test VISIBLE
+    MCP->>IH: apply_approved_index(proposal)
+    IH->>DB: ALTER TABLE orders ALTER INDEX idx_test VISIBLE
     DB-->>MCP: OK
     MCP->>AL: INSERT INTO audit_log
     MCP-->>D: {applied: true, before_p95: 1736, after_p95: 815}
@@ -781,4 +797,4 @@ Các dấu chọn dưới đây ghi nhận quyết định thiết kế, không 
 
 ---
 
-**Cập nhật lần cuối:** 19/10/2026 — Vũ giữ tài liệu; Hải cập nhật cơ chế Tool 5 streaming
+**Cập nhật lần cuối:** 22/11/2026 — đồng bộ thiết kế mục tiêu với contract v2; chờ nhóm review

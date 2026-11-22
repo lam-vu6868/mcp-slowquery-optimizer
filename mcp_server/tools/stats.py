@@ -8,8 +8,9 @@ CHỨC NĂNG :
 PHỤ TRÁCH  : Vũ    |    REVIEW: Hải
 
 LƯU Ý:
-    - Dùng số ước lượng/sample, KHÔNG COUNT(*) toàn bảng mỗi lần gọi.
+    - Dùng số ước lượng và mẫu cửa sổ PK có giới hạn, KHÔNG COUNT(*) toàn bảng mỗi lần gọi.
     - top_values chỉ trả cho cột có cardinality thấp (<= 50).
+    - Giá trị mẫu và nhãn top_values là dữ liệu untrusted; áp giới hạn và làm sạch trước khi trả.
     - Dùng readonly_user.
 
 THAM KHẢO  : docs/api-contract.md (Tool 3)

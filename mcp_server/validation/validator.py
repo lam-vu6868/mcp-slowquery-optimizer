@@ -9,9 +9,9 @@ PHỤ TRÁCH  : Hải    |    REVIEW: Vũ
 
 LƯU Ý:
     - Quy trình: tạo index INVISIBLE -> đo 'trước' (không bật cờ) -> đo 'sau' (SET SESSION optimizer_switch='use_invisible_indexes=on') -> so sánh -> ghi validation_report.
-    - Pass khi: kết quả tương đương (hash) VÀ P95 giảm >= 20% VÀ không lỗi/timeout.
-    - Fail: DROP INDEX (rollback), đánh dấu rejected_by_validation.
-    - Đo thêm write overhead (INSERT throughput) và dung lượng index.
+    - Pass khi: đủ lượt đo, hash tương đương, P95 giảm >= 20%, index được EXPLAIN dùng và không lỗi/timeout.
+    - Fail hoặc inconclusive: gọi helper DDL nội bộ để dọn index thử; không phát approval token.
+    - Đo write overhead trên clone; ước lượng dung lượng index bằng chênh lệch TABLES.INDEX_LENGTH.
     - Ngưỡng lấy từ config/settings.yaml.
 
 THAM KHẢO  : docs/api-contract.md (mục 4), project-management/ROADMAP.md (mục 2.3)

@@ -8,8 +8,9 @@ CHỨC NĂNG :
 PHỤ TRÁCH  : Vũ    |    REVIEW: Hải
 
 LƯU Ý:
-    - Nguồn chính: performance_schema.events_statements_summary_by_digest; phụ: mysql.slow_log.
-    - Strip comment khỏi SQL trước khi trả (chống injection qua slow log) và gắn untrusted=true.
+    - Hiện đọc performance_schema.events_statements_summary_by_digest; mysql.slow_log chờ quyền SELECT riêng.
+    - query_id là MySQL digest, không phải ID q01–q30 của bộ lab.
+    - Strip comment khỏi SQL trước khi trả và gắn untrusted=true.
     - Tối đa 100 dòng, có cờ truncated.
     - Dùng readonly_user.
 
@@ -107,6 +108,7 @@ async def get_slow_queries(
         queries.append({
             "query_id": row["DIGEST"],
             "digest": row["DIGEST"],
+            "source": "performance_schema",
             "sql_text": strip_sql_comments(row["sql_text"] or ""),
             "untrusted": True,
             "exec_count": count,

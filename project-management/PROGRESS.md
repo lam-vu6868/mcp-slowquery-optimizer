@@ -1,6 +1,6 @@
 # 📊 TIẾN ĐỘ DỰ ÁN
 
-> **Cập nhật lần cuối:** 22/11/2026 — kiểm tra Tool 1 và triển khai Tool 2; Vũ quản lý
+> **Cập nhật lần cuối:** 22/11/2026 — đồng bộ contract v2, code hiện có và tài liệu; Vũ quản lý
 > **Mốc đối chiếu hiện tại:** 22/11/2026; các bảng tuần bên dưới là lịch sử
 > **Tổng tiến độ:** Chưa tính lại từ mốc ~27% ngày 19/10
 >
@@ -15,7 +15,7 @@
 |  #  | Giai đoạn                                            | Trạng thái  | Người chính      |          Deadline          |
 | :-: | ---------------------------------------------------- | :---------: | ---------------- | :------------------------: |
 |  0  | Setup môi trường                                     |   ✅ Done   | Vũ               |           28/09            |
-| 0b  | Chốt thiết kế (`api-contract.md`, `architecture.md`) |   ✅ Done   | Vũ               |           06/10            |
+| 0b  | Thiết kế (`api-contract.md`, `architecture.md`) | 🟡 v2 DRAFT, chờ review | Vũ | 06/10 |
 |  1  | CSDL 5 bảng, tổng 5M records                         |   ✅ Đã nạp/kiểm tra   | Hải              |           05/10            |
 |  2  | 30 query + ground truth                              | 🟡 Đạt đo kiểm chứng; chờ review/ký | Tường | 06/10 (draft) · 20/10 (ký) |
 |  3  | Tool 1–5 MCP                                         | 🟡 Đang làm | Vũ · Hải · Tường |           13/10            |
@@ -49,6 +49,13 @@ Lệnh kiểm tra không chạy lại DB và cách chạy pytest trên Windows x
 - Tool 1 `get_slow_queries` đã đọc được digest thật qua `performance_schema` bằng `readonly_user`; hiện không có digest đạt ngưỡng trung bình 500 ms. Chưa đăng ký vào MCP.
 - Tool 2 `get_schema` đã trả cấu trúc của đủ 5 bảng từ `information_schema` qua `readonly_user`: cột, index visible/invisible và khóa ngoại. Comment cột được thay bằng nhãn dữ liệu không tin cậy. Kích thước từng index trả `null` vì tài khoản đọc không có quyền truy cập `mysql.innodb_index_stats` (lỗi 1142); contract đã ghi rõ. Chưa đăng ký vào MCP.
 - 135 unit tests pass; Ruff pass. `server.py` và Tool 3 vẫn là khung, nên chặng Tool 1–5 MCP chưa Done.
+
+### Đồng bộ contract v2 trong ngày 22/11/2026
+
+- `docs/api-contract.md` v2 là bản DRAFT chờ nhóm review; `docs/architecture.md` vẫn giữ để mô tả luồng và được cập nhật theo contract. `ROADMAP.md` ghi rõ các điểm kỹ thuật đang chờ review.
+- Tool 1 bổ sung `source=performance_schema` trong kết quả. Tool 2 ghi rõ `size_bytes=null` nếu không đo được dung lượng từng index. Tool 4–5 có wrapper giới hạn tham số cho LLM; Tool 5 trả `MEASUREMENT_INVALID` khi số lượt đo chưa đủ hoặc thiếu hash bắt buộc.
+- 139 unit tests pass sau thay đổi. `server.py`, Tool 3, LLM agent, Validation Layer, Tool 6 và Dashboard vẫn là khung; wrapper Tool 4–5 chưa đăng ký MCP. Chưa chạy lại đo thực nghiệm MySQL hoặc Dashboard trong lần đồng bộ này.
+- Ruff toàn bộ file Python đã sửa còn 13 lỗi định dạng/quy tắc có sẵn ở Tool 4–5; không thay logic của hai tool chỉ để sửa style trong lượt đồng bộ contract này.
 
 ---
 

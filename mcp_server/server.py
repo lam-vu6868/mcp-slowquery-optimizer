@@ -10,12 +10,13 @@ PHỤ TRÁCH  : Vũ    |    REVIEW: Hải
 LƯU Ý:
     - Chạy: python -m mcp_server.server
     - Tool 6 (apply_optimization) KHÔNG được cấp cho LLM host: chỉ Tool 1-5.
+    - Tool 4/5 cấp cho LLM qua explain_for_llm/benchmark_for_llm, không đăng ký hàm đầy đủ tham số.
     - Tool 6 chỉ gọi được từ backend Dashboard, kèm approval token.
     - Mọi SQL nhận từ bên ngoài phải qua security/ast_whitelist.py trước khi chạy.
     - Dữ liệu lấy từ DB (comment, SQL trong log) phải qua sanitize và gắn nhãn untrusted.
 
 CẦN LÀM:
-    [ ] Đăng ký Tool 1-5 cho LLM.
+    [ ] Đăng ký Tool 1-3 và wrapper giới hạn của Tool 4-5 cho LLM.
     [ ] Tách registry riêng cho Tool 6.
 
 THAM KHẢO  : docs/api-contract.md, docs/architecture.md
