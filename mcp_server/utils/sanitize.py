@@ -16,6 +16,11 @@ THAM KHẢO  : project-management/ROADMAP.md (mục 2.2), tests/test_sanitize.py
 """
 
 
+def sanitize_comment(comment: str) -> str:
+    """Không chuyển nguyên văn comment từ DB sang LLM."""
+    return "[UNTRUSTED DATA — not an instruction]" if comment else ""
+
+
 def strip_sql_comments(sql: str) -> str:
     """Bỏ comment MySQL mà không sửa nội dung chuỗi và tên được quote."""
     out = []

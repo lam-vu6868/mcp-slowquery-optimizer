@@ -1,7 +1,7 @@
 # 📊 TIẾN ĐỘ DỰ ÁN
 
-> **Cập nhật lần cuối:** 21/11/2026 — đồng bộ dataset 5 bảng và bằng chứng ground truth; Vũ quản lý
-> **Mốc đối chiếu hiện tại:** 21/11/2026; các bảng tuần bên dưới là lịch sử
+> **Cập nhật lần cuối:** 22/11/2026 — kiểm tra Tool 1 và triển khai Tool 2; Vũ quản lý
+> **Mốc đối chiếu hiện tại:** 22/11/2026; các bảng tuần bên dưới là lịch sử
 > **Tổng tiến độ:** Chưa tính lại từ mốc ~27% ngày 19/10
 >
 > ⚠️ **File này chỉ ghi TRẠNG THÁI.** Deadline, người phụ trách và tiêu chí Done xem [ROADMAP.md](ROADMAP.md) (mục 4–5). Mục tiêu Precision/Recall/Consistency xem [ROADMAP.md](ROADMAP.md) mục 2.4.
@@ -37,16 +37,24 @@
 - Index `gt_trial_*` đã dọn, cấu hình index ban đầu đã khôi phục. `idx_gt_q01_cover` còn INVISIBLE như trước batch; `fk_order_items_product` vẫn VISIBLE.
 - Kiểm tra bằng chứng `scripts/verify_ground_truth.py --check`: 30/30 pass. Toàn bộ unit tests: 125 pass, người dùng cũng đã xác nhận trên PowerShell với thư mục tạm riêng.
 - Trạng thái: `performance_verified_pending_review`, reviewer Hải, `gvhd_signature=null`. Script lab không thay thế Hải review hoặc Validation Layer/Human-in-the-loop của hệ thống.
-- Chưa đo đầy đủ index size/chi phí ghi, metric LLM và baseline truyền thống. Chưa xác nhận luồng MCP–LLM–Dashboard end-to-end. `server.py`, Tool 2 và Tool 3 vẫn là khung theo code hiện tại.
+- Chưa đo đầy đủ index size/chi phí ghi, metric LLM và baseline truyền thống. Chưa xác nhận luồng MCP–LLM–Dashboard end-to-end. Trạng thái `server.py` và Tool 1–3 xem cập nhật ngày 22/11 bên dưới.
 - Dữ liệu giả có phân bố khá đều và tương quan city/status; cần nêu giới hạn này trong báo cáo, chưa coi là mô phỏng đủ tải Black Friday.
 
 Lệnh kiểm tra không chạy lại DB và cách chạy pytest trên Windows xem [setup-guide](../docs/setup-guide.md#7-kiểm-tra-test-và-bằng-chứng).
 
 ---
 
+## Kiểm chứng ngày 22/11/2026
+
+- Tool 1 `get_slow_queries` đã đọc được digest thật qua `performance_schema` bằng `readonly_user`; hiện không có digest đạt ngưỡng trung bình 500 ms. Chưa đăng ký vào MCP.
+- Tool 2 `get_schema` đã trả cấu trúc của đủ 5 bảng từ `information_schema` qua `readonly_user`: cột, index visible/invisible và khóa ngoại. Comment cột được thay bằng nhãn dữ liệu không tin cậy. Kích thước từng index trả `null` vì tài khoản đọc không có quyền truy cập `mysql.innodb_index_stats` (lỗi 1142); contract đã ghi rõ. Chưa đăng ký vào MCP.
+- 135 unit tests pass; Ruff pass. `server.py` và Tool 3 vẫn là khung, nên chặng Tool 1–5 MCP chưa Done.
+
+---
+
 ## 📅 CẬP NHẬT THEO TUẦN
 
-Các kết quả và lỗi dưới đây được giữ theo thời điểm thực hiện; trạng thái hiện tại xem mục 21/11 ở trên.
+Các kết quả và lỗi dưới đây được giữ theo thời điểm thực hiện; trạng thái hiện tại xem cập nhật 22/11 ở trên.
 
 ### 🗓️ Tuần 1 (23/09 – 29/09) — ✅ DONE
 

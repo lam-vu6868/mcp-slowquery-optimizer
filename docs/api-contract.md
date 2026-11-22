@@ -170,30 +170,54 @@ Parser (`llm/parsers.py`) kiểm tra bằng JSON Schema. Sai schema → retry t�
       "engine": "InnoDB",
       "columns": [
         {
-          "name": "id",
+          "name": "order_id",
           "type": "bigint",
           "nullable": false,
           "key": "PRI",
-          "comment": "…",
+          "comment": "",
+          "untrusted": true
+        },
+        {
+          "name": "customer_id",
+          "type": "bigint",
+          "nullable": true,
+          "key": "MUL",
+          "comment": "",
           "untrusted": true
         }
       ],
       "indexes": [
         {
           "name": "PRIMARY",
-          "columns": ["id"],
+          "columns": ["order_id"],
           "unique": true,
           "visible": true,
-          "size_bytes": 512000000
+          "size_bytes": null
+        },
+        {
+          "name": "fk_orders_customer",
+          "columns": ["customer_id"],
+          "unique": false,
+          "visible": true,
+          "size_bytes": null
         }
       ],
-      "foreign_keys": []
+      "foreign_keys": [
+        {
+          "name": "fk_orders_customer",
+          "columns": ["customer_id"],
+          "referenced_table": "customers",
+          "referenced_columns": ["customer_id"]
+        }
+      ]
     }
   ]
 }
 ```
 
-`comment` luôn qua `sanitize()` và gắn `untrusted`.
+`comment` luôn qua `sanitize_comment()` và gắn `untrusted`.
+
+`size_bytes` hiện trả `null` vì Tool 2 chưa có nguồn đo kích thước từng index với quyền `readonly_user`. MySQL lưu số trang từng index trong `mysql.innodb_index_stats`, nhưng tài khoản này không có quyền đọc bảng đó. Caller phải coi `null` là "chưa biết", không coi là 0 byte. Tool 2 không dùng tổng `INDEX_LENGTH` của bảng để giả làm kích thước từng index.
 
 ### Tool 3 — `get_table_stats`
 
