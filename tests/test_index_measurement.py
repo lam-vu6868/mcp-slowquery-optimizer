@@ -102,3 +102,73 @@ async def test_each_tool_explicitly_sets_invisible_index_mode(monkeypatch, enabl
     assert json.loads(result)["ok"] is True
     switch = "on" if enabled else "off"
     assert f"SET SESSION optimizer_switch = 'use_invisible_indexes={switch}'" in commands
+
+
+@pytest.mark.asyncio
+async def test_partial_timeout_cannot_return_successful_benchmark(monkeypatch):
+    attempts = 0
+
+    class Cursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+        def execute(self, _sql):
+            pass
+
+    class Conn:
+        def cursor(self):
+            return Cursor()
+
+    @contextmanager
+    def fake_connection():
+        yield Conn()
+
+    def run_once(*_):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 2:
+            raise RuntimeError("maximum statement execution time exceeded")
+        return 1.0, 10, 1
+
+    monkeypatch.setattr(benchmark, "get_conn", fake_connection)
+    monkeypatch.setattr(benchmark, "_run_streamed_once", run_once)
+    result = json.loads(await benchmark.benchmark_query(
+        "SELECT 1", warmup_runs=0, measured_runs=5, compute_result_hash=False,
+    ))
+    assert attempts == 5
+    assert result["ok"] is False
+    assert result["error"]["code"] == "MEASUREMENT_INVALID"
+    assert result["data"] is None
+
+
+@pytest.mark.asyncio
+async def test_missing_required_hash_invalidates_benchmark(monkeypatch):
+    class Cursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+        def execute(self, _sql):
+            pass
+
+    class Conn:
+        def cursor(self):
+            return Cursor()
+
+    @contextmanager
+    def fake_connection():
+        yield Conn()
+
+    monkeypatch.setattr(benchmark, "get_conn", fake_connection)
+    monkeypatch.setattr(benchmark, "_run_streamed_once", lambda *_: (1.0, 10, 1))
+    monkeypatch.setattr(benchmark, "_hash_streamed_result", lambda *_: (None, 1))
+    result = json.loads(await benchmark.benchmark_query(
+        "SELECT 1", warmup_runs=0, measured_runs=5,
+    ))
+    assert result["ok"] is False
+    assert result["error"]["code"] == "MEASUREMENT_INVALID"

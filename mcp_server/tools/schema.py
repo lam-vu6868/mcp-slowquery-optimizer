@@ -9,7 +9,7 @@ PHỤ TRÁCH  : Vũ    |    REVIEW: Hải
 
 LƯU Ý:
     - Comment của bảng/cột là kênh injection: phải lọc và gắn untrusted.
-    - Trả kèm trạng thái visible/invisible và dung lượng của từng index.
+    - Trả trạng thái visible/invisible; size_bytes=null khi không có quyền đo từng index.
     - Dùng readonly_user.
 
 THAM KHẢO  : docs/api-contract.md (Tool 2)

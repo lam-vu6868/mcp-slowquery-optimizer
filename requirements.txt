@@ -5,7 +5,7 @@
 # ============================================
 
 # ---------- MCP Server ----------
-mcp>=1.0.0                    # MCP protocol SDK (6 tool)
+mcp>=2.2,<3                    # MCPServer API cho registry Tool 1-5
 
 # ---------- Database ----------
 pymysql>=1.1.0                # Kết nối MySQL
