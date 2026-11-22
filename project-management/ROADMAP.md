@@ -7,6 +7,15 @@
 
 ---
 
+## Làm rõ thiết kế đề xuất ngày 22/11/2026 — chờ nhóm review
+
+- [api-contract.md](../docs/api-contract.md) v2 là bản DRAFT cho giao diện 6 tool; [architecture.md](../docs/architecture.md) mô tả luồng. Các điểm dưới đây cần Hải, Tình và Tường review trước khi coi là quyết định đã chốt.
+- Tool 1 hiện lấy digest từ `performance_schema`; mã `query_id` của digest khác ID `q01`–`q30` trong catalog thực nghiệm. LLM chỉ thấy wrapper giới hạn tham số của Tool 4–5 khi `server.py` đăng ký.
+- Validation Layer cần helper DDL nội bộ dùng `index_admin` để tạo/dọn index thử. Tool 6 vẫn là cửa áp dụng sau phê duyệt và chỉ nhận proposal ID cùng token. Token gắn với DDL `ALTER TABLE ... ALTER INDEX ... VISIBLE` thực sự áp dụng.
+- Dung lượng index phát sinh đo bằng chênh lệch `information_schema.TABLES.INDEX_LENGTH` trên cùng bảng, ghi rõ đó là ước lượng cấp bảng. Chi phí ghi đo trên bản sao lab riêng; `information_schema.STATISTICS` không cung cấp byte của từng index.
+
+---
+
 ## Cập nhật quyết định ngày 21/11/2026
 
 - Dataset hiện tại là `shopdb.multitable-v1`: 5 bảng, tổng **5.000.000 dòng** (customers 500.000; addresses 500.000; products 50.000; orders 1.500.000; order_items 2.450.000). Thay thiết kế `sales_data` một bảng để có JOIN và khóa ngoại thực tế; không cần tăng lên 10–12M dòng cho lab.

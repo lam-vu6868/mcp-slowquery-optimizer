@@ -218,6 +218,6 @@ Nhánh đo của `verify_ground_truth.py` có CREATE/DROP index tạm và cập 
 - Ground truth: trạng thái `performance_verified_pending_review`; Hải review và GVHD ký còn chờ. Không tuyên bố đáp án tối ưu toàn cục.
 - Chưa đo đầy đủ dung lượng index và chi phí ghi, metric LLM hoặc so sánh baseline truyền thống.
 - Dữ liệu giả hiện khá đều, có tương quan city/status; chưa chứng minh tải lệch/đỉnh Black Friday hoặc CPU 98%/downtime.
-- `mcp_server/server.py`, Tool 2/3 còn khung theo code hiện tại. Các lệnh `python -m mcp_server.server` và `streamlit run dashboard/app.py` là điểm chạy dự kiến sau tích hợp, chưa phải hướng dẫn xác nhận luồng hoàn chỉnh.
+- `python -m mcp_server.server` hiện chạy MCP stdio với Tool 1–5 trên MCP SDK 2.x. Tool 6, LLM agent và Dashboard chưa tích hợp; lệnh `streamlit run dashboard/app.py` chưa xác nhận luồng hoàn chỉnh.
 
 Lịch sử import một bảng và các kết quả đo cũ xem [PROGRESS](../project-management/PROGRESS.md). Thiết kế mục tiêu xem [architecture](architecture.md); input/output tool xem [api-contract](api-contract.md).

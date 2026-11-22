@@ -28,6 +28,7 @@ AN TOÀN VÀ GIỚI HẠN:
     - Không dùng FLUSH STATUS vì readonly_user không có quyền RELOAD.
     - Kết quả thiếu lượt đo hoặc có timeout không được dùng làm
       baseline chính thức.
+    - Đăng ký benchmark_for_llm cho LLM; hàm đầy đủ chỉ dùng nội bộ validation.
 
 THAM KHẢO:
     - docs/api-contract.md (Tool 5)
@@ -329,6 +330,13 @@ async def benchmark_query(
                     t_start,
                 )
 
+            if timed_out_runs:
+                return _error_response(
+                    "MEASUREMENT_INVALID",
+                    f"Chi co {len(latencies)}/{measured_runs} luot do thanh cong",
+                    t_start,
+                )
+
             result_hash = None
             row_count = last_row_count
             if compute_result_hash:
@@ -337,6 +345,10 @@ async def benchmark_query(
                     sql,
                     has_order_by,
                 )
+                if not result_hash:
+                    return _error_response(
+                        "MEASUREMENT_INVALID", "Khong tinh duoc hash ket qua", t_start,
+                    )
 
     except Exception as exc:
         logger.error(f"[benchmark_query] ERROR: {str(exc)[:200]}")
@@ -381,11 +393,6 @@ async def benchmark_query(
         warnings.append(
             "Query khong co ORDER BY - da sap xep tren dia truoc khi hash"
         )
-    if n != measured_runs:
-        warnings.append(
-            f"Chi co {n}/{measured_runs} lan do thanh cong; "
-            "khong dung ket qua nay lam baseline chinh thuc"
-        )
     if warnings:
         data["warnings"] = warnings
 
@@ -399,6 +406,18 @@ async def benchmark_query(
             "truncated": False,
         },
     }, ensure_ascii=False, default=str)
+
+
+async def benchmark_for_llm(sql: str) -> str:
+    """Giao diện Tool 5 giới hạn số lượt đo cho registry LLM."""
+    return await benchmark_query(
+        sql,
+        warmup_runs=1,
+        measured_runs=5,
+        timeout_ms=5000,
+        use_invisible_indexes=False,
+        compute_result_hash=False,
+    )
 
 
 if __name__ == "__main__":

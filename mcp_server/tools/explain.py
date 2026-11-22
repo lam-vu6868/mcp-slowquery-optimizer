@@ -11,6 +11,7 @@ LƯU Ý:
     - mode=estimate: EXPLAIN FORMAT=JSON (không chạy query) — LLM dùng.
     - mode=analyze: EXPLAIN ANALYZE (CÓ chạy query) — chỉ Validation Layer dùng.
     - use_invisible_indexes: LLM KHÔNG được đặt true.
+    - Đăng ký explain_for_llm cho LLM; hàm đầy đủ chỉ dùng nội bộ validation.
     - Dùng readonly_user + MAX_EXECUTION_TIME.
 
 THAM KHẢO:
@@ -319,6 +320,11 @@ async def explain_query(
         if "maximum statement execution time" in err_msg.lower():
             return _error_response("TIMEOUT", err_msg, t_start)
         return _error_response("INTERNAL", err_msg, t_start)
+
+
+async def explain_for_llm(sql: str) -> str:
+    """Giao diện Tool 4 giới hạn cho registry LLM."""
+    return await explain_query(sql, mode="estimate", use_invisible_indexes=False)
 
 
 # ============================================================
