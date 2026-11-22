@@ -37,14 +37,26 @@
 
 1. Đọc đầu file đích, caller, test, config và contract liên quan; liệt kê những chỗ thay đổi có thể ảnh hưởng.
 2. Viết phần nhỏ nhất hoàn chỉnh, thêm test có ý nghĩa cho logic mới hoặc bug được sửa. Không thêm tầng hay dependency khi code hiện có đã đủ.
-3. Chạy test phù hợp; trên máy Windows hiện tại: `.\venv\Scripts\python.exe -m pytest tests/ -q -p no:cacheprovider`. Chạy Ruff cho các file Python đã sửa nếu có trong venv. Với tài liệu thuần túy, kiểm tra nội dung và `git diff --check` là đủ.
+3. Chạy test phù hợp; trên PowerShell dùng thư mục tạm mới do chính tài khoản đang chạy tạo (tránh lỗi ACL khi dùng chung thư mục pytest giữa sandbox và user):
+
+   ```powershell
+   $pytestTemp = Join-Path $env:TEMP ("pytest-user-" + [guid]::NewGuid().ToString("N"))
+   .\venv\Scripts\python.exe -m pytest tests/ -q -p no:cacheprovider --basetemp="$pytestTemp"
+   ```
+
+   Chạy cả hai dòng mỗi lần test. Chạy Ruff cho các file Python đã sửa nếu có trong venv. Với tài liệu thuần túy, kiểm tra nội dung và `git diff --check` là đủ.
+
 4. Báo rõ đã sửa gì, test nào pass, phần nào chưa chạy với MySQL/Dashboard thật. Chỉ cập nhật trạng thái Done trong tài liệu sau khi phần cần thiết đã được kiểm chứng.
 - Theo `project-management/CONTRIBUTING.md`: không push thẳng `main`, không commit bí mật; PR vào `dev` và để đúng người review. Không tự push hoặc merge khi người dùng chưa yêu cầu.
 
 ## Điểm bàn giao để kiểm tra lại khi mở chat mới
 
-- Tại thời điểm tạo file này (28/10/2026), `PROGRESS.md` vẫn cập nhật lần cuối 19/10/2026. Không dùng ngày đó làm bằng chứng cho trạng thái hiện tại.
-- Working tree đang có thay đổi chưa commit cho Tool 1 ở `mcp_server/tools/slow_queries.py`, `mcp_server/utils/sanitize.py` và `tests/test_slow_queries.py`. Đã chạy 58 test pass và Ruff pass; **chưa thử Tool 1 với MySQL thật** vì Docker daemon không chạy. Hãy kiểm tra lại `git status` và test trước khi tiếp tục.
+- Cập nhật bàn giao 21/11/2026: dataset `shopdb.multitable-v1` gồm 5 bảng/tổng 5M dòng, đã thay bộ `sales_data`. Xem số dòng từng bảng ở `PROGRESS.md` và schema ở `db/schema.sql`.
+- `data/queries/ground_truth.json`: 30/30 phương án đạt đo kiểm chứng (3 warm-up +20 lượt; hash/số dòng khớp, không timeout, P95 giảm ≥20%), còn chờ Hải review/GVHD ký. Không coi đây là tối ưu toàn cục hoặc đã đo đủ trade-off ghi/đọc.
+- `ground_truth_candidates.py` chứa phương án thử; `scripts/verify_ground_truth.py` là script offline lab có tạo/drop index tạm, không phải MCP Tool 6. Chỉ chạy nhánh đo khi đã được cho phép và hiểu tác động; không chạy song song benchmark. Nhánh `--check` chỉ đọc bằng chứng, không kết nối DB.
+- Bằng chứng raw trong `data/outputs/` (gitignored), gồm baseline `p95_baseline_multitable_raw.json` và `ground_truth_validation/report.json` cùng file từng lượt. Không xóa bằng chứng; `--check` cần các file này. Kết quả đã xác nhận: audit 30/30 pass, 125 unit tests pass (người dùng cũng đã chạy).
+- Sau batch, `gt_trial_*` đã dọn, index ban đầu đã khôi phục; `idx_gt_q01_cover` vẫn INVISIBLE, `fk_order_items_product` vẫn VISIBLE. Không tự drop/recreate chỉ để test.
+- Có thay đổi chưa commit cho ground truth, script đo/kiểm chứng, Tool 4–5 và test liên quan. Hãy kiểm tra `git status` trước khi tiếp tục; không ghi đè thay đổi sẵn có.
 - Tool 1 hiện dùng `performance_schema`; nguồn phụ `mysql.slow_log` chưa triển khai vì `readonly_user` chưa có quyền đọc bảng đó. `server.py` vẫn là khung rỗng, nên Tool 1 chưa được đăng ký vào MCP. Tool 2 và Tool 3 vẫn là khung rỗng. Không tự suy ra các phần này đã hoàn tất khi có cuộc chat mới.
 
 ## Công cụ và lời nhắn mở đầu

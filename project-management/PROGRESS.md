@@ -1,7 +1,7 @@
 # 📊 TIẾN ĐỘ DỰ ÁN
 
-> **Cập nhật lần cuối:** 28/10/2026 — đối chiếu Tool 1 với code và test; Vũ quản lý
-> **Tuần hiện tại:** Tuần 6/12 (theo ROADMAP)
+> **Cập nhật lần cuối:** 22/11/2026 — kiểm tra Tool 1 và triển khai Tool 2; Vũ quản lý
+> **Mốc đối chiếu hiện tại:** 22/11/2026; các bảng tuần bên dưới là lịch sử
 > **Tổng tiến độ:** Chưa tính lại từ mốc ~27% ngày 19/10
 >
 > ⚠️ **File này chỉ ghi TRẠNG THÁI.** Deadline, người phụ trách và tiêu chí Done xem [ROADMAP.md](ROADMAP.md) (mục 4–5). Mục tiêu Precision/Recall/Consistency xem [ROADMAP.md](ROADMAP.md) mục 2.4.
@@ -16,8 +16,8 @@
 | :-: | ---------------------------------------------------- | :---------: | ---------------- | :------------------------: |
 |  0  | Setup môi trường                                     |   ✅ Done   | Vũ               |           28/09            |
 | 0b  | Chốt thiết kế (`api-contract.md`, `architecture.md`) |   ✅ Done   | Vũ               |           06/10            |
-|  1  | CSDL 5M records (dataset sales_data)                 |   ✅ Done   | Hải              |           05/10            |
-|  2  | 30 query + ground truth                              |   ✅ Done   | Tường            | 06/10 (draft) · 20/10 (ký) |
+|  1  | CSDL 5 bảng, tổng 5M records                         |   ✅ Đã nạp/kiểm tra   | Hải              |           05/10            |
+|  2  | 30 query + ground truth                              | 🟡 Đạt đo kiểm chứng; chờ review/ký | Tường | 06/10 (draft) · 20/10 (ký) |
 |  3  | Tool 1–5 MCP                                         | 🟡 Đang làm | Vũ · Hải · Tường |           13/10            |
 |  4  | Tích hợp LLM                                         |     ⬜      | Vũ               |           18/10            |
 |  5  | Validation Layer                                     |     ⬜      | Hải              |           22/10            |
@@ -28,7 +28,33 @@
 
 ---
 
+## Kiểm chứng ngày 21/11/2026
+
+- Dataset `shopdb.multitable-v1`: customers 500.000, addresses 500.000, products 50.000, orders 1.500.000, order_items 2.450.000; tổng 5.000.000 dòng. Bộ `sales_data` cũ đã được thay thế.
+- Baseline hiện tại: `data/outputs/p95_baseline_multitable_raw.json`, 30/30 valid, SQL khớp `data/queries/queries.py`. Lỗi q23 ngày 19/10 thuộc bộ cũ, không phải blocker của bộ hiện tại.
+- `data/queries/ground_truth.json`: 30/30 có phương án đạt kiểm chứng. Đủ 3 warm-up + 20 lượt đo, không timeout, hash/số dòng khớp và P95 giảm ≥20%; một số trường hợp dùng lại baseline đã đo, một số đo lại trước tối ưu. Không gọi đây là kết quả đo đồng thời hoặc tối ưu toàn cục.
+- q07–q12: đã đo đối chứng hoán đổi thứ tự cùng tập cột, giữ cùng SQL ngoài tên index thử. Các đáp án có `rewritten_sql`, `requires_rewrite` hoặc `required_indexes` cần dùng đủ SQL/hint và index.
+- Index `gt_trial_*` đã dọn, cấu hình index ban đầu đã khôi phục. `idx_gt_q01_cover` còn INVISIBLE như trước batch; `fk_order_items_product` vẫn VISIBLE.
+- Kiểm tra bằng chứng `scripts/verify_ground_truth.py --check`: 30/30 pass. Toàn bộ unit tests: 125 pass, người dùng cũng đã xác nhận trên PowerShell với thư mục tạm riêng.
+- Trạng thái: `performance_verified_pending_review`, reviewer Hải, `gvhd_signature=null`. Script lab không thay thế Hải review hoặc Validation Layer/Human-in-the-loop của hệ thống.
+- Chưa đo đầy đủ index size/chi phí ghi, metric LLM và baseline truyền thống. Chưa xác nhận luồng MCP–LLM–Dashboard end-to-end. Trạng thái `server.py` và Tool 1–3 xem cập nhật ngày 22/11 bên dưới.
+- Dữ liệu giả có phân bố khá đều và tương quan city/status; cần nêu giới hạn này trong báo cáo, chưa coi là mô phỏng đủ tải Black Friday.
+
+Lệnh kiểm tra không chạy lại DB và cách chạy pytest trên Windows xem [setup-guide](../docs/setup-guide.md#7-kiểm-tra-test-và-bằng-chứng).
+
+---
+
+## Kiểm chứng ngày 22/11/2026
+
+- Tool 1 `get_slow_queries` đã đọc được digest thật qua `performance_schema` bằng `readonly_user`; hiện không có digest đạt ngưỡng trung bình 500 ms. Chưa đăng ký vào MCP.
+- Tool 2 `get_schema` đã trả cấu trúc của đủ 5 bảng từ `information_schema` qua `readonly_user`: cột, index visible/invisible và khóa ngoại. Comment cột được thay bằng nhãn dữ liệu không tin cậy. Kích thước từng index trả `null` vì tài khoản đọc không có quyền truy cập `mysql.innodb_index_stats` (lỗi 1142); contract đã ghi rõ. Chưa đăng ký vào MCP.
+- 135 unit tests pass; Ruff pass. `server.py` và Tool 3 vẫn là khung, nên chặng Tool 1–5 MCP chưa Done.
+
+---
+
 ## 📅 CẬP NHẬT THEO TUẦN
+
+Các kết quả và lỗi dưới đây được giữ theo thời điểm thực hiện; trạng thái hiện tại xem cập nhật 22/11 ở trên.
 
 ### 🗓️ Tuần 1 (23/09 – 29/09) — ✅ DONE
 
@@ -108,7 +134,7 @@
 | 1   | Xác nhận 30 query thực sự > 0.5s trên máy nhóm                         | Tường + Hải | ✅ Đã xác nhận   | 13/10 |
 | 2   | Chọn LLM provider (Claude/Qwen/Fireworks) — vì Claude trả phí          | Vũ          | 🟡 Đang cân nhắc | 14/10 |
 | 3   | Chữ ký GVHD cho ground_truth.json                                      | Tường       | ⬜ Chưa ký       | 20/10 |
-| 4   | Kiểm chứng case study `(region, order_date)` vs `(order_date, region)` | Tường + Hải | ⬜ Chưa đo       | 13/10 |
+| 4   | Case study dataset mới: q07, status/order_date và bộ index đi kèm | Tường + Hải | 🟡 Đã đo lab; chờ Hải review, chưa tái hiện tải Black Friday | 13/10 |
 
 ---
 
@@ -116,16 +142,20 @@
 
 | Chỉ số                                             |       Hiện tại        |
 | -------------------------------------------------- | :-------------------: |
-| Số dòng bảng `sales_data`                          |       4,999,999       |
-| Số query trong slow log                            |          ~30          |
+| Tổng số dòng 5 bảng hiện tại                        |       5.000.000       |
+| Số query trong slow log hiện tại                   | Chưa đếm lại          |
 | Query xác nhận > 0.5s (trên 30)                    |       **30/30**       |
-| Tool MCP hoàn thành                                |        **2/6**        |
+| Tool có triển khai và đã kiểm thử độc lập           | Tool 4–5; Tool 1 có unit tests, chờ tích hợp |
+| Đăng ký tool vào MCP                               | `server.py` còn khung |
 | Injection test pass                                | 47/47 (unit test AST) |
 | Ground truth có chữ ký GVHD                        |         Chưa          |
 | Precision / Recall (index)                         |           —           |
 | Consistency Rate                                   |           —           |
 | False Positive Rate                                |           —           |
-| Rewrite đạt (kết quả tương đương + P95 giảm ≥ 20%) |           —           |
+| Đáp án lab đạt hash + P95 giảm ≥20%                 | 30/30, chờ duyệt      |
+| Unit tests toàn bộ                                 | 125 pass              |
+| Audit file bằng chứng                             | 30/30 pass            |
+| Rewrite do LLM đề xuất đạt yêu cầu                 | Chưa đo               |
 
 ---
 
@@ -148,6 +178,7 @@
 | 19/10 | Hải     | Sửa Tool 5 theo cơ chế streaming, hash riêng; test 7/7 pass            |
 | 19/10 | Hải     | Đo P95 đủ 30 query: 29 valid, q23 timeout và giữ trạng thái INVALID    |
 | 28/10 | Codex   | Tool 1 có code + 11 unit tests; toàn bộ 58 tests pass, Ruff pass; chưa thử MySQL thật hoặc đăng ký MCP |
+| 21/11 | Người dùng + Codex | Chuyển lab sang 5 bảng/tổng 5M dòng; baseline 30/30 valid, 30 đáp án đạt P95/hash và chờ Hải review/GVHD ký; audit 30/30, unit tests 125 pass; dọn index thử và đồng bộ tài liệu |
 
 ---
 

@@ -290,11 +290,10 @@ async def benchmark_query(
         with get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(f"SET SESSION MAX_EXECUTION_TIME = {timeout_ms}")
-                if use_invisible_indexes:
-                    cur.execute(
-                        "SET SESSION optimizer_switch = "
-                        "'use_invisible_indexes=on'"
-                    )
+                switch = "on" if use_invisible_indexes else "off"
+                cur.execute(
+                    f"SET SESSION optimizer_switch = 'use_invisible_indexes={switch}'"
+                )
 
             for _ in range(warmup_runs):
                 try:
