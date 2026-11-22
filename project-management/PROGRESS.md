@@ -1,6 +1,6 @@
 # 📊 TIẾN ĐỘ DỰ ÁN
 
-> **Cập nhật lần cuối:** 22/11/2026 — đồng bộ contract v2, code hiện có và tài liệu; Vũ quản lý
+> **Cập nhật lần cuối:** 22/11/2026 — đăng ký Tool 1–5 vào MCP stdio; Vũ quản lý
 > **Mốc đối chiếu hiện tại:** 22/11/2026; các bảng tuần bên dưới là lịch sử
 > **Tổng tiến độ:** Chưa tính lại từ mốc ~27% ngày 19/10
 >
@@ -56,6 +56,17 @@ Lệnh kiểm tra không chạy lại DB và cách chạy pytest trên Windows x
 - Tool 1 bổ sung `source=performance_schema` trong kết quả. Tool 2 ghi rõ `size_bytes=null` nếu không đo được dung lượng từng index. Tool 4–5 có wrapper giới hạn tham số cho LLM; Tool 5 trả `MEASUREMENT_INVALID` khi số lượt đo chưa đủ hoặc thiếu hash bắt buộc.
 - 139 unit tests pass sau thay đổi. `server.py`, Tool 3, LLM agent, Validation Layer, Tool 6 và Dashboard vẫn là khung; wrapper Tool 4–5 chưa đăng ký MCP. Chưa chạy lại đo thực nghiệm MySQL hoặc Dashboard trong lần đồng bộ này.
 - Ruff toàn bộ file Python đã sửa còn 13 lỗi định dạng/quy tắc có sẵn ở Tool 4–5; không thay logic của hai tool chỉ để sửa style trong lượt đồng bộ contract này.
+
+### Tool 3 trong ngày 22/11/2026
+
+- `get_table_stats` đã triển khai độc lập theo contract v2: ước lượng từ `information_schema.TABLES`, 10 cửa sổ PK tối đa 100 dòng/cửa sổ, gộp theo PK và tính thống kê trên mẫu. Không dùng `COUNT(*)` hay `ORDER BY RAND()` toàn bảng. Chỉ trả top values của cột phân loại cho phép; cắt ký tự điều khiển/độ dài và gắn `untrusted: true`.
+- 9 test mới pass; toàn bộ 148 test pass, Ruff pass ở `stats.py` và test mới. Gọi read-only trên MySQL thật cho `orders(status, order_date)` và `addresses(city)` đều `ok=true`, mỗi bảng thu được mẫu 1.000 dòng. Số dòng từ `TABLE_ROWS` là ước lượng, không phải đếm chính xác.
+- Chưa đăng ký Tool 3 vào MCP; `server.py` vẫn là khung. Chặng Tool 1–5 MCP tiếp tục ở trạng thái Đang làm.
+
+### Registry MCP trong ngày 22/11/2026
+
+- `server.py` dùng MCP SDK 2.x (`MCPServer`) để đăng ký Tool 1–3 và hai wrapper LLM của Tool 4–5, cùng tên public `explain_query` và `benchmark_query`. Tool 6 và hàm Tool 4–5 đầy đủ tham số không nằm trong registry LLM.
+- Test registry kiểm tra đúng 5 tên và schema Tool 4–5 chỉ có `sql`. Đã thử client/server qua stdio thật: liệt kê đúng 5 tool, input sai của Tool 1 nhận `INVALID_INPUT`; sau đó gọi cả 5 tool bằng input đọc giới hạn trên MySQL thật, tất cả trả `ok=true`. Toàn bộ 150 test pass; Ruff pass cho `server.py` và test mới. Chưa thử host LLM, Dashboard hoặc Tool 6.
 
 ---
 

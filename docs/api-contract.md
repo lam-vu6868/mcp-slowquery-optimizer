@@ -498,8 +498,8 @@ Mục tiêu số học và deadline vẫn lấy từ [ROADMAP.md](../project-man
 ## 6. Ảnh hưởng tới caller và việc cần review
 
 - **Tool 1 / Dashboard / LLM host (Vũ, Tình):** `query_id` từ Tool 1 là digest, không phải `q07`; output thêm `source`, và `since` không tạo metric theo cửa sổ thời gian. Nhánh đọc `mysql.slow_log` cùng quyền `SELECT` riêng hiện chưa có. Caller phải truyền ID phân tích đúng ngữ cảnh và không tự ghép digest với ground truth.
-- **Tool 3 / LLM host (Vũ):** output thêm `sample`; `cardinality`, `null_ratio`, `top_values`, `min/max` chỉ có ý nghĩa trên mẫu PK có giới hạn. Cần test mẫu rỗng, cột nhạy cảm, timeout và không quét toàn bảng.
-- **Tool 4–5 / MCP registry (Hải, Tường, Vũ):** đăng ký wrapper bị giới hạn cho LLM; giữ hàm đầy đủ cho Validation Layer. Tool 5 phải trả `MEASUREMENT_INVALID` khi phép đo nội bộ thiếu lượt/hash, thay vì `ok=true` với P95 một phần.
+- **Tool 3 / LLM host (Vũ):** output thêm `sample`; `cardinality`, `null_ratio`, `top_values`, `min/max` chỉ có ý nghĩa trên mẫu PK có giới hạn. Code đã có test mẫu rỗng, cột nhạy cảm, timeout và giới hạn truy vấn; đã đăng ký MCP trong registry LLM.
+- **Tool 4–5 / MCP registry (Hải, Tường, Vũ):** đã đăng ký wrapper giới hạn cho LLM; hàm đầy đủ dành cho Validation Layer. Tool 5 trả `MEASUREMENT_INVALID` khi phép đo nội bộ thiếu lượt/hash, thay vì `ok=true` với P95 một phần.
 - **Validation / Tool 6 / Dashboard (Hải, Tình, Vũ):** DDL thử nằm trong hàm nội bộ `apply.py`, không là Tool 6 công khai; token hash đúng lệnh `ALTER ... VISIBLE` sẽ chạy. Report thêm `candidate_sql_kind`, `evidence_complete`, nguồn/giới hạn size và write overhead. `index_size_bytes` ở Tool 2 vẫn `null`; Tool 6 lấy số đo từ report. Cần review thiết kế quyền, rollback và đồng bộ lại sơ đồ trong `architecture.md` trước khi triển khai.
 - **Tương thích:** đây là contract đích, chưa phản ánh đủ code hiện tại. Không sửa Tool 4–6 hoặc tài liệu của thành viên khác chỉ để làm test xanh; mỗi owner/reviewer cập nhật phần của mình qua PR. Trước khi tích hợp end-to-end, chạy test contract, thử MySQL/Dashboard thật và kiểm thử 20 payload.
 

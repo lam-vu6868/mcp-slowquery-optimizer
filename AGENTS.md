@@ -56,8 +56,9 @@
 - `ground_truth_candidates.py` chứa phương án thử; `scripts/verify_ground_truth.py` là script offline lab có tạo/drop index tạm, không phải MCP Tool 6. Chỉ chạy nhánh đo khi đã được cho phép và hiểu tác động; không chạy song song benchmark. Nhánh `--check` chỉ đọc bằng chứng, không kết nối DB.
 - Bằng chứng raw trong `data/outputs/` (gitignored), gồm baseline `p95_baseline_multitable_raw.json` và `ground_truth_validation/report.json` cùng file từng lượt. Không xóa bằng chứng; `--check` cần các file này. Kết quả đã xác nhận: audit 30/30 pass, 125 unit tests pass (người dùng cũng đã chạy).
 - Sau batch, `gt_trial_*` đã dọn, index ban đầu đã khôi phục; `idx_gt_q01_cover` vẫn INVISIBLE, `fk_order_items_product` vẫn VISIBLE. Không tự drop/recreate chỉ để test.
-- Có thay đổi chưa commit cho ground truth, script đo/kiểm chứng, Tool 4–5 và test liên quan. Hãy kiểm tra `git status` trước khi tiếp tục; không ghi đè thay đổi sẵn có.
-- Tool 1 hiện dùng `performance_schema`; nguồn phụ `mysql.slow_log` chưa triển khai vì `readonly_user` chưa có quyền đọc bảng đó. `server.py` vẫn là khung rỗng, nên Tool 1 chưa được đăng ký vào MCP. Tool 2 và Tool 3 vẫn là khung rỗng. Không tự suy ra các phần này đã hoàn tất khi có cuộc chat mới.
+- Bàn giao 22/11/2026: Tool 1 đọc `performance_schema` (nhánh `mysql.slow_log` chưa có do thiếu quyền SELECT riêng); Tool 2 đọc schema; Tool 3 lấy thống kê bằng mẫu PK giới hạn. `server.py` dùng MCP SDK 2.x, đăng ký Tool 1–5 qua stdio; Tool 4–5 chỉ lộ wrapper giới hạn cho LLM, Tool 6 không được đăng ký.
+- Đã thử client MCP gọi cả 5 tool trên MySQL thật, đều `ok=true`; 150 unit tests pass, Ruff pass cho `server.py`/test mới và Tool 3. Chưa có LLM host, Validation Layer, Tool 6, Dashboard end-to-end. Contract v2 còn DRAFT chờ nhóm review; chặng Tool 1–5 MCP chưa đánh dấu Done vì Tool 1 còn thiếu nguồn slow log và chưa kiểm chứng toàn bộ tiêu chí roadmap.
+- Bước code kế tiếp: đọc `mcp_server/llm/agent.py`, `parsers.py`, `prompts.py`, contract và caller rồi tích hợp LLM host chỉ thấy Tool 1–5; test bằng LLM giả trước khi dùng API thật. Hãy kiểm tra `git status` và thay đổi hiện có trước khi sửa, không ghi đè phần chưa commit. `PROGRESS.md` là trạng thái mới nhất sau mỗi lần kiểm chứng.
 
 ## Công cụ và lời nhắn mở đầu
 
@@ -70,3 +71,5 @@ Gợi ý mở chat mới:
 Tiếp tục dự án theo AGENTS.md. Đọc README.md, ROADMAP/PROGRESS và contract liên quan;
 kiểm tra git status, code và test thực tế rồi cho tôi biết chặng hiện tại và bước tiếp theo.
 ```
+
+Nếu muốn tiếp tục viết code ngay, thêm: `Triển khai bước LLM host trong mcp_server/llm/agent.py theo chặng hiện tại.`

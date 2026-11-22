@@ -95,6 +95,10 @@ flowchart TD
 
 **Cập nhật 22/11/2026:** [api-contract.md](docs/api-contract.md) v2 đang chờ nhóm review; [architecture.md](docs/architecture.md) giữ vai trò mô tả luồng hệ thống. Tool 1 đọc `performance_schema`, Tool 2 đọc schema, Tool 4–5 có wrapper tham số giới hạn cho LLM nhưng chưa đăng ký MCP. Tool 3 và `server.py` còn là khung; chưa có luồng end-to-end.
 
+**Tiếp theo trong ngày 22/11/2026:** Tool 3 `get_table_stats` đã có code, 9 test đơn vị pass và đã đọc thử MySQL thật bằng `readonly_user` trên `orders`/`addresses`. Lấy mẫu tối đa 1.000 dòng qua cửa sổ PK; `server.py` vẫn là khung nên Tool 1–5 chưa thành MCP tool gọi được.
+
+**Tích hợp MCP trong ngày 22/11/2026:** `server.py` đã đăng ký Tool 1–3 và wrapper giới hạn của Tool 4–5 qua MCP SDK 2.x trên stdio. Danh sách tool LLM thấy chỉ có 5 tool; Tool 6 chưa được đăng ký. Chưa có LLM host, Validation Layer hoặc Dashboard end-to-end.
+
 > 📖 Chi tiết: [project-management/PROGRESS.md](project-management/PROGRESS.md) · Lịch và deadline: [project-management/ROADMAP.md](project-management/ROADMAP.md)
 
 ---

@@ -52,7 +52,7 @@ Xây dựng hệ thống **tự động tìm và đề xuất cách sửa các q
 
 Lab hiện tại có 5 bảng, tổng 5M dòng: customers 500.000, addresses 500.000, products 50.000, orders 1.500.000 và order_items 2.450.000. Các sơ đồ MCP/LLM/approval bên dưới là thiết kế, không phải tuyên bố mọi thành phần đã triển khai.
 
-Code hiện tại: Tool 1 đọc `performance_schema`, Tool 2 đọc schema, Tool 4–5 chạy độc lập và có wrapper giới hạn tham số LLM. Tool 3, `server.py`, LLM agent, Validation Layer, Tool 6 và Dashboard còn là khung; wrapper chưa được đăng ký MCP. Nhánh `mysql.slow_log` của Tool 1 chờ cấp quyền SELECT phù hợp.
+Code hiện tại: Tool 1 đọc `performance_schema`, Tool 2 đọc schema, Tool 3 lấy thống kê/mẫu PK có giới hạn; Tool 4–5 có wrapper giới hạn tham số LLM. `server.py` đã đăng ký đúng 5 tool này qua stdio. LLM agent, Validation Layer, Tool 6 và Dashboard còn là khung; chưa có luồng end-to-end. Nhánh `mysql.slow_log` của Tool 1 chờ cấp quyền SELECT phù hợp.
 
 Luồng đã kiểm chứng offline: `ground_truth_candidates.py` → `scripts/verify_ground_truth.py` → EXPLAIN/benchmark/hash → `ground_truth.json` và bằng chứng trong `data/outputs/`. Có 30/30 phương án đạt đo kiểm chứng, còn chờ Hải review/GVHD ký. Script chỉ nhận ứng viên cố định trong repo, dùng readonly cho SELECT và index_admin cho index thử theo ủy quyền lab; không đăng ký MCP hoặc gọi đường apply của LLM. Index thử được dọn và cấu hình ban đầu được khôi phục sau batch. Kết quả script offline chưa chứng minh luồng Validation Layer + Dashboard đã hoạt động.
 
