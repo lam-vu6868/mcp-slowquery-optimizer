@@ -20,7 +20,7 @@
 |  2  | 30 query + ground truth                              | 🟡 Đạt đo kiểm chứng; chờ review/ký | Tường | 06/10 (draft) · 20/10 (ký) |
 |  3  | Tool 1–5 MCP                                         | 🟡 Đang làm | Vũ · Hải · Tường |           13/10            |
 |  4  | Tích hợp LLM                                         | 🟡 Đang làm | Vũ               |           18/10            |
-|  5  | Validation Layer                                     |     ⬜      | Hải              |           22/10            |
+|  5  | Validation Layer                                     | 🟡 Đang làm | Hải              |           22/10            |
 |  6  | Tool 6 + approval token + 20 injection               |     ⬜      | Tình             |           27/10            |
 |  7  | Metrics + Baseline                                   |     ⬜      | Tường · Hải      |           03/11            |
 |  8  | Dashboard 4 tab                                      |     ⬜      | Tình             |           10/11            |
@@ -69,6 +69,14 @@ Lệnh kiểm tra không chạy lại DB và cách chạy pytest trên Windows x
 - Test registry kiểm tra đúng 5 tên và schema Tool 4–5 chỉ có `sql`. Đã thử client/server qua stdio thật: liệt kê đúng 5 tool, input sai của Tool 1 nhận `INVALID_INPUT`; sau đó gọi cả 5 tool bằng input đọc giới hạn trên MySQL thật, tất cả trả `ok=true`. Toàn bộ 150 test pass; Ruff pass cho `server.py` và test mới. Chưa thử host LLM, Dashboard hoặc Tool 6.
 
 ---
+
+## Validation Layer ngày 24/11/2026
+
+- Đã có bước đánh giá report thuần Python: chỉ pass khi đo đủ số lượt từ `config/settings.yaml` (hiện 20/20), không timeout, hash/số dòng khớp, P95 giảm ít nhất ngưỡng config (hiện 20%), EXPLAIN chọn index mới và có bằng chứng dung lượng/chi phí ghi trên lab riêng. Report thiếu hoặc dùng SQL viết lại trả `inconclusive`; sai kết quả hoặc chậm trả `failed`.
+- `validate_index()` gọi Tool 4/5 nội bộ với index INVISIBLE tắt/bật, ghép Query Cost và số đo, dọn index thử khi fail/lỗi. Helper `TrialIndex` sinh DDL từ proposal có cấu trúc, kiểm tra schema hiện tại, dùng `index_admin` chỉ cho CREATE/DROP, dùng `readonly_user` cho metadata. Chưa đăng ký helper thành MCP tool.
+- `ProposalStore` lưu proposal/report bất biến trong SQLite riêng; `validate_saved_index()` lấy SQL gốc từ store, ghi `trial_state=pending` trước DDL, đo rồi lưu report. Index thử gắn `mcp_trial:<proposal_id>` trong `INDEX_COMMENT`; `recover_interrupted_trials()` chỉ dọn index có đúng marker, định nghĩa cột và trạng thái INVISIBLE, rồi ghi report `inconclusive` nếu lần thử bị ngắt. Lỗi dọn giữ trạng thái `pending` để thử lại/kiểm tra.
+- Test dùng DB/Tool giả: chưa tạo/drop index trên MySQL thật, chưa đo INSERT trên clone riêng, chưa nối hàm recovery vào điểm khởi động backend, chưa tích hợp Dashboard/Tool 6. Do đó **chưa Done**, chưa có report thật đủ điều kiện phê duyệt.
+- Kiểm tra sau bước recovery: 237 unit tests pass, Ruff pass trên các file Python đã sửa, `git diff --check` pass.
 
 ## Kiểm chứng ngày 24/11/2026 — LLM host
 
