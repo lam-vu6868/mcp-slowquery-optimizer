@@ -1,6 +1,6 @@
 # 📊 TIẾN ĐỘ DỰ ÁN
 
-> **Cập nhật lần cuối:** 24/11/2026 — kiểm tra lại q07 qua Groq–MCP–MySQL; Vũ quản lý
+> **Cập nhật lần cuối:** 24/11/2026 — kiểm chứng Tool 1–5 qua MCP stdio/MySQL; Vũ quản lý
 > **Mốc đối chiếu hiện tại:** 24/11/2026; các bảng tuần bên dưới là lịch sử
 > **Tổng tiến độ:** Chưa tính lại từ mốc ~27% ngày 19/10
 >
@@ -82,6 +82,17 @@ Lệnh kiểm tra không chạy lại DB và cách chạy pytest trên Windows x
 - Bốn lượt mới qua Python host → Groq → MCP → MySQL với `readonly_user` đều trả JSON hợp lệ, mỗi lượt có 3 proposal; ba lượt gọi Tool 2, một lượt gọi thêm Tool 3. Không tạo/drop index hoặc sửa dữ liệu MySQL.
 - HTTP 400 cũ không tái hiện. Bản ghi cũ chỉ có `BadRequestError`, không có mã/body lỗi nên chưa xác định nguyên nhân. `agent.py` nay ghi HTTP status, loại/mã lỗi API và dấu hiệu `failed_generation` khi có, nhưng không ghi nội dung phản hồi hoặc SQL.
 - Toàn bộ 208 unit tests pass; Ruff pass cho `agent.py` và test mới. Bốn lượt này chưa đủ để tính độ ổn định, Precision/Recall hoặc kiểm chứng hiệu năng proposal; chưa chạy Validation Layer hay đủ 30 query.
+
+### Tool 1 đọc slow log ngày 24/11/2026
+
+- `get_slow_queries` có tham số `source="slow_log"` tùy chọn; mặc định vẫn đọc `performance_schema`. Nhánh mới chỉ dùng `get_conn()`/`readonly_user`, giới hạn 5 giây, `limit+1` dòng và SQL tối đa 8.000 byte, bỏ comment rồi gắn `untrusted: true`. Mỗi dòng log là một lần chạy, nên `p95_latency_ms=null` và `digest=null`; chi tiết ở contract v2 DRAFT.
+- Test giả kiểm tra kết quả, giới hạn và lỗi thiếu quyền. Trước khi cấp quyền, MySQL trả `FORBIDDEN`. Người dùng đã cấp `SELECT` riêng trên `mysql.slow_log` cho `readonly_user` tại lab; gọi trực tiếp và qua MCP stdio với `source="slow_log", limit=1` đều `ok=true`, trả 1 bản ghi thật có `untrusted=true`, `p95_latency_ms=null`. Nguồn mặc định `performance_schema` vẫn `ok=true`, hiện không có digest đạt ngưỡng 500 ms. Không in SQL log trong lần kiểm tra. Chặng Tool 1–5 MCP vẫn Đang làm vì chưa kiểm chứng toàn bộ tiêu chí roadmap.
+- Toàn bộ 211 unit tests pass; Ruff pass cho file Python đã sửa. Không chạy lại `db/init.sql`, không sửa index hoặc dữ liệu lab.
+
+### Kiểm chứng Tool 1–5 qua MCP stdio ngày 24/11/2026
+
+- Registry trả đúng 5 tên Tool 1–5, không có Tool 6; schema của Tool 4–5 chỉ nhận `sql`, Tool 1 có tham số `source` tùy chọn. Gọi Tool 1 ở cả `performance_schema` (0 digest đạt 500 ms) và `slow_log` (1 bản ghi thật), Tool 2 với `orders`, Tool 3 với `orders.status`, Tool 4 EXPLAIN và Tool 5 benchmark một truy vấn PK đọc một dòng: tất cả trả `ok=true` với envelope `ok/data/error/meta` đúng tên tool.
+- Tool 4 dùng `mode=estimate`; Tool 5 đo 5 lượt theo wrapper LLM. SQL đọc từ log không được in trong lần kiểm tra. Toàn bộ 211 unit tests và Ruff pass. Đây là kiểm chứng kỹ thuật cho Tool 1–5; contract v2 vẫn DRAFT chờ review, Tool 6/Validation/Dashboard chưa triển khai, nên giai đoạn Tool 1–5 giữ trạng thái Đang làm chờ chốt review.
 
 ---
 

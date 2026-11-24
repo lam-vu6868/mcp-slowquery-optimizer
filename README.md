@@ -83,7 +83,7 @@ flowchart TD
 | Tool 4 `explain_query`                 |     ✅ Done     |
 | Tool 5 `benchmark_query`               |     ✅ Done     |
 | Đo P95 bộ 30 query                     | ✅ Baseline 30/30 valid; đáp án 30/30 đạt P95/hash |
-| Tool 1–5 MCP                           | 🟡 Đã đăng ký và thử qua stdio; còn tiêu chí roadmap chưa kiểm chứng |
+| Tool 1–5 MCP                           | 🟡 Đã kiểm chứng 5/5 qua stdio/MySQL; contract v2 chờ review |
 | Validation Layer                       | ⬜ Chưa bắt đầu |
 | 20 Prompt Injection                    | ⬜ Chưa bắt đầu |
 | Dashboard                              | ⬜ Chưa bắt đầu |
@@ -104,6 +104,10 @@ Các mốc dưới đây giữ theo thời điểm thực hiện; trạng thái 
 **Thử Groq ngày 24/11/2026:** adapter Groq đã gọi API với tool mẫu; sau đó q07 chạy qua Groq–MCP–MySQL và có một lượt trả JSON hợp lệ gồm 2 index + 1 rewrite. Hai lượt prompt v1 bị `parse_failed`, một lượt v2 lỗi HTTP 400; chưa đo độ ổn định, hiệu năng đề xuất hoặc toàn bộ 30 query. Model thử nghiệm được ghim trong `config/settings.yaml`.
 
 **Kiểm tra lại ngày 24/11/2026:** bốn lượt q07 mới qua Python host → Groq → MCP → MySQL đều trả JSON hợp lệ, mỗi lượt có 3 proposal; một lượt gọi thêm Tool 3 ngoài Tool 2. HTTP 400 cũ chưa tái hiện và bản ghi cũ không có mã lỗi chi tiết, nên chưa xác định nguyên nhân. Run mới chỉ lưu mã/loại lỗi API đã lọc, không lưu nội dung phản hồi. Toàn bộ 208 unit tests pass; chưa đo metric ổn định hoặc hiệu năng đề xuất.
+
+**Tool 1 ngày 24/11/2026:** nhánh `source="slow_log"` đã có code và test. Sau khi người dùng cấp `SELECT` riêng trên `mysql.slow_log`, gọi trực tiếp và qua MCP stdio đều `ok=true` với 1 bản ghi thật; nguồn mặc định `performance_schema` cũng `ok=true`. Xem [setup-guide](docs/setup-guide.md#4-cấu-hình-slow-log) cho cách cấp quyền trên lab khác; chưa đánh dấu chặng Tool 1–5 Done. Toàn bộ 211 unit tests pass.
+
+**Kiểm chứng Tool 1–5 ngày 24/11/2026:** qua MCP stdio và MySQL thật, registry chỉ có 5 tool, Tool 4–5 chỉ nhận `sql`, cả 5 trả `ok=true` với input đọc giới hạn. Tool 1 đã thử cả hai nguồn; Tool 5 đo 5 lượt trên một query PK ngắn. Đây là kiểm chứng kỹ thuật; contract v2 vẫn DRAFT chờ nhóm review, Tool 6/Validation/Dashboard chưa có luồng hoàn chỉnh.
 
 > 📖 Chi tiết: [project-management/PROGRESS.md](project-management/PROGRESS.md) · Lịch và deadline: [project-management/ROADMAP.md](project-management/ROADMAP.md)
 

@@ -139,11 +139,12 @@ Parser (`llm/parsers.py`) kiểm tra bằng JSON Schema: `query_id` phải bằn
   "limit": 10,
   "min_avg_latency_ms": 500,
   "order_by": "total_latency",
-  "since": "2025-10-01T00:00:00Z"
+  "since": "2025-10-01T00:00:00Z",
+  "source": "performance_schema"
 }
 ```
 
-`limit` mặc định 10, tối đa 100; `min_avg_latency_ms` lọc theo **latency trung bình** của digest. `since` tùy chọn: với `performance_schema`, chỉ lọc `LAST_SEEN >= since`; `exec_count`, P95 và latency vẫn là **số liệu tích lũy của digest**, không phải số đo riêng từ `since`. Không dùng chúng để vẽ biểu đồ cửa sổ thời gian. Không có digest đạt ngưỡng thì trả `ok=true, queries=[]`.
+`limit` mặc định 10, tối đa 100. `source` mặc định `performance_schema`; chọn `slow_log` để đọc từng lần chạy từ `mysql.slow_log` khi đã cấp quyền `SELECT` riêng trên bảng đó. `min_avg_latency_ms` lọc theo **latency trung bình** của digest ở nguồn chính, hoặc thời gian của từng lần chạy ở slow log. `since` tùy chọn: với `performance_schema`, chỉ lọc `LAST_SEEN >= since`; `exec_count`, P95 và latency vẫn là **số liệu tích lũy của digest**, không phải số đo riêng từ `since`. Với `slow_log`, `since` lọc `start_time`. Không dùng thống kê digest để vẽ biểu đồ cửa sổ thời gian. Không có bản ghi đạt ngưỡng thì trả `ok=true, queries=[]`.
 
 **Output `data`:**
 
@@ -169,7 +170,7 @@ Parser (`llm/parsers.py`) kiểm tra bằng JSON Schema: `query_id` phải bằn
 }
 ```
 
-`query_id` ở nguồn chính là digest MySQL, không phải ID catalog `q01`…`q30`; `source` xác định xuất xứ. Bản code hiện mới dùng `performance_schema`. Để đáp ứng yêu cầu đọc slow query log của đề bài, nhánh `mysql.slow_log` phải được triển khai với quyền `SELECT` chỉ trên bảng đó (không cấp `mysql.*`), giới hạn dòng/timeout, loại comment và gắn `untrusted`; ID của bản ghi log dùng `slowlog:` + SHA-256 của SQL đã chuẩn hóa. Trước khi cấp quyền, không mô tả nguồn phụ là đã hoạt động. File slow log vẫn dùng cho `pt-query-digest` dù nhánh bảng chưa được bật.
+`query_id` ở nguồn chính là digest MySQL, không phải ID catalog `q01`…`q30`; `source` xác định xuất xứ. Nhánh `slow_log` trả **từng bản ghi**, không gom digest: `digest=null`, `exec_count=1`, `avg_latency_ms` và `total_latency_ms` bằng thời gian lần chạy, `p95_latency_ms=null`, `first_seen=last_seen=start_time`; `rows_*_avg` là số của lần chạy đó. `order_by=exec_count` trên nguồn này sắp theo `start_time` vì mỗi bản ghi có cùng `exec_count=1`; các cách sắp latency dùng `query_time`. ID là `slowlog:` + SHA-256 của SQL sau khi bỏ comment. SQL dài hơn 8.000 byte bị loại trước khi chuyển về Python; truy vấn giới hạn 5 giây và tối đa `limit+1` dòng, strip comment và gắn `untrusted`. Nếu chưa có quyền `SELECT` riêng trên `mysql.slow_log`, trả `FORBIDDEN` và không tự chuyển nguồn. File slow log vẫn dùng cho `pt-query-digest`.
 
 ### Tool 2 — `get_schema`
 

@@ -8,8 +8,8 @@ CHỨC NĂNG :
 PHỤ TRÁCH  : Vũ    |    REVIEW: Hải
 
 LƯU Ý:
-    - Hiện đọc performance_schema.events_statements_summary_by_digest; mysql.slow_log chờ quyền SELECT riêng.
-    - query_id là MySQL digest, không phải ID q01–q30 của bộ lab.
+    - Mặc định đọc performance_schema; mysql.slow_log chỉ hoạt động khi có quyền SELECT riêng.
+    - query_id là digest hoặc slowlog:hash SQL, không phải ID q01–q30 của bộ lab.
     - Strip comment khỏi SQL trước khi trả và gắn untrusted=true.
     - Tối đa 100 dòng, có cờ truncated.
     - Dùng readonly_user.
@@ -17,6 +17,7 @@ LƯU Ý:
 THAM KHẢO  : docs/api-contract.md (Tool 1)
 """
 
+import hashlib
 import json
 import math
 import time
@@ -43,8 +44,9 @@ async def get_slow_queries(
     min_avg_latency_ms: float = 500,
     order_by: str = "total_latency",
     since: str | None = None,
+    source: str = "performance_schema",
 ) -> str:
-    """Trả top digest chậm; thời gian và P95 là số liệu tích lũy của MySQL."""
+    """Trả digest tích lũy hoặc từng bản ghi slow log, tùy nguồn được chọn."""
     started = time.perf_counter()
 
     def response(data=None, error=None, truncated=False):
@@ -65,6 +67,8 @@ async def get_slow_queries(
         return response(error={"code": "INVALID_INPUT", "message": "min_avg_latency_ms phải là số không âm", "detail": {}})
     if type(order_by) is not str or order_by not in ORDER_COLUMNS:
         return response(error={"code": "INVALID_INPUT", "message": "order_by không hợp lệ", "detail": {}})
+    if type(source) is not str or source not in ("performance_schema", "slow_log"):
+        return response(error={"code": "INVALID_INPUT", "message": "source không hợp lệ", "detail": {}})
 
     since_dt = None
     if since is not None:
@@ -75,6 +79,63 @@ async def get_slow_queries(
             since_dt = since_dt.astimezone(UTC).replace(tzinfo=None)
         except (AttributeError, TypeError, ValueError):
             return response(error={"code": "INVALID_INPUT", "message": "since phải là ISO 8601 có múi giờ", "detail": {}})
+
+    if source == "slow_log":
+        # Slow log là từng lần chạy; giới hạn SQL trước khi chuyển dữ liệu về Python.
+        log_sql = """
+            SELECT /*+ MAX_EXECUTION_TIME(5000) */ sql_text, start_time,
+                   query_time, rows_examined, rows_sent
+            FROM mysql.slow_log
+            WHERE db = %s AND sql_text IS NOT NULL
+              AND OCTET_LENGTH(sql_text) <= 8000
+              AND (LTRIM(CONVERT(sql_text USING utf8mb4)) LIKE 'SELECT%%'
+                   OR LTRIM(CONVERT(sql_text USING utf8mb4)) LIKE 'WITH%%')
+              AND TIME_TO_SEC(query_time) * 1000 >= %s
+        """
+        log_params = [Config.DB_NAME, min_avg_latency_ms]
+        if since_dt is not None:
+            log_sql += " AND start_time >= %s"
+            log_params.append(since_dt)
+        sort_column = "start_time" if order_by == "exec_count" else "query_time"
+        log_sql += f" ORDER BY {sort_column} DESC, start_time DESC LIMIT %s"
+        log_params.append(limit + 1)
+        try:
+            with get_conn() as conn, conn.cursor() as cur:
+                cur.execute("SET time_zone = '+00:00'")
+                cur.execute(log_sql, log_params)
+                rows = cur.fetchall()
+        except pymysql.MySQLError as exc:
+            logger.error("get_slow_queries slow_log failed: %s", type(exc).__name__)
+            code = "FORBIDDEN" if exc.args and exc.args[0] == 1142 else "INTERNAL"
+            return response(error={
+                "code": code, "message": "Không đọc được mysql.slow_log", "detail": {},
+            })
+
+        queries = []
+        for row in rows[:limit]:
+            raw_sql = row["sql_text"]
+            sql_text = raw_sql.decode("utf-8", errors="replace") if isinstance(raw_sql, bytes) else raw_sql
+            sql_text = strip_sql_comments(sql_text)
+            if not sql_text:
+                continue
+            latency_ms = round(row["query_time"].total_seconds() * 1000, 2)
+            seen = row["start_time"].isoformat().removesuffix("+00:00") + "Z"
+            queries.append({
+                "query_id": "slowlog:" + hashlib.sha256(sql_text.encode("utf-8")).hexdigest(),
+                "digest": None,
+                "source": "mysql.slow_log",
+                "sql_text": sql_text,
+                "untrusted": True,
+                "exec_count": 1,
+                "avg_latency_ms": latency_ms,
+                "p95_latency_ms": None,
+                "total_latency_ms": latency_ms,
+                "rows_examined_avg": row["rows_examined"],
+                "rows_sent_avg": row["rows_sent"],
+                "first_seen": seen,
+                "last_seen": seen,
+            })
+        return response(data={"queries": queries}, truncated=len(rows) > limit)
 
     sql = """
         SELECT DIGEST, COALESCE(NULLIF(QUERY_SAMPLE_TEXT, ''), DIGEST_TEXT) AS sql_text,
