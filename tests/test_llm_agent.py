@@ -455,3 +455,35 @@ async def test_agent_loads_project_settings_when_caller_omits_them():
     assert request["model"] == "openai/gpt-oss-120b"
     assert request["max_tokens"] == 2000
     assert request["temperature"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_agent_records_safe_api_error_fields_without_payload(run_log_dir):
+    """Lưu dấu hiệu HTTP 400, không lưu nội dung lỗi có thể chứa SQL."""
+    class FakeBadRequestError(Exception):
+        status_code = 400
+
+        def __init__(self):
+            self.body = {"error": {
+                "type": "invalid_request_error",
+                "code": "tool_use_failed",
+                "message": "SQL_PRIVATE_VALUE",
+                "failed_generation": {"attempted_arguments": "SQL_PRIVATE_VALUE"},
+            }}
+
+    llm = SimpleNamespace(messages=SimpleNamespace(
+        create=AsyncMock(side_effect=FakeBadRequestError()),
+    ))
+    with pytest.raises(FakeBadRequestError):
+        await analyze_query(
+            "q07", "SELECT 1", llm_client=llm, mcp_client=_fake_mcp(),
+            llm_settings=LLM_SETTINGS,
+        )
+
+    record = json.loads(next(run_log_dir.glob("*.json")).read_text(encoding="utf-8"))
+    assert record["status"] == "error"
+    assert record["http_status"] == 400
+    assert record["api_error_type"] == "invalid_request_error"
+    assert record["api_error_code"] == "tool_use_failed"
+    assert record["failed_generation_present"] is True
+    assert "SQL_PRIVATE_VALUE" not in json.dumps(record)
