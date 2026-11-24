@@ -5,7 +5,7 @@
 > Căn cứ: đề bài do nhóm cung cấp, [ROADMAP.md](../project-management/ROADMAP.md) mục 2, [architecture.md](architecture.md) và code hiện tại. Đây là **đích triển khai**, không phải tuyên bố 6 Tool và Dashboard đã chạy đầu cuối.
 > **Lab:** MySQL 8.0, `shopdb.multitable-v1`, 5 bảng/tổng 5 triệu dòng. Case study 12 triệu đơn hàng/CPU 98% là bối cảnh đề bài, chưa được tái hiện hoặc đo trên lab.
 > **Ánh xạ case study:** đề bài dùng `(created_at, status)` trên 12 triệu đơn; schema lab có `orders.order_date` thay `created_at`. Query q07 đo `(status, order_date)` và `(order_date, status)` trên 1,5 triệu `orders`; chỉ dùng để thảo luận thứ tự composite, không coi là tái hiện chính xác sự cố Black Friday.
-> **LLM:** contract không phụ thuộc nhà cung cấp; lab hiện dự kiến Claude, nhưng GPT/Qwen-Coder phải dùng cùng schema proposal và cùng ranh giới Tool 1–5 nếu được thay thế.
+> **LLM:** contract không phụ thuộc nhà cung cấp; lab đang thử Groq với model `openai/gpt-oss-120b`. Nếu đổi model hoặc nhà cung cấp, vẫn phải giữ cùng schema proposal và ranh giới Tool 1–5.
 
 ---
 
@@ -324,7 +324,7 @@ Parser (`llm/parsers.py`) kiểm tra bằng JSON Schema: `query_id` phải bằn
 
 `rows_examined_actual` chỉ có khi `mode = analyze`.
 
-**Giao diện cấp cho LLM:** chỉ nhận `sql`, cố định `mode="estimate"` và `use_invisible_indexes=false` tại backend. Không đăng ký trực tiếp hàm đầy đủ làm tool của LLM. Hàm `explain_for_llm` đã có nhưng `server.py` chưa đăng ký; hàm đầy đủ dành cho Validation Layer nội bộ.
+**Giao diện cấp cho LLM:** chỉ nhận `sql`, cố định `mode="estimate"` và `use_invisible_indexes=false` tại backend. `server.py` đã đăng ký `explain_for_llm` dưới tên public `explain_query`; không đăng ký trực tiếp hàm đầy đủ. Hàm đầy đủ dành cho Validation Layer nội bộ.
 
 ### Tool 5 — `benchmark_query`
 
@@ -348,7 +348,7 @@ Parser (`llm/parsers.py`) kiểm tra bằng JSON Schema: `query_id` phải bằn
 
 Giới hạn: `measured_runs` 5–50, `timeout_ms` ≤ 60000.
 
-**Giao diện cấp cho LLM:** chỉ nhận `sql`; backend cố định `warmup_runs=1`, `measured_runs=5`, `timeout_ms=5000`, `use_invisible_indexes=false`, `compute_result_hash=false` và giới hạn số lần gọi. Validation Layer gọi hàm nội bộ với 3 warm-up + 20 lượt đo, hash đầy đủ và timeout theo cấu hình lab. Hàm `benchmark_for_llm` đã có nhưng `server.py` chưa đăng ký; không cấp trực tiếp các cờ nội bộ cho LLM.
+**Giao diện cấp cho LLM:** chỉ nhận `sql`; backend cố định `warmup_runs=1`, `measured_runs=5`, `timeout_ms=5000`, `use_invisible_indexes=false`, `compute_result_hash=false` và giới hạn số lần gọi. Validation Layer gọi hàm nội bộ với 3 warm-up + 20 lượt đo, hash đầy đủ và timeout theo cấu hình lab. `server.py` đã đăng ký `benchmark_for_llm` dưới tên public `benchmark_query`; không cấp trực tiếp các cờ nội bộ cho LLM.
 
 **Quy tắc triển khai và đo:**
 

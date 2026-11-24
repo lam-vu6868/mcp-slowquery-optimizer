@@ -1,6 +1,6 @@
 # 📊 TIẾN ĐỘ DỰ ÁN
 
-> **Cập nhật lần cuối:** 24/11/2026 — thử q07 qua Groq–MCP–MySQL; Vũ quản lý
+> **Cập nhật lần cuối:** 24/11/2026 — kiểm tra lại q07 qua Groq–MCP–MySQL; Vũ quản lý
 > **Mốc đối chiếu hiện tại:** 24/11/2026; các bảng tuần bên dưới là lịch sử
 > **Tổng tiến độ:** Chưa tính lại từ mốc ~27% ngày 19/10
 >
@@ -77,11 +77,17 @@ Lệnh kiểm tra không chạy lại DB và cách chạy pytest trên Windows x
 - Groq đã nhận schema Tool 1–5 thật; Tool 2 đọc schema MySQL qua `readonly_user`. Với q07: hai lượt prompt v1 `parse_failed` vì `columns[0]` sai kiểu; prompt v2 thêm ví dụ cấu trúc cột. Một lượt v2 lỗi HTTP 400 sau Tool 2, một lượt v2 parse thành công với 2 index (`orders(status, order_date, customer_id, total_amount)` và `addresses(customer_id, city)`) cùng 1 rewrite. Tập cột index trùng đáp án q07, nhưng chưa đối chiếu hướng cột/rewrite đầy đủ, chưa chạy Validation Layer hoặc đo hiệu năng. Không dùng 4 lượt này để tính metric ổn định vì prompt version khác nhau.
 - Chưa chạy đủ 30 query/metric LLM; Validation Layer và Tool 6 vẫn chưa triển khai.
 
+### Kiểm tra lại q07 ngày 24/11/2026
+
+- Bốn lượt mới qua Python host → Groq → MCP → MySQL với `readonly_user` đều trả JSON hợp lệ, mỗi lượt có 3 proposal; ba lượt gọi Tool 2, một lượt gọi thêm Tool 3. Không tạo/drop index hoặc sửa dữ liệu MySQL.
+- HTTP 400 cũ không tái hiện. Bản ghi cũ chỉ có `BadRequestError`, không có mã/body lỗi nên chưa xác định nguyên nhân. `agent.py` nay ghi HTTP status, loại/mã lỗi API và dấu hiệu `failed_generation` khi có, nhưng không ghi nội dung phản hồi hoặc SQL.
+- Toàn bộ 208 unit tests pass; Ruff pass cho `agent.py` và test mới. Bốn lượt này chưa đủ để tính độ ổn định, Precision/Recall hoặc kiểm chứng hiệu năng proposal; chưa chạy Validation Layer hay đủ 30 query.
+
 ---
 
 ## 📅 CẬP NHẬT THEO TUẦN
 
-Các kết quả và lỗi dưới đây được giữ theo thời điểm thực hiện; trạng thái hiện tại xem cập nhật 22/11 ở trên.
+Các kết quả và lỗi dưới đây được giữ theo thời điểm thực hiện; trạng thái hiện tại xem cập nhật 24/11 ở trên.
 
 ### 🗓️ Tuần 1 (23/09 – 29/09) — ✅ DONE
 

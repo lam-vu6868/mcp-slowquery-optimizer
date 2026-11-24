@@ -83,13 +83,15 @@ flowchart TD
 | Tool 4 `explain_query`                 |     ✅ Done     |
 | Tool 5 `benchmark_query`               |     ✅ Done     |
 | Đo P95 bộ 30 query                     | ✅ Baseline 30/30 valid; đáp án 30/30 đạt P95/hash |
-| Tool 1–3 MCP                           |   🟡 Đang làm   |
+| Tool 1–5 MCP                           | 🟡 Đã đăng ký và thử qua stdio; còn tiêu chí roadmap chưa kiểm chứng |
 | Validation Layer                       | ⬜ Chưa bắt đầu |
 | 20 Prompt Injection                    | ⬜ Chưa bắt đầu |
 | Dashboard                              | ⬜ Chưa bắt đầu |
 | Báo cáo + Demo                         | ⬜ Chưa bắt đầu |
 
 **Chú thích:** ✅ Done | 🟡 Đang làm | ⬜ Chưa làm | 🔴 Trễ hạn
+
+Các mốc dưới đây giữ theo thời điểm thực hiện; trạng thái mới nhất là mục kiểm tra lại ngày 24/11/2026.
 
 **Kiểm chứng ngày 21/11/2026:** mỗi phép đo chính thức có 3 warm-up + 20 lượt, hash/số dòng khớp và P95 giảm ít nhất 20%. Đã đo đối chứng thứ tự composite cho q07–q12; 125 unit tests pass. Đây là kết quả script lab, chưa phải luồng MCP–LLM–Dashboard hoàn chỉnh. Chưa đo đầy đủ dung lượng index/chi phí ghi hoặc metric LLM.
 
@@ -100,6 +102,8 @@ flowchart TD
 **Tích hợp MCP trong ngày 22/11/2026:** `server.py` đã đăng ký Tool 1–3 và wrapper giới hạn của Tool 4–5 qua MCP SDK 2.x trên stdio. Danh sách tool LLM thấy chỉ có 5 tool; Tool 6 chưa được đăng ký. Chưa có LLM host, Validation Layer hoặc Dashboard end-to-end.
 
 **Thử Groq ngày 24/11/2026:** adapter Groq đã gọi API với tool mẫu; sau đó q07 chạy qua Groq–MCP–MySQL và có một lượt trả JSON hợp lệ gồm 2 index + 1 rewrite. Hai lượt prompt v1 bị `parse_failed`, một lượt v2 lỗi HTTP 400; chưa đo độ ổn định, hiệu năng đề xuất hoặc toàn bộ 30 query. Model thử nghiệm được ghim trong `config/settings.yaml`.
+
+**Kiểm tra lại ngày 24/11/2026:** bốn lượt q07 mới qua Python host → Groq → MCP → MySQL đều trả JSON hợp lệ, mỗi lượt có 3 proposal; một lượt gọi thêm Tool 3 ngoài Tool 2. HTTP 400 cũ chưa tái hiện và bản ghi cũ không có mã lỗi chi tiết, nên chưa xác định nguyên nhân. Run mới chỉ lưu mã/loại lỗi API đã lọc, không lưu nội dung phản hồi. Toàn bộ 208 unit tests pass; chưa đo metric ổn định hoặc hiệu năng đề xuất.
 
 > 📖 Chi tiết: [project-management/PROGRESS.md](project-management/PROGRESS.md) · Lịch và deadline: [project-management/ROADMAP.md](project-management/ROADMAP.md)
 
@@ -145,7 +149,7 @@ timeout /t 30
 #    Chi tiết và số dòng trong docs/setup-guide.md mục 5
 #    DB đã có đủ dữ liệu: bỏ qua bước nạp
 
-# 7–8. Các lệnh dự kiến khi hoàn tất tích hợp (server.py hiện còn khung)
+# 7. Chạy MCP Server Tool 1–5 qua stdio; Dashboard vẫn chưa tích hợp
 python -m mcp_server.server
 
 # 8. Chạy Dashboard (terminal khác)

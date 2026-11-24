@@ -14,18 +14,19 @@ LƯU Ý:
     - Có giới hạn số lượt tool call và ngân sách token mỗi query.
 
 CẦN LÀM:
-    [x] Vòng lặp tool-use (đã kiểm bằng client giả; chưa thử API thật).
+    [x] Vòng lặp tool-use (đã kiểm bằng client giả và thử q07 qua Groq/MCP/MySQL).
     [x] Retry khi JSON sai schema (tối đa 2 lần; đã kiểm bằng client giả).
     [x] Ghi metadata/hash lần chạy (đã kiểm bằng client giả).
-    [x] Adapter Groq đã có; q07 đã thử một lượt qua API + MCP/MySQL.
+    [x] Adapter Groq đã có; q07 có bốn lượt kiểm tra lại thành công qua API + MCP/MySQL.
 
 THAM KHẢO  : docs/api-contract.md (mục 2.3), config/settings.yaml
 
-TRẠNG THÁI : ĐANG LÀM — q07 có một lượt parse thành công; chưa đo 30 query.
+TRẠNG THÁI : ĐANG LÀM — q07 có các lượt parse thành công; chưa đo 30 query.
 """
 
 import hashlib
 import json
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -218,6 +219,18 @@ async def analyze_query(
     except Exception as exc:
         record["status"] = "error"
         record["error_type"] = type(exc).__name__
+        status = getattr(exc, "status_code", None)
+        if type(status) is int and 400 <= status < 600:
+            record["http_status"] = status
+            body = getattr(exc, "body", None)
+            if isinstance(body, dict):
+                error = body.get("error", body)
+                if isinstance(error, dict):
+                    for field in ("type", "code"):
+                        value = error.get(field)
+                        if isinstance(value, str) and re.fullmatch(r"[a-z0-9_]{1,64}", value):
+                            record[f"api_error_{field}"] = value
+                    record["failed_generation_present"] = error.get("failed_generation") is not None
         raise
     finally:
         record["finished_at"] = _utc_now()
