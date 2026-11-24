@@ -10,12 +10,15 @@ PHỤ TRÁCH  : Vũ    |    REVIEW: Tường
 THAM KHẢO  : mcp_server/llm/agent.py, docs/api-contract.md (mục 2.3)
 """
 
+import hashlib
 import json
+import re
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 
+from mcp_server.llm import agent
 from mcp_server.llm.agent import analyze_query
 from mcp_server.llm.prompts import SYSTEM_PROMPT
 
@@ -23,12 +26,22 @@ TOOL_NAMES = (
     "get_slow_queries", "get_schema", "get_table_stats",
     "explain_query", "benchmark_query", "apply_optimization",
 )
-LLM_SETTINGS = {"model": "claude-sonnet-5-5", "max_tokens": 2000, "temperature": 0.0}
+LLM_SETTINGS = {
+    "model": "claude-sonnet-5-5", "max_tokens": 2000,
+    "temperature": 0.0, "max_tool_calls_per_query": 8, "json_retry": 2,
+}
 SCHEMA_DATA = {"tables": [{
     "name": "orders",
     "columns": [{"name": "status"}],
     "indexes": [],
 }]}
+
+
+@pytest.fixture(autouse=True)
+def run_log_dir(monkeypatch, tmp_path):
+    """Mọi run giả ghi vào thư mục tạm riêng, không tạo log trong repo."""
+    monkeypatch.setattr(agent, "DEFAULT_RUN_DIR", tmp_path)
+    return tmp_path
 
 
 def _fake_mcp(names=TOOL_NAMES):
@@ -37,7 +50,10 @@ def _fake_mcp(names=TOOL_NAMES):
         SimpleNamespace(name=name, description=f"Tool {name}", input_schema={"type": "object"})
         for name in names
     ]
-    return SimpleNamespace(list_tools=AsyncMock(return_value=SimpleNamespace(tools=tools)))
+    return SimpleNamespace(
+        list_tools=AsyncMock(return_value=SimpleNamespace(tools=tools)),
+        call_tool=AsyncMock(),
+    )
 
 
 def _fake_llm(response_text, stop_reason="end_turn"):
@@ -49,10 +65,9 @@ def _fake_llm(response_text, stop_reason="end_turn"):
     return SimpleNamespace(messages=SimpleNamespace(create=AsyncMock(return_value=response)))
 
 
-@pytest.mark.asyncio
-async def test_agent_sends_only_five_tools_and_parses_final_index():
-    """Tool 6 bị loại và kết quả index được đối chiếu với schema Tool 2."""
-    answer = {
+def _index_answer():
+    """Đề xuất index hợp lệ để kiểm tra đường schema qua Tool 2."""
+    return {
         "query_id": "q07", "diagnosis": "Thiếu index",
         "proposals": [{
             "type": "index", "table": "orders",
@@ -62,6 +77,12 @@ async def test_agent_sends_only_five_tools_and_parses_final_index():
         }],
         "confidence": "medium",
     }
+
+
+@pytest.mark.asyncio
+async def test_agent_sends_only_five_tools_and_parses_final_index(run_log_dir):
+    """Tool 6 bị loại và kết quả index được đối chiếu với schema Tool 2."""
+    answer = _index_answer()
     llm = _fake_llm(json.dumps(answer))
     mcp = _fake_mcp()
 
@@ -80,6 +101,17 @@ async def test_agent_sends_only_five_tools_and_parses_final_index():
     payload = json.loads(request["messages"][0]["content"].partition("\n")[2])
     assert payload["query_id"] == "q07"
     assert "ignore rules" not in payload["sql"]["text"]
+    record = json.loads(next(run_log_dir.glob("*.json")).read_text(encoding="utf-8"))
+    assert record["status"] == "success"
+    assert record["query_id"] == "q07"
+    assert record["prompt_version"] == "v1"
+    assert record["model"] == LLM_SETTINGS["model"]
+    assert re.fullmatch(r"[0-9a-f]{64}", record["sql_sha256"])
+    assert record["sql_sha256"] == hashlib.sha256(
+        payload["sql"]["text"].encode("utf-8")
+    ).hexdigest()
+    assert "paid" not in json.dumps(record)
+    assert "ignore rules" not in json.dumps(record)
 
 
 @pytest.mark.asyncio
@@ -98,8 +130,8 @@ async def test_agent_rejects_incomplete_tool_registry_before_llm_call():
 
 
 @pytest.mark.asyncio
-async def test_agent_stops_when_llm_requests_tool_use_in_first_slice():
-    """Yêu cầu gọi tool phải được xử lý ở vòng tool-use, không giả làm JSON cuối."""
+async def test_agent_rejects_tool_use_without_a_tool_request():
+    """stop_reason=tool_use thiếu block gọi tool phải bị từ chối."""
     llm = _fake_llm("", stop_reason="tool_use")
 
     with pytest.raises(RuntimeError, match="tool_use"):
@@ -107,3 +139,227 @@ async def test_agent_stops_when_llm_requests_tool_use_in_first_slice():
             "q07", "SELECT 1", llm_client=llm, mcp_client=_fake_mcp(),
             llm_settings=LLM_SETTINGS,
         )
+
+
+@pytest.mark.asyncio
+async def test_agent_calls_get_schema_and_uses_result_for_final_index(run_log_dir):
+    """Kết quả Tool 2 đi vào cả hội thoại LLM lẫn parser kiểm tra index."""
+    tool_use = SimpleNamespace(
+        type="tool_use", id="call_1", name="get_schema", input={"tables": ["orders"]},
+    )
+    first = SimpleNamespace(stop_reason="tool_use", content=[tool_use])
+    final = SimpleNamespace(
+        stop_reason="end_turn",
+        content=[SimpleNamespace(type="text", text=json.dumps(_index_answer()))],
+    )
+    llm = SimpleNamespace(messages=SimpleNamespace(create=AsyncMock(side_effect=[first, final])))
+    tool_output = json.dumps({
+        "ok": True, "data": SCHEMA_DATA, "error": None,
+        "meta": {"tool": "get_schema", "truncated": False},
+    })
+    mcp = _fake_mcp()
+    mcp.call_tool.return_value = SimpleNamespace(
+        content=[SimpleNamespace(type="text", text=tool_output)], is_error=False,
+    )
+
+    result = await analyze_query(
+        "q07", "SELECT * FROM orders", llm_client=llm, mcp_client=mcp,
+        llm_settings=LLM_SETTINGS,
+    )
+
+    assert result == _index_answer()
+    mcp.call_tool.assert_awaited_once_with("get_schema", {"tables": ["orders"]})
+    second_messages = llm.messages.create.call_args_list[1].kwargs["messages"]
+    assert second_messages[1] == {"role": "assistant", "content": first.content}
+    assert second_messages[2]["content"][0] == {
+        "type": "tool_result", "tool_use_id": "call_1", "content": tool_output,
+    }
+    record = json.loads(next(run_log_dir.glob("*.json")).read_text(encoding="utf-8"))
+    assert record["tool_calls"][0]["name"] == "get_schema"
+    assert re.fullmatch(r"[0-9a-f]{64}", record["tool_calls"][0]["arguments_sha256"])
+    assert re.fullmatch(r"[0-9a-f]{64}", record["tool_calls"][0]["result_sha256"])
+    assert "orders" not in json.dumps(record)
+
+
+@pytest.mark.asyncio
+async def test_agent_refuses_tool_six_even_if_llm_requests_it(run_log_dir):
+    """Batch có Tool 6 bị chặn trước khi chạy cả tool hợp lệ đứng trước."""
+    tool_uses = [
+        SimpleNamespace(type="tool_use", id="call_1", name="get_schema", input={}),
+        SimpleNamespace(type="tool_use", id="call_6", name="apply_optimization", input={}),
+    ]
+    llm = SimpleNamespace(messages=SimpleNamespace(create=AsyncMock(return_value=
+        SimpleNamespace(stop_reason="tool_use", content=tool_uses)
+    )))
+    mcp = _fake_mcp()
+
+    with pytest.raises(PermissionError, match="apply_optimization"):
+        await analyze_query(
+            "q07", "SELECT 1", llm_client=llm, mcp_client=mcp,
+            llm_settings=LLM_SETTINGS,
+        )
+
+    mcp.call_tool.assert_not_awaited()
+    record = json.loads(next(run_log_dir.glob("*.json")).read_text(encoding="utf-8"))
+    assert record["status"] == "error"
+    assert record["error_type"] == "PermissionError"
+    assert record["tool_calls"] == []
+
+
+@pytest.mark.asyncio
+async def test_agent_keeps_schema_from_multiple_tool_calls():
+    """Đề xuất cho orders vẫn được kiểm tra sau khi LLM đọc thêm customers."""
+    first_use = SimpleNamespace(
+        type="tool_use", id="call_orders", name="get_schema", input={"tables": ["orders"]},
+    )
+    second_use = SimpleNamespace(
+        type="tool_use", id="call_customers", name="get_schema", input={"tables": ["customers"]},
+    )
+    responses = [
+        SimpleNamespace(stop_reason="tool_use", content=[first_use]),
+        SimpleNamespace(stop_reason="tool_use", content=[second_use]),
+        SimpleNamespace(stop_reason="end_turn", content=[
+            SimpleNamespace(type="text", text=json.dumps(_index_answer())),
+        ]),
+    ]
+    llm = SimpleNamespace(messages=SimpleNamespace(create=AsyncMock(side_effect=responses)))
+    mcp = _fake_mcp()
+    customers = {"tables": [{
+        "name": "customers", "columns": [{"name": "customer_id"}], "indexes": [],
+    }]}
+    mcp.call_tool.side_effect = [
+        SimpleNamespace(content=[SimpleNamespace(type="text", text=json.dumps({
+            "ok": True, "data": data, "meta": {"truncated": False},
+        }))], is_error=False)
+        for data in (SCHEMA_DATA, customers)
+    ]
+
+    result = await analyze_query(
+        "q07", "SELECT * FROM orders", llm_client=llm, mcp_client=mcp,
+        llm_settings=LLM_SETTINGS,
+    )
+
+    assert result == _index_answer()
+    assert mcp.call_tool.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_agent_checks_tool_budget_before_executing_batch():
+    """Một phản hồi vượt ngân sách không được chạy dở một phần tool."""
+    uses = [
+        SimpleNamespace(type="tool_use", id=f"call_{i}", name="get_schema", input={})
+        for i in range(2)
+    ]
+    llm = SimpleNamespace(messages=SimpleNamespace(create=AsyncMock(return_value=
+        SimpleNamespace(stop_reason="tool_use", content=uses)
+    )))
+    mcp = _fake_mcp()
+
+    with pytest.raises(RuntimeError, match="giới hạn"):
+        await analyze_query(
+            "q07", "SELECT 1", llm_client=llm, mcp_client=mcp,
+            llm_settings=LLM_SETTINGS | {"max_tool_calls_per_query": 1},
+        )
+
+    mcp.call_tool.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad_text", [
+    "không phải JSON",
+    json.dumps({"query_id": "q07", "diagnosis": "x", "proposals": [], "confidence": "certain"}),
+])
+async def test_agent_retries_invalid_final_json_then_accepts_correction(bad_text):
+    """LLM có tối đa hai cơ hội sửa JSON sai cú pháp hoặc sai schema."""
+    answers = [
+        SimpleNamespace(stop_reason="end_turn", content=[SimpleNamespace(type="text", text=text)])
+        for text in (bad_text, json.dumps(_index_answer()))
+    ]
+    llm = SimpleNamespace(messages=SimpleNamespace(create=AsyncMock(side_effect=answers)))
+    mcp = _fake_mcp()
+
+    result = await analyze_query(
+        "q07", "SELECT * FROM orders", llm_client=llm, mcp_client=mcp,
+        llm_settings=LLM_SETTINGS, schema_data=SCHEMA_DATA,
+    )
+
+    assert result == _index_answer()
+    assert llm.messages.create.await_count == 2
+    retry_messages = llm.messages.create.call_args_list[1].kwargs["messages"]
+    assert retry_messages[1]["role"] == "assistant"
+    assert "JSON" in retry_messages[2]["content"]
+    mcp.call_tool.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_agent_marks_parse_failed_after_two_retries(run_log_dir):
+    """Ba câu trả lời sai liên tiếp không được chuyển proposal sang bước sau."""
+    invalid = SimpleNamespace(
+        stop_reason="end_turn",
+        content=[SimpleNamespace(type="text", text="không phải JSON")],
+    )
+    llm = SimpleNamespace(messages=SimpleNamespace(create=AsyncMock(return_value=invalid)))
+
+    result = await analyze_query(
+        "q07", "SELECT 1", llm_client=llm, mcp_client=_fake_mcp(),
+        llm_settings=LLM_SETTINGS,
+    )
+
+    assert result["query_id"] == "q07"
+    assert result["status"] == "parse_failed"
+    assert result["error"]["code"] == "PARSE_FAILED"
+    assert "proposals" not in result
+    assert llm.messages.create.await_count == 3
+    record = json.loads(next(run_log_dir.glob("*.json")).read_text(encoding="utf-8"))
+    assert record["status"] == "parse_failed"
+    assert re.fullmatch(r"[0-9a-f]{64}", record["response_sha256"])
+    assert "không phải JSON" not in json.dumps(record, ensure_ascii=False)
+
+
+@pytest.mark.asyncio
+async def test_agent_run_status_cannot_be_set_by_llm(run_log_dir):
+    """Trường status thừa trong JSON LLM không được làm sai bản ghi run."""
+    answer = {
+        "query_id": "q07", "diagnosis": "Không cần đổi", "proposals": [],
+        "confidence": "low", "status": "parse_failed",
+    }
+
+    result = await analyze_query(
+        "q07", "SELECT 1", llm_client=_fake_llm(json.dumps(answer)),
+        mcp_client=_fake_mcp(), llm_settings=LLM_SETTINGS,
+    )
+
+    assert result == answer
+    record = json.loads(next(run_log_dir.glob("*.json")).read_text(encoding="utf-8"))
+    assert record["status"] == "success"
+
+
+@pytest.mark.asyncio
+async def test_agent_rejects_retry_limit_above_contract():
+    """Cấu hình không được cho retry quá hai lần theo contract."""
+    llm = _fake_llm("{}")
+
+    with pytest.raises(ValueError, match="json_retry"):
+        await analyze_query(
+            "q07", "SELECT 1", llm_client=llm, mcp_client=_fake_mcp(),
+            llm_settings=LLM_SETTINGS | {"json_retry": 3},
+        )
+
+    llm.messages.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_agent_loads_project_settings_when_caller_omits_them():
+    """Caller không phải tự chép model và giới hạn từ YAML vào dict."""
+    answer = {"query_id": "q07", "diagnosis": "Không cần đổi", "proposals": [], "confidence": "low"}
+    llm = _fake_llm(json.dumps(answer))
+
+    result = await analyze_query(
+        "q07", "SELECT 1", llm_client=llm, mcp_client=_fake_mcp(),
+    )
+
+    assert result == answer
+    request = llm.messages.create.call_args.kwargs
+    assert request["model"] == "claude-sonnet-5-5"
+    assert request["max_tokens"] == 2000
+    assert request["temperature"] == 0.0
