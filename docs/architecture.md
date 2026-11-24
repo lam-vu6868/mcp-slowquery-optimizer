@@ -1,9 +1,9 @@
 # 🏗️ KIẾN TRÚC HỆ THỐNG — MCP Slow Query Optimizer
 
 > **Người giữ file:** Vũ · **Reviewer:** Cả nhóm
-> **Cập nhật:** 22/11/2026
+> **Cập nhật:** 24/11/2026
 > **Trạng thái:** Thiết kế mục tiêu theo contract v2 (DRAFT, chờ nhóm review). Chưa xác nhận luồng end-to-end.
-> **Thử nghiệm 24/11/2026:** sơ đồ còn ghi Claude theo thiết kế ban đầu; code hiện thử Groq qua `llm/groq.py`. Ranh giới Tool 1–5/Tool 6 giữ theo contract.
+> **Thử nghiệm 24/11/2026:** q07 đã đi qua Groq → LLM host → MCP Tool 2 → MySQL và trả JSON hợp lệ trong một lượt. Các sơ đồ từ Validation đến Dashboard/Tool 6 bên dưới vẫn là thiết kế mục tiêu.
 >
 > File này mô tả **luồng và ranh giới giữa các thành phần**; [api-contract.md](api-contract.md) quy định input/output của 6 tool. Cần giữ cả hai file.
 > Đọc kèm: [api-contract.md](api-contract.md) · [../project-management/ROADMAP.md](../project-management/ROADMAP.md) mục 2.
@@ -53,7 +53,7 @@ Xây dựng hệ thống **tự động tìm và đề xuất cách sửa các q
 
 Lab hiện tại có 5 bảng, tổng 5M dòng: customers 500.000, addresses 500.000, products 50.000, orders 1.500.000 và order_items 2.450.000. Các sơ đồ MCP/LLM/approval bên dưới là thiết kế, không phải tuyên bố mọi thành phần đã triển khai.
 
-Code hiện tại: Tool 1 đọc `performance_schema`, Tool 2 đọc schema, Tool 3 lấy thống kê/mẫu PK có giới hạn; Tool 4–5 có wrapper giới hạn tham số LLM. `server.py` đã đăng ký đúng 5 tool này qua stdio. LLM agent, Validation Layer, Tool 6 và Dashboard còn là khung; chưa có luồng end-to-end. Nhánh `mysql.slow_log` của Tool 1 chờ cấp quyền SELECT phù hợp.
+Code hiện tại: Tool 1 đọc `performance_schema`, Tool 2 đọc schema, Tool 3 lấy thống kê/mẫu PK có giới hạn; Tool 4–5 có wrapper giới hạn tham số LLM. `server.py` đã đăng ký đúng 5 tool này qua stdio. `llm/agent.py` điều khiển vòng gọi tool; `llm/groq.py` chuyển request/response sang API Groq, dùng model `openai/gpt-oss-120b` trong `config/settings.yaml`. Lượt thử q07 đã gọi Tool 2 và trả 2 đề xuất index cùng 1 rewrite; đây chưa phải kiểm chứng hiệu năng hay độ ổn định. Validation Layer, Tool 6 và Dashboard chưa có luồng end-to-end. Nhánh `mysql.slow_log` của Tool 1 chờ cấp quyền SELECT phù hợp.
 
 Luồng đã kiểm chứng offline: `ground_truth_candidates.py` → `scripts/verify_ground_truth.py` → EXPLAIN/benchmark/hash → `ground_truth.json` và bằng chứng trong `data/outputs/`. Có 30/30 phương án đạt đo kiểm chứng, còn chờ Hải review/GVHD ký. Script chỉ nhận ứng viên cố định trong repo, dùng readonly cho SELECT và index_admin cho index thử theo ủy quyền lab; không đăng ký MCP hoặc gọi đường apply của LLM. Index thử được dọn và cấu hình ban đầu được khôi phục sau batch. Kết quả script offline chưa chứng minh luồng Validation Layer + Dashboard đã hoạt động.
 
@@ -61,7 +61,7 @@ Luồng đã kiểm chứng offline: `ground_truth_candidates.py` → `scripts/v
 |:---:|---|---|---|
 | 1 | **MySQL 8.0** (Docker) | CSDL thực nghiệm, 5 bảng/tổng 5M dòng | Hải |
 | 2 | **MCP Server** | Cung cấp Tool 1–5 cho LLM và Tool 6 cho backend Dashboard | Vũ + Hải + Tường + Tình |
-| 3 | **LLM Host (Claude)** | Phân tích và đề xuất (chỉ được gọi Tool 1–5) | Vũ |
+| 3 | **LLM Host (Python) + Groq API** | Phân tích và đề xuất; host chỉ cấp Tool 1–5 cho LLM | Vũ |
 | 4 | **Validation Layer** | Chạy thử INVISIBLE INDEX, đo P95, hash kết quả | Hải |
 | 5 | **Dashboard (Streamlit)** | Hiển thị đề xuất, nút Approve/Reject | Tình |
 | 6 | **Approval Token Service** | Sinh và verify token HMAC | Tình |
@@ -90,6 +90,8 @@ flowchart TB
             IH["Helper DDL nội bộ<br/>apply.py · index_admin"]
         end
 
+        H["LLM host<br/>agent.py + groq.py"]
+
         subgraph VL["🛡️ Validation Layer"]
             V1["Chạy INVISIBLE INDEX"]
             V2["Đo P95 trước/sau"]
@@ -115,15 +117,17 @@ flowchart TB
     end
 
     subgraph CLOUD["☁️ Cloud"]
-        LLM["🤖 Claude (Anthropic API)"]
+        LLM["🤖 Groq API<br/>model GPT-OSS 120B"]
     end
 
     U1 -->|"1. Xem dashboard"| DASH
     D1 -.->|"query"| T1
-    D2 -.->|"query"| T2
-    D2 -.->|"query"| T3
-    D2 -.->|"query"| T4
-    D2 -.->|"query"| T5
+    D2 -.->|"yêu cầu phân tích · thiết kế"| H
+    H -->|"có thể gọi"| T1
+    H -->|"có thể gọi"| T2
+    H -->|"có thể gọi"| T3
+    H -->|"có thể gọi"| T4
+    H -->|"có thể gọi"| T5
 
     T1 --> DB
     T2 --> DB
@@ -131,13 +135,9 @@ flowchart TB
     T4 --> DB
     T5 --> DB
 
-    T1 -.->|"JSON"| LLM
-    T2 -.->|"JSON"| LLM
-    T3 -.->|"JSON"| LLM
-    T4 -.->|"JSON"| LLM
-    T5 -.->|"JSON"| LLM
-
-    LLM -.->|"đề xuất JSON"| VL
+    H -->|"prompt, tool schemas/kết quả"| LLM
+    LLM -->|"tool call/đề xuất JSON"| H
+    H -.->|"đề xuất đã parse · thiết kế"| VL
     VL --> V1
     V1 -->|"tạo/dọn index thử"| IH
     IH --> DB
@@ -168,19 +168,19 @@ flowchart TB
 **MCP (Model Context Protocol)** = chuẩn giao tiếp giữa **LLM** và **các tool bên ngoài**.
 
 **Trong dự án này:**
-- **MCP Server** = nơi định nghĩa 6 tool
-- **MCP Host/Client** = nơi LLM chạy (agent loop) — gọi tool qua giao thức MCP
+- **MCP Server** = đã đăng ký Tool 1–5 cho LLM; Tool 6 là đường áp dụng dự kiến chỉ dành cho Dashboard backend
+- **MCP Host/Client** = mã Python giữ agent loop và gọi tool qua giao thức MCP
 
 ### 3.2. LLM host chạy ở đâu?
 
-**LLM host = Python script** (`mcp_server/llm/agent.py`) — KHÔNG phải Claude tự chạy.
+**LLM host = mã Python** (`mcp_server/llm/agent.py`). `mcp_server/llm/groq.py` là adapter gọi Groq API; Groq chạy model LLM, còn host quyết định tool nào được phép thực thi.
 
 ```
 Luồng:
-1. Python gọi Claude API với danh sách tool 1-5
-2. Claude trả về: "Tôi muốn gọi tool get_schema với table=orders"
-3. Python nhận yêu cầu → chạy tool get_schema() → trả kết quả cho Claude
-4. Claude phân tích kết quả → trả lời cuối cùng (JSON đề xuất)
+1. Python gửi prompt và danh sách Tool 1–5 qua adapter tới Groq API
+2. Model chọn một tool, ví dụ get_schema trong lượt q07
+3. Host kiểm tra tên tool → gọi MCP Server → trả kết quả cho model
+4. Model trả JSON đề xuất; host kiểm tra JSON/schema trước khi trả cho caller
 ```
 
 ### 3.3. Sơ đồ LLM Host ↔ MCP Server
@@ -189,37 +189,32 @@ Luồng:
 sequenceDiagram
     autonumber
     participant PY as Python (LLM Host)
-    participant CL as Claude API
+    participant CL as Groq API
     participant MCP as MCP Server
     participant DB as MySQL
 
-    PY->>CL: messages.create(<br/>tools=[T1,T2,T3,T4,T5],<br/>prompt="Phân tích slow query q07")
-    CL-->>PY: "Gọi T2 get_schema(table='orders')"
-    PY->>MCP: get_schema("orders")
-    MCP->>DB: SHOW CREATE TABLE orders
-    DB-->>MCP: CREATE TABLE ...
+    PY->>CL: Prompt q07 + schema Tool 1–5<br/>qua groq.py
+    CL-->>PY: Gọi T2 get_schema
+    PY->>MCP: get_schema(...)
+    MCP->>DB: Đọc metadata information_schema
+    DB-->>MCP: Cột, index, khóa ngoại
     MCP-->>PY: JSON schema
     PY->>CL: "Kết quả T2: {schema}"
-    CL-->>PY: "Gọi T4 explain_for_llm(sql='...')"
-    PY->>MCP: explain_for_llm("SELECT ...")
-    MCP->>DB: EXPLAIN FORMAT=JSON ...
-    DB-->>MCP: query plan
-    MCP-->>PY: JSON plan
-    PY->>CL: "Kết quả T4: {plan}"
-    CL-->>PY: JSON đề xuất cuối cùng<br/>{type: index, columns: [...]}
+    CL-->>PY: JSON đề xuất cuối cùng<br/>2 index + 1 rewrite
+    PY->>PY: Kiểm tra JSON/schema và ghi hash run
 ```
 
 ### 3.4. Danh sách tool cấp cho LLM
 
-Bảng này là quyền dự kiến khi `server.py` được triển khai; dấu ✅ không có nghĩa tool đã đăng ký MCP ở thời điểm hiện tại.
+Bảng này là các tool `server.py` đã đăng ký cho LLM qua MCP. Dấu ✅ nghĩa là model được phép chọn gọi, không có nghĩa mỗi lượt sẽ gọi đủ cả 5 tool.
 
 | Tool | Cấp cho LLM? | Lý do |
 |---|:---:|---|
 | Tool 1 `get_slow_queries` | ✅ | Hiện đọc digest từ `performance_schema`; `mysql.slow_log` chưa triển khai |
 | Tool 2 `get_schema` | ✅ | Đọc cấu trúc bảng |
 | Tool 3 `get_table_stats` | ✅ | Đọc thống kê |
-| Tool 4 `explain_for_llm` | ✅ | Wrapper gọi `explain_query` với `mode=estimate`, không bật invisible index |
-| Tool 5 `benchmark_for_llm` | ✅ | Wrapper gọi `benchmark_query` với tham số đo cố định; chưa đăng ký MCP |
+| Tool 4 `explain_query` | ✅ | MCP đăng ký wrapper `explain_for_llm` với `mode=estimate`, không bật invisible index |
+| Tool 5 `benchmark_query` | ✅ | MCP đăng ký wrapper `benchmark_for_llm` với tham số đo cố định |
 | **Tool 6 `apply_optimization`** | ❌ | **Chỉ Dashboard backend gọi** |
 
 **→ Tool 6 KHÔNG nằm trong danh sách LLM thấy → không thể tự apply.**
@@ -235,7 +230,7 @@ flowchart TD
     S([🚀 Bắt đầu]) --> B1["1. MySQL ghi slow log<br/>Tool 1 hiện đọc performance_schema"]
     B1 --> B2["2. Kỹ sư mở Dashboard<br/>xem Tab 1"]
     B2 --> B3["3. Dashboard gọi Tool 1<br/>get_slow_queries()"]
-    B3 --> B4["4. LLM Host phân tích<br/>gọi Tool 2,3,4,5"]
+    B3 --> B4["4. LLM Host phân tích<br/>có thể gọi Tool 1–5"]
     B4 --> B5["5. LLM trả JSON đề xuất<br/>{type, columns, rationale}"]
     B5 --> B6["6. Validation Layer<br/>tạo INVISIBLE INDEX<br/>đo P95 trước/sau"]
     B6 --> B7{"7. Pass?<br/>(đủ bằng chứng, index được dùng,<br/>P95↓≥20%, hash equal)"}
@@ -262,8 +257,8 @@ flowchart TD
 |:---:|---|---|---|
 | 1 | MySQL | Hải | Đã bật slow log 0.5s |
 | 2–3 | Dashboard + Tool 1 | Tình + Vũ | Tab 1 |
-| 4 | LLM Host + Tool 2-5 | Vũ + Hải + Tường | Agent loop |
-| 5 | Claude API | Vũ | Prompt engineering |
+| 4 | LLM Host + Tool 1–5 | Vũ + Hải + Tường | Agent loop; model chọn tool cần dùng |
+| 5 | Groq API (model GPT-OSS 120B) | Vũ | Prompt và JSON đề xuất |
 | 6–8 | Validation Layer | Hải | INVISIBLE INDEX |
 | 9 | Dashboard | Tình | Tab 2 |
 | 10 | Người dùng | — | Human-in-the-loop |
@@ -605,7 +600,7 @@ CREATE TABLE orders (
 
 ## 8. SƠ ĐỒ SEQUENCE CHI TIẾT
 
-### 8.1. Sequence đầy đủ — từ slow log đến apply
+### 8.1. Sequence mục tiêu — từ slow log đến apply
 
 ```mermaid
 sequenceDiagram
@@ -614,7 +609,7 @@ sequenceDiagram
     participant D as Dashboard
     participant MCP as MCP Server
     participant LLM as LLM Host (Python)
-    participant CL as Claude API
+    participant CL as Groq API
     participant VL as Validation
     participant TS as Token Service
     participant IH as Helper DDL nội bộ
@@ -641,8 +636,8 @@ sequenceDiagram
     DB-->>MCP: schema
     MCP-->>LLM: JSON
     LLM->>CL: Kết quả T2
-    CL-->>LLM: Gọi T4 explain_for_llm
-    LLM->>MCP: T4.explain_for_llm(sql)
+    CL-->>LLM: Gọi T4 explain_query
+    LLM->>MCP: T4.explain_query(sql)
     MCP->>DB: EXPLAIN FORMAT=JSON
     DB-->>MCP: plan
     MCP-->>LLM: JSON plan
@@ -681,6 +676,8 @@ sequenceDiagram
 
 ### 9.1. Deployment diagram
 
+Sơ đồ này gồm luồng Groq–MCP đã thử và kết nối Dashboard còn trong thiết kế mục tiêu.
+
 ```mermaid
 flowchart TB
     subgraph USER["Máy người dùng"]
@@ -696,27 +693,31 @@ flowchart TB
 
         subgraph PY["🐍 Python 3.11+"]
             VENV[".venv"]
+            AGENT["llm/agent.py + groq.py"]
             SERVER["mcp_server.server"]
             STREAMLIT["dashboard/app.py"]
+            VENV --> AGENT
             VENV --> SERVER
             VENV --> STREAMLIT
         end
 
         subgraph FILES["📁 File System"]
-            ENV[".env<br/>- MYSQL_ROOT_PASSWORD<br/>- ANTHROPIC_API_KEY<br/>- APPROVAL_SECRET"]
+            ENV[".env<br/>- GROQ_API_KEY<br/>- DB credentials<br/>- APPROVAL_SECRET (thiết kế)"]
             CONF["db/conf/my.cnf"]
             SCHEMA["db/schema.sql"]
         end
     end
 
     subgraph CLOUD["☁️ Cloud"]
-        ANTHROPIC["Anthropic API<br/>api.anthropic.com"]
+        GROQ["Groq API<br/>api.groq.com"]
     end
 
-    B -->|"HTTP"| STREAMLIT
-    STREAMLIT -->|"MCP stdio"| SERVER
+    B -.->|"HTTP · thiết kế"| STREAMLIT
+    STREAMLIT -.->|"gọi phân tích · thiết kế"| AGENT
+    AGENT -->|"MCP stdio"| SERVER
     SERVER -->|"pymysql:3307"| MYSQL
-    SERVER -->|"HTTPS"| ANTHROPIC
+    AGENT -->|"HTTPS"| GROQ
+    AGENT -.->|"đọc key"| ENV
     SERVER -.->|"read .env"| ENV
     MYSQL -.->|"read config"| CONF
 ```
@@ -729,7 +730,7 @@ flowchart TB
 | MySQL (ra host) | **3307** | TCP | Tránh conflict MySQL local |
 | Streamlit Dashboard | 8501 | HTTP | Người dùng truy cập |
 | MCP Server | — | stdio | Giao tiếp qua stdin/stdout |
-| Anthropic API | 443 | HTTPS | Gọi Claude |
+| Groq API | 443 | HTTPS | Adapter gửi prompt và tool, nhận phản hồi model |
 
 ---
 
