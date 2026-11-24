@@ -1,7 +1,7 @@
 # 📊 TIẾN ĐỘ DỰ ÁN
 
-> **Cập nhật lần cuối:** 22/11/2026 — đăng ký Tool 1–5 vào MCP stdio; Vũ quản lý
-> **Mốc đối chiếu hiện tại:** 22/11/2026; các bảng tuần bên dưới là lịch sử
+> **Cập nhật lần cuối:** 24/11/2026 — thử q07 qua Groq–MCP–MySQL; Vũ quản lý
+> **Mốc đối chiếu hiện tại:** 24/11/2026; các bảng tuần bên dưới là lịch sử
 > **Tổng tiến độ:** Chưa tính lại từ mốc ~27% ngày 19/10
 >
 > ⚠️ **File này chỉ ghi TRẠNG THÁI.** Deadline, người phụ trách và tiêu chí Done xem [ROADMAP.md](ROADMAP.md) (mục 4–5). Mục tiêu Precision/Recall/Consistency xem [ROADMAP.md](ROADMAP.md) mục 2.4.
@@ -19,7 +19,7 @@
 |  1  | CSDL 5 bảng, tổng 5M records                         |   ✅ Đã nạp/kiểm tra   | Hải              |           05/10            |
 |  2  | 30 query + ground truth                              | 🟡 Đạt đo kiểm chứng; chờ review/ký | Tường | 06/10 (draft) · 20/10 (ký) |
 |  3  | Tool 1–5 MCP                                         | 🟡 Đang làm | Vũ · Hải · Tường |           13/10            |
-|  4  | Tích hợp LLM                                         |     ⬜      | Vũ               |           18/10            |
+|  4  | Tích hợp LLM                                         | 🟡 Đang làm | Vũ               |           18/10            |
 |  5  | Validation Layer                                     |     ⬜      | Hải              |           22/10            |
 |  6  | Tool 6 + approval token + 20 injection               |     ⬜      | Tình             |           27/10            |
 |  7  | Metrics + Baseline                                   |     ⬜      | Tường · Hải      |           03/11            |
@@ -67,6 +67,15 @@ Lệnh kiểm tra không chạy lại DB và cách chạy pytest trên Windows x
 
 - `server.py` dùng MCP SDK 2.x (`MCPServer`) để đăng ký Tool 1–3 và hai wrapper LLM của Tool 4–5, cùng tên public `explain_query` và `benchmark_query`. Tool 6 và hàm Tool 4–5 đầy đủ tham số không nằm trong registry LLM.
 - Test registry kiểm tra đúng 5 tên và schema Tool 4–5 chỉ có `sql`. Đã thử client/server qua stdio thật: liệt kê đúng 5 tool, input sai của Tool 1 nhận `INVALID_INPUT`; sau đó gọi cả 5 tool bằng input đọc giới hạn trên MySQL thật, tất cả trả `ok=true`. Toàn bộ 150 test pass; Ruff pass cho `server.py` và test mới. Chưa thử host LLM, Dashboard hoặc Tool 6.
+
+---
+
+## Kiểm chứng ngày 24/11/2026 — LLM host
+
+- `agent.py` có vòng gọi Tool 1–5, retry JSON và hash run; `parsers.py` kiểm JSON Schema cùng schema Tool 2. Adapter `llm/groq.py` đổi messages/tool calls sang Groq; model thử nghiệm ghim `openai/gpt-oss-120b` trong `config/settings.yaml`.
+- LLM giả + MCP giả/registry/stdio: 207 test toàn bộ pass, Ruff pass cho file Python đã sửa. Một lần thử Groq API thật với **tool mẫu** nhận `tool_use`, gửi kết quả mẫu rồi nhận phản hồi cuối; không gọi MySQL.
+- Groq đã nhận schema Tool 1–5 thật; Tool 2 đọc schema MySQL qua `readonly_user`. Với q07: hai lượt prompt v1 `parse_failed` vì `columns[0]` sai kiểu; prompt v2 thêm ví dụ cấu trúc cột. Một lượt v2 lỗi HTTP 400 sau Tool 2, một lượt v2 parse thành công với 2 index (`orders(status, order_date, customer_id, total_amount)` và `addresses(customer_id, city)`) cùng 1 rewrite. Tập cột index trùng đáp án q07, nhưng chưa đối chiếu hướng cột/rewrite đầy đủ, chưa chạy Validation Layer hoặc đo hiệu năng. Không dùng 4 lượt này để tính metric ổn định vì prompt version khác nhau.
+- Chưa chạy đủ 30 query/metric LLM; Validation Layer và Tool 6 vẫn chưa triển khai.
 
 ---
 

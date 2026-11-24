@@ -3,20 +3,25 @@ tests/test_llm_agent.py
 -----------------------
 
 CHỨC NĂNG :
-    Test bước đầu của LLM host bằng LLM giả và MCP giả, không gọi API/DB thật.
+    Test LLM host bằng LLM giả và MCP giả/registry thật/stdio, không gọi API/DB thật.
 
 PHỤ TRÁCH  : Vũ    |    REVIEW: Tường
 
 THAM KHẢO  : mcp_server/llm/agent.py, docs/api-contract.md (mục 2.3)
 """
 
+import asyncio
 import hashlib
 import json
 import re
+import sys
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from mcp import ClientSession
+from mcp.client.stdio import StdioServerParameters, stdio_client
 
 from mcp_server.llm import agent
 from mcp_server.llm.agent import analyze_query
@@ -104,7 +109,7 @@ async def test_agent_sends_only_five_tools_and_parses_final_index(run_log_dir):
     record = json.loads(next(run_log_dir.glob("*.json")).read_text(encoding="utf-8"))
     assert record["status"] == "success"
     assert record["query_id"] == "q07"
-    assert record["prompt_version"] == "v1"
+    assert record["prompt_version"] == "v2"
     assert record["model"] == LLM_SETTINGS["model"]
     assert re.fullmatch(r"[0-9a-f]{64}", record["sql_sha256"])
     assert record["sql_sha256"] == hashlib.sha256(
@@ -127,6 +132,92 @@ async def test_agent_rejects_incomplete_tool_registry_before_llm_call():
         )
 
     llm.messages.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_agent_calls_registered_mcp_tool_without_database(monkeypatch, run_log_dir):
+    """Agent gọi registry thật; input sai dừng tại tool mà không chạm DB."""
+    from mcp_server import server
+    from mcp_server.tools import slow_queries
+
+    monkeypatch.setattr(slow_queries, "get_conn", lambda: pytest.fail("DB must not be called"))
+
+    async def list_registered_tools():
+        # Agent cần dạng ListToolsResult; MCPServer.list_tools() trả trực tiếp list.
+        return SimpleNamespace(tools=await server.mcp.list_tools())
+
+    mcp = SimpleNamespace(
+        list_tools=list_registered_tools,
+        call_tool=server.mcp.call_tool,
+    )
+    first = SimpleNamespace(
+        stop_reason="tool_use",
+        content=[SimpleNamespace(
+            type="tool_use", id="call_1", name="get_slow_queries", input={"limit": 0},
+        )],
+    )
+    answer = {"query_id": "q07", "diagnosis": "Chưa đủ dữ liệu", "proposals": [], "confidence": "low"}
+    final = SimpleNamespace(
+        stop_reason="end_turn",
+        content=[SimpleNamespace(type="text", text=json.dumps(answer))],
+    )
+    llm = SimpleNamespace(messages=SimpleNamespace(create=AsyncMock(side_effect=[first, final])))
+
+    assert await analyze_query(
+        "q07", "SELECT 1", llm_client=llm, mcp_client=mcp, llm_settings=LLM_SETTINGS,
+    ) == answer
+    first_request = llm.messages.create.call_args_list[0].kwargs
+    assert {tool["name"] for tool in first_request["tools"]} == set(TOOL_NAMES) - {"apply_optimization"}
+    tool_reply = llm.messages.create.call_args_list[1].kwargs["messages"][-1]["content"][0]
+    payload = json.loads(tool_reply["content"])
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "INVALID_INPUT"
+    record = json.loads(next(run_log_dir.glob("*.json")).read_text(encoding="utf-8"))
+    assert record["tool_calls"][0]["name"] == "get_slow_queries"
+
+
+@pytest.mark.asyncio
+async def test_agent_calls_mcp_server_over_stdio(run_log_dir):
+    """Host gọi Tool 1 qua MCP stdio; input sai không cần kết nối MySQL."""
+    first = SimpleNamespace(
+        stop_reason="tool_use",
+        content=[SimpleNamespace(
+            type="tool_use", id="call_1", name="get_slow_queries", input={"limit": 0},
+        )],
+    )
+    answer = {"query_id": "q07", "diagnosis": "Chưa đủ dữ liệu", "proposals": [], "confidence": "low"}
+    final = SimpleNamespace(
+        stop_reason="end_turn",
+        content=[SimpleNamespace(type="text", text=json.dumps(answer))],
+    )
+    llm = SimpleNamespace(messages=SimpleNamespace(create=AsyncMock(side_effect=[first, final])))
+    server_params = StdioServerParameters(
+        command=sys.executable,
+        args=["-m", "mcp_server.server"],
+        cwd=str(Path(__file__).resolve().parents[1]),
+    )
+
+    # Tiến trình con chạy server thật; ClientSession dùng đúng giao thức host sẽ dùng.
+    async with (
+        asyncio.timeout(20),
+        stdio_client(server_params) as (read_stream, write_stream),
+        ClientSession(read_stream, write_stream) as session,
+    ):
+        await session.initialize()
+        result = await analyze_query(
+            "q07", "SELECT 1", llm_client=llm, mcp_client=session,
+            llm_settings=LLM_SETTINGS,
+        )
+
+    assert result == answer
+    first_request = llm.messages.create.call_args_list[0].kwargs
+    assert {tool["name"] for tool in first_request["tools"]} == set(TOOL_NAMES) - {"apply_optimization"}
+    tool_reply = llm.messages.create.call_args_list[1].kwargs["messages"][-1]["content"][0]
+    payload = json.loads(tool_reply["content"])
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "INVALID_INPUT"
+    record = json.loads(next(run_log_dir.glob("*.json")).read_text(encoding="utf-8"))
+    assert record["tool_calls"][0]["name"] == "get_slow_queries"
 
 
 @pytest.mark.asyncio
@@ -317,8 +408,8 @@ async def test_agent_marks_parse_failed_after_two_retries(run_log_dir):
 
 
 @pytest.mark.asyncio
-async def test_agent_run_status_cannot_be_set_by_llm(run_log_dir):
-    """Trường status thừa trong JSON LLM không được làm sai bản ghi run."""
+async def test_agent_rejects_status_field_from_llm(run_log_dir):
+    """LLM không được tự gắn trạng thái thành công/thất bại cho run."""
     answer = {
         "query_id": "q07", "diagnosis": "Không cần đổi", "proposals": [],
         "confidence": "low", "status": "parse_failed",
@@ -329,9 +420,10 @@ async def test_agent_run_status_cannot_be_set_by_llm(run_log_dir):
         mcp_client=_fake_mcp(), llm_settings=LLM_SETTINGS,
     )
 
-    assert result == answer
+    assert result["status"] == "parse_failed"
+    assert "proposals" not in result
     record = json.loads(next(run_log_dir.glob("*.json")).read_text(encoding="utf-8"))
-    assert record["status"] == "success"
+    assert record["status"] == "parse_failed"
 
 
 @pytest.mark.asyncio
@@ -360,6 +452,6 @@ async def test_agent_loads_project_settings_when_caller_omits_them():
 
     assert result == answer
     request = llm.messages.create.call_args.kwargs
-    assert request["model"] == "claude-sonnet-5-5"
+    assert request["model"] == "openai/gpt-oss-120b"
     assert request["max_tokens"] == 2000
     assert request["temperature"] == 0.0

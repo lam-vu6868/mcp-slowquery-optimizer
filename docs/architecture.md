@@ -3,6 +3,7 @@
 > **Người giữ file:** Vũ · **Reviewer:** Cả nhóm
 > **Cập nhật:** 22/11/2026
 > **Trạng thái:** Thiết kế mục tiêu theo contract v2 (DRAFT, chờ nhóm review). Chưa xác nhận luồng end-to-end.
+> **Thử nghiệm 24/11/2026:** sơ đồ còn ghi Claude theo thiết kế ban đầu; code hiện thử Groq qua `llm/groq.py`. Ranh giới Tool 1–5/Tool 6 giữ theo contract.
 >
 > File này mô tả **luồng và ranh giới giữa các thành phần**; [api-contract.md](api-contract.md) quy định input/output của 6 tool. Cần giữ cả hai file.
 > Đọc kèm: [api-contract.md](api-contract.md) · [../project-management/ROADMAP.md](../project-management/ROADMAP.md) mục 2.
