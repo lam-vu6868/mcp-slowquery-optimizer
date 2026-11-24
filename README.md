@@ -9,7 +9,7 @@
 Hệ thống hỗ trợ **tìm và đề xuất cách sửa các câu truy vấn MySQL chậm** bằng LLM, với con người quyết định cuối cùng:
 
 1. **Đọc** slow query log / `performance_schema` → tìm query chạy > 0.5s
-2. **Phân tích** bằng LLM (Claude) qua các tool MCP: schema, thống kê dữ liệu, EXPLAIN
+2. **Phân tích** bằng LLM (đang thử Groq GPT-OSS 120B) qua các tool MCP: schema, thống kê dữ liệu, EXPLAIN
 3. **Đề xuất** dạng có cấu trúc: thêm index, hoặc viết lại query
 4. **Kiểm chứng tự động** bằng INVISIBLE INDEX: đo P95 trước/sau, so sánh kết quả có tương đương không, tự rollback nếu kém
 5. **Con người duyệt** trên Dashboard → hệ thống sinh **approval token dùng một lần** → mới áp dụng thật
@@ -29,7 +29,7 @@ Lab hiện dùng **5 bảng, tổng 5 triệu dòng**, trong đó `orders` có 1
 ```mermaid
 flowchart TD
     A[MySQL 8.0<br/>5 bảng · tổng 5M dòng] -->|slow log / performance_schema| B[MCP Server<br/>Tool 1-5]
-    B <-->|gọi tool| C[LLM host<br/>Claude]
+    B <-->|gọi tool| C[LLM host<br/>Groq đang thử nghiệm]
     C -->|đề xuất có cấu trúc| V[Validation Layer]
     V --> V1[INVISIBLE INDEX<br/>đo P95 trước/sau]
     V --> V2[Hash so sánh kết quả]
@@ -99,6 +99,8 @@ flowchart TD
 
 **Tích hợp MCP trong ngày 22/11/2026:** `server.py` đã đăng ký Tool 1–3 và wrapper giới hạn của Tool 4–5 qua MCP SDK 2.x trên stdio. Danh sách tool LLM thấy chỉ có 5 tool; Tool 6 chưa được đăng ký. Chưa có LLM host, Validation Layer hoặc Dashboard end-to-end.
 
+**Thử Groq ngày 24/11/2026:** adapter Groq đã gọi API với tool mẫu; sau đó q07 chạy qua Groq–MCP–MySQL và có một lượt trả JSON hợp lệ gồm 2 index + 1 rewrite. Hai lượt prompt v1 bị `parse_failed`, một lượt v2 lỗi HTTP 400; chưa đo độ ổn định, hiệu năng đề xuất hoặc toàn bộ 30 query. Model thử nghiệm được ghim trong `config/settings.yaml`.
+
 > 📖 Chi tiết: [project-management/PROGRESS.md](project-management/PROGRESS.md) · Lịch và deadline: [project-management/ROADMAP.md](project-management/ROADMAP.md)
 
 ---
@@ -131,7 +133,7 @@ pip install -r requirements.txt
 
 # 4. Cấu hình môi trường
 cp .env.example .env
-# Sửa .env: API key Anthropic, mật khẩu DB (readonly_user, index_admin), APPROVAL_SECRET
+# Sửa .env: GROQ_API_KEY, mật khẩu DB (readonly_user, index_admin), APPROVAL_SECRET
 # ⚠️ Không commit file .env
 
 # 5. Khởi động MySQL

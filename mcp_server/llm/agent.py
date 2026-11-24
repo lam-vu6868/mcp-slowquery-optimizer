@@ -3,7 +3,7 @@ mcp_server/llm/agent.py
 -----------------------
 
 CHỨC NĂNG :
-    Agent loop: gọi Claude, cho phép gọi Tool 1-5, thu về đề xuất cuối cùng dạng JSON.
+    Agent loop: gọi LLM qua client, cho phép Tool 1-5, nhận đề xuất cuối dạng JSON.
 
 PHỤ TRÁCH  : Vũ    |    REVIEW: Tường
 
@@ -17,11 +17,11 @@ CẦN LÀM:
     [x] Vòng lặp tool-use (đã kiểm bằng client giả; chưa thử API thật).
     [x] Retry khi JSON sai schema (tối đa 2 lần; đã kiểm bằng client giả).
     [x] Ghi metadata/hash lần chạy (đã kiểm bằng client giả).
-    [ ] Tích hợp client thật.
+    [x] Adapter Groq đã có; q07 đã thử một lượt qua API + MCP/MySQL.
 
 THAM KHẢO  : docs/api-contract.md (mục 2.3), config/settings.yaml
 
-TRẠNG THÁI : ĐANG LÀM — có tool-use, retry JSON và run log; chưa thử client thật.
+TRẠNG THÁI : ĐANG LÀM — q07 có một lượt parse thành công; chưa đo 30 query.
 """
 
 import hashlib

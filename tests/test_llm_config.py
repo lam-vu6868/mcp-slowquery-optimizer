@@ -20,7 +20,7 @@ def test_load_llm_settings_reads_project_config():
     settings = load_llm_settings()
 
     assert settings == {
-        "model": "claude-sonnet-5-5",
+        "model": "openai/gpt-oss-120b",
         "temperature": 0.0,
         "max_tokens": 2000,
         "max_tool_calls_per_query": 8,

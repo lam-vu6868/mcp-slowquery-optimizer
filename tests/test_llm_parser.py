@@ -194,3 +194,70 @@ def test_parse_llm_response_rejects_invalid_rewrite(field, bad_value):
 
     with pytest.raises(ValueError, match=field):
         parse_llm_response(json.dumps(response), "q07")
+
+
+@pytest.mark.parametrize("extra_field", ["approved", "status"])
+def test_parse_llm_response_rejects_extra_top_level_field(extra_field):
+    """LLM không được tự thêm cờ phê duyệt hoặc trạng thái xử lý của backend."""
+    response = _valid_rewrite_response()
+    response[extra_field] = True
+
+    with pytest.raises(ValueError, match=extra_field):
+        parse_llm_response(json.dumps(response), "q07")
+
+
+@pytest.mark.parametrize("proposal_type, extra_field", [
+    ("index", "ddl"),
+    ("rewrite", "approval_token"),
+])
+def test_parse_llm_response_rejects_extra_proposal_field(proposal_type, extra_field):
+    """Không nhận DDL hoặc token tự do trong proposal LLM trả."""
+    response = _valid_index_response() if proposal_type == "index" else _valid_rewrite_response()
+    response["proposals"][0][extra_field] = "không được dùng"
+    schema_data = SCHEMA_DATA if proposal_type == "index" else None
+
+    with pytest.raises(ValueError, match=extra_field):
+        parse_llm_response(json.dumps(response), "q07", schema_data)
+
+
+def test_parse_llm_response_rejects_missing_column_name():
+    """Mỗi cột của index phải có tên theo schema đề xuất."""
+    response = _valid_index_response()
+    response["proposals"][0]["columns"] = [{"order": "ASC"}]
+
+    with pytest.raises(ValueError, match="name"):
+        parse_llm_response(json.dumps(response), "q07", SCHEMA_DATA)
+
+
+def test_parse_llm_response_rejects_duplicate_target_ids():
+    """Một query ID không được lặp trong danh sách đích."""
+    response = _valid_index_response()
+    response["proposals"][0]["target_query_ids"] = ["q07", "q07"]
+
+    with pytest.raises(ValueError, match="target_query_ids"):
+        parse_llm_response(json.dumps(response), "q07", SCHEMA_DATA)
+
+
+def test_parse_llm_response_rejects_redundant_prefix_index():
+    """Index (status) thừa khi bảng đã có (status, order_date)."""
+    schema_data = {"tables": [{
+        "name": "orders",
+        "columns": [{"name": "status"}, {"name": "order_date"}],
+        "indexes": [{"name": "idx_status_date", "columns": ["status", "order_date"]}],
+    }]}
+
+    with pytest.raises(ValueError, match="tiền tố"):
+        parse_llm_response(json.dumps(_valid_index_response()), "q07", schema_data)
+
+
+def test_parse_llm_response_accepts_longer_index_than_existing_prefix():
+    """Index (status, order_date) vẫn có ích khi mới có (status)."""
+    response = _valid_index_response()
+    response["proposals"][0]["columns"].append({"name": "order_date", "order": "ASC"})
+    schema_data = {"tables": [{
+        "name": "orders",
+        "columns": [{"name": "status"}, {"name": "order_date"}],
+        "indexes": [{"name": "idx_status", "columns": ["status"]}],
+    }]}
+
+    assert parse_llm_response(json.dumps(response), "q07", schema_data) == response
