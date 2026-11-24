@@ -16,6 +16,7 @@ CREATE USER 'readonly_user'@'%' IDENTIFIED BY 'readonly_pass';
 GRANT SELECT ON shopdb.* TO 'readonly_user'@'%';
 GRANT PROCESS ON *.* TO 'readonly_user'@'%';  -- Để đọc performance_schema
 GRANT SELECT ON performance_schema.* TO 'readonly_user'@'%';
+GRANT SELECT ON mysql.slow_log TO 'readonly_user'@'%';  -- Nguồn phụ Tool 1, không cấp mysql.*
 FLUSH PRIVILEGES;
 
 -- ---------- 3. USER INDEX ADMIN (CHỈ Tool 6 dùng) ----------

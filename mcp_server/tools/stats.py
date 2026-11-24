@@ -15,7 +15,7 @@ LƯU Ý:
 
 THAM KHẢO  : docs/api-contract.md (Tool 3)
 
-TRẠNG THÁI : ĐANG LÀM — hàm đã có test đơn vị; chưa đăng ký MCP.
+TRẠNG THÁI : ĐÃ KIỂM CHỨNG — đã có unit test và gọi qua MCP stdio trên MySQL thật.
 """
 import hashlib
 import json

@@ -12,6 +12,7 @@ async def test_llm_registry_exposes_only_five_safe_tools():
         "get_slow_queries", "get_schema", "get_table_stats",
         "explain_query", "benchmark_query",
     }
+    assert "source" in tools["get_slow_queries"].input_schema["properties"]
     assert set(tools["explain_query"].input_schema["properties"]) == {"sql"}
     assert set(tools["benchmark_query"].input_schema["properties"]) == {"sql"}
     assert "apply_optimization" not in tools

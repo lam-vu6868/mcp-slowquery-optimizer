@@ -71,7 +71,13 @@ SET PERSIST long_query_time = 0.5;
 SET PERSIST log_output = 'FILE,TABLE';
 ```
 
-`SET PERSIST` giữ cấu hình qua restart; kiểm tra lại các biến sau khi reconnect. Trên Windows, file `my.cnf` mount có thể bị bỏ qua do quyền file, nên cần kiểm tra giá trị thực tế. Tool 1 hiện dùng Performance Schema; nguồn phụ `mysql.slow_log` chưa triển khai vì readonly user chưa có quyền đọc bảng đó. Không xóa slow log hoặc digest khi đang giữ bằng chứng thực nghiệm.
+`SET PERSIST` giữ cấu hình qua restart; kiểm tra lại các biến sau khi reconnect. Trên Windows, file `my.cnf` mount có thể bị bỏ qua do quyền file, nên cần kiểm tra giá trị thực tế. Tool 1 mặc định dùng Performance Schema. Nhánh `source="slow_log"` cần `readonly_user` có quyền đọc riêng bảng log; lab hiện tại đã được người dùng cấp quyền và đã đọc thử qua MCP. Với DB khác, sau khi Hải/Tình review quyền và phạm vi SQL đưa cho LLM, người quản trị chạy **chỉ** lệnh sau (không chạy lại toàn bộ `db/init.sql`, vì file đó tạo lại user):
+
+```sql
+GRANT SELECT ON mysql.slow_log TO 'readonly_user'@'%';
+```
+
+Sau đó gọi `get_slow_queries(source="slow_log", limit=1)` để kiểm tra đường đọc; không xóa slow log hoặc digest đang giữ làm bằng chứng. Quyền này chỉ áp dụng cho `mysql.slow_log`, không phải `mysql.*`.
 
 ## 5. Nạp 5 CSV — chỉ dành cho DB mới và các bảng rỗng
 

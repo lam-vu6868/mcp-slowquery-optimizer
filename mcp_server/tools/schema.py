@@ -14,7 +14,7 @@ LƯU Ý:
 
 THAM KHẢO  : docs/api-contract.md (Tool 2)
 
-TRẠNG THÁI : ĐANG LÀM — hàm đã thử với MySQL; chưa đăng ký MCP.
+TRẠNG THÁI : ĐÃ KIỂM CHỨNG — đã có unit test và gọi qua MCP stdio trên MySQL thật.
 """
 import json
 import time
