@@ -18,6 +18,7 @@ LƯU Ý:
     - Từ chối index thử có tiền tố trùng cột FK tham chiếu để tránh MySQL tự bỏ index hỗ trợ FK.
     - Recovery không DROP trial nếu nó là index duy nhất còn hỗ trợ FK tham chiếu.
     - Chụp metadata FK/index bằng tài khoản đọc trước khi backend ghi trial pending và tạo index.
+    - Recovery chỉ khôi phục một index FK đơn giản từ snapshot đã lưu, xác minh lại rồi mới dọn trial.
     - Mọi lần gọi (kể cả bị từ chối) đều ghi audit_log.
 
 THAM KHẢO  : docs/api-contract.md (Tool 6), security/approval.py
@@ -318,6 +319,67 @@ class TrialIndex:
                     for name, cols in indexes.items())
             for fk_cols in foreign_keys.values()
         )
+
+    def restore_fk_support(self, snapshot: dict) -> str:
+        """Chỉ dựng lại một index FK đơn giản đã lưu trước DDL, rồi xác minh metadata."""
+        state = self._index_state()
+        if not isinstance(snapshot, dict):
+            raise ForeignKeyIndexRisk("thiếu snapshot FK")
+        current = self.fk_support_snapshot()
+        if state == "absent":
+            if current == snapshot:
+                return "absent"
+            raise ForeignKeyIndexRisk("trial chưa có nhưng schema FK đã đổi")
+        if state != "owned":
+            raise ForeignKeyIndexRisk("trial không thuộc proposal")
+        if current["foreign_keys"] != snapshot.get("foreign_keys"):
+            raise ForeignKeyIndexRisk("FK đã đổi từ lúc tạo trial")
+        saved_indexes = {item["name"]: item for item in snapshot["supporting_indexes"]}
+        live_indexes = {item["name"]: item for item in current["supporting_indexes"]}
+        if (self.index_name in saved_indexes
+                or set(live_indexes) - set(saved_indexes) - {self.index_name}
+                or any(live_indexes[name] != index
+                       for name, index in saved_indexes.items() if name in live_indexes)):
+            raise ForeignKeyIndexRisk("index hỗ trợ FK đã đổi")
+        missing = [index for name, index in saved_indexes.items() if name not in live_indexes]
+        if not missing:
+            return "present"
+        if len(missing) != 1:
+            raise ForeignKeyIndexRisk("nhiều index hỗ trợ FK bị thiếu")
+        index = missing[0]
+        columns = index["columns"]
+        original_columns = [col["name"] for col in columns]
+        affected_fks = [fk["columns"] for fk in snapshot["foreign_keys"]
+                        if original_columns[:len(fk["columns"])] == fk["columns"]]
+        if not affected_fks:
+            raise ForeignKeyIndexRisk("index trong snapshot không hỗ trợ FK")
+        trial_index = live_indexes.get(self.index_name)
+        if (trial_index is None or any(
+            [col["name"] for col in trial_index["columns"]][:len(fk_cols)] != fk_cols
+            for fk_cols in affected_fks
+        )):
+            raise ForeignKeyIndexRisk("index bị thiếu không do trial hỗ trợ FK đó")
+        if (index["non_unique"] != 1 or index["index_type"] != "BTREE"
+                or index["visible"] is not True or index["comment"] != ""
+                or not columns or any(col["order"] != "ASC" or col["sub_part"] is not None
+                                       for col in columns)):
+            raise ForeignKeyIndexRisk("không thể khôi phục an toàn định nghĩa index FK")
+        try:
+            name = _quote_identifier(index["name"])
+            column_sql = ", ".join(_quote_identifier(col["name"]) for col in columns)
+        except ValueError as exc:
+            raise ForeignKeyIndexRisk("tên index hoặc cột FK không hợp lệ") from exc
+        ddl = f"CREATE INDEX {name} ON {self.table} ({column_sql}) VISIBLE"
+        with get_admin_conn() as conn, conn.cursor() as cur:
+            cur.execute("SET SESSION lock_wait_timeout = 5")
+            cur.execute(ddl)
+        after = self.fk_support_snapshot()
+        restored = {item["name"]: item for item in after["supporting_indexes"]}
+        if (after["foreign_keys"] != snapshot["foreign_keys"]
+                or restored.get(index["name"]) != index
+                or self._index_state() != "owned"):
+            raise ForeignKeyIndexRisk("không xác minh được index FK sau khôi phục")
+        return "restored"
 
     def recover_drop(self) -> str:
         """Dọn sau restart, chỉ khi marker/định nghĩa/INVISIBLE đều khớp."""

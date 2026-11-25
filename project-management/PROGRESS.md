@@ -1,6 +1,6 @@
 # 📊 TIẾN ĐỘ DỰ ÁN
 
-> **Cập nhật lần cuối:** 25/11/2026 — lưu snapshot FK/index trước DDL trong store; Vũ quản lý
+> **Cập nhật lần cuối:** 25/11/2026 — thử khôi phục index hỗ trợ FK trên bảng nhỏ của validation lab; Vũ quản lý
 > **Mốc đối chiếu hiện tại:** 25/11/2026; các bảng tuần bên dưới là lịch sử
 > **Tổng tiến độ:** Chưa tính lại từ mốc ~27% ngày 19/10
 >
@@ -25,6 +25,15 @@
 |  7  | Metrics + Baseline                                   |     ⬜      | Tường · Hải      |           03/11            |
 |  8  | Dashboard 4 tab                                      |     ⬜      | Tình             |           10/11            |
 |  9  | Báo cáo + Demo                                       |     ⬜      | Cả nhóm          |       17/11 · 01/12        |
+
+---
+
+## Thử recovery khôi phục index hỗ trợ FK ngày 25/11/2026
+
+- Thêm nhánh `TrialIndex.restore_fk_support(snapshot)`: xác minh marker trial và FK hiện tại; chỉ dựng lại đúng một index hỗ trợ FK đơn giản, có định nghĩa khớp snapshot; xác minh lại trước khi dọn trial. `recover_interrupted_trials()` còn đối chiếu schema FK/index sau DROP; mọi sai lệch giữ `pending`/`recovery_failed`. Trường hợp ngắt sau `pending` nhưng trước CREATE được nhận diện là trial vắng và schema gốc còn nguyên.
+- Test DB giả bao phủ thứ tự khôi phục→DROP→đối chiếu, ngắt trước CREATE, thử lại sau khôi phục, FK đổi, snapshot không hỗ trợ FK, trial không hỗ trợ FK bị mất và schema sai sau DROP. **268 tests pass**, Ruff pass cho Python đã sửa và `git diff --check` pass.
+- Trên **validation lab 3309**, kiểm marker `mcp-validation-lab-v1` rồi tạo riêng hai bảng nhỏ có FK và một dòng; tạo trial INVISIBLE có marker. MySQL tự bỏ index FK ban đầu như q01. Recovery từ SQLite snapshot đã tạo lại index FK, dọn trial, đối chiếu schema khớp ban đầu và chuyển store sang `cleaned`. Lặp lại sau khi thêm điều kiện trial phải hỗ trợ chính FK bị mất, kết quả vẫn sạch. Bằng chứng `data/outputs/lab_only_fk_restore_e39cf25b.json` và `data/outputs/lab_only_fk_restore_4e258865.json` cùng SQLite tương ứng (gitignored). Dùng root lab cho phép thử DDL, nên lượt này chưa kiểm ranh giới quyền `readonly_user`/`index_admin` trên MySQL thật.
+- Sau phép thử, hai bảng nhỏ đã dọn; lab vẫn có 2.450.000 dòng `order_items`, không còn bảng `mcp_fk_*`. Đã dừng container validation lab, giữ volume và bằng chứng. DB chính 3307 không được kết nối hoặc chạy DDL trong lượt này. **q01 vẫn bị chặn trước CREATE**, chưa thử luồng đo đầy đủ hay áp dụng index trên DB chính.
 
 ---
 

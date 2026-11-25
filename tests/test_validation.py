@@ -764,6 +764,196 @@ def test_recovery_keeps_pending_when_index_ownership_is_uncertain(tmp_path):
     assert store.get(proposal_id)["report"] is None
 
 
+def test_recovery_restores_fk_support_before_dropping_owned_trial(tmp_path):
+    store = ProposalStore(tmp_path / "proposals.sqlite3")
+    proposal_id = store.add("q01", "SELECT order_id FROM order_items", {
+        "type": "index", "table": "order_items", "index_name": "idx_items_cover",
+        "columns": [{"name": "product_id", "order": "ASC"}],
+    })
+    store.begin_trial(proposal_id, fk_support_snapshot={
+        "foreign_keys": [{"name": "fk_order_items_product", "columns": ["product_id"]}],
+        "supporting_indexes": [{"name": "fk_order_items_product"}],
+    })
+    events = []
+
+    class FakeTrial:
+        def __init__(self, proposal, *, proposal_id):
+            pass
+
+        def restore_fk_support(self, snapshot):
+            assert snapshot["supporting_indexes"][0]["name"] == "fk_order_items_product"
+            events.append("restore")
+
+        def recover_drop(self):
+            events.append("drop")
+            return "dropped"
+
+        def fk_support_snapshot(self):
+            events.append("verify")
+            return store.get(proposal_id)["fk_support_snapshot"]
+
+    assert recover_interrupted_trials(store, trial_factory=FakeTrial) == {
+        proposal_id: "dropped",
+    }
+    assert events == ["restore", "drop", "verify"]
+    assert store.get(proposal_id)["trial_state"] == "cleaned"
+
+
+def test_recovery_keeps_pending_if_fk_schema_differs_after_drop(tmp_path):
+    store = ProposalStore(tmp_path / "proposals.sqlite3")
+    proposal_id = store.add("q01", "SELECT order_id FROM order_items", {
+        "type": "index", "table": "order_items", "index_name": "idx_items_cover",
+        "columns": [{"name": "product_id", "order": "ASC"}],
+    })
+    store.begin_trial(proposal_id, fk_support_snapshot={
+        "foreign_keys": [{"name": "fk_order_items_product", "columns": ["product_id"]}],
+        "supporting_indexes": [{"name": "fk_order_items_product"}],
+    })
+
+    class FakeTrial:
+        def __init__(self, proposal, *, proposal_id):
+            pass
+
+        def restore_fk_support(self, snapshot):
+            pass
+
+        def recover_drop(self):
+            return "dropped"
+
+        def fk_support_snapshot(self):
+            return {"foreign_keys": [], "supporting_indexes": []}
+
+    assert recover_interrupted_trials(store, trial_factory=FakeTrial) == {
+        proposal_id: "recovery_failed",
+    }
+    assert store.get(proposal_id)["trial_state"] == "pending"
+
+
+def test_restore_fk_support_recreates_only_verified_missing_index(monkeypatch):
+    trial = TrialIndex({
+        "type": "index", "table": "order_items", "index_name": "idx_items_cover",
+        "columns": [{"name": "product_id", "order": "ASC"}],
+    }, proposal_id="p_ours")
+    original = {"name": "fk_order_items_product", "non_unique": 1,
+                "index_type": "BTREE", "visible": True, "comment": "",
+                "columns": [{"name": "product_id", "order": "ASC", "sub_part": None}]}
+    snapshot = {"foreign_keys": [{"name": "fk_order_items_product",
+                                  "columns": ["product_id"]}],
+                "supporting_indexes": [original]}
+    live = {"foreign_keys": snapshot["foreign_keys"],
+            "supporting_indexes": [{
+                "name": "idx_items_cover",
+                "columns": [{"name": "product_id", "order": "ASC", "sub_part": None}],
+            }]}
+    events = []
+    monkeypatch.setattr(trial, "_index_state", lambda: "owned")
+    monkeypatch.setattr(trial, "fk_support_snapshot", lambda: live)
+
+    class Cursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def execute(self, sql):
+            events.append(sql)
+            if sql.startswith("CREATE INDEX"):
+                live["supporting_indexes"].append(original)
+
+    class Conn:
+        def cursor(self):
+            return Cursor()
+
+    @contextmanager
+    def admin():
+        yield Conn()
+
+    monkeypatch.setattr(apply_module, "get_admin_conn", admin)
+    assert trial.restore_fk_support(snapshot) == "restored"
+    assert trial.restore_fk_support(snapshot) == "present"
+    assert sum(sql.startswith("CREATE INDEX") for sql in events) == 1
+
+
+def test_restore_fk_support_refuses_changed_foreign_key_without_ddl(monkeypatch):
+    trial = TrialIndex({
+        "type": "index", "table": "order_items", "index_name": "idx_items_cover",
+        "columns": [{"name": "product_id", "order": "ASC"}],
+    }, proposal_id="p_ours")
+    monkeypatch.setattr(trial, "_index_state", lambda: "owned")
+    monkeypatch.setattr(trial, "fk_support_snapshot", lambda: {
+        "foreign_keys": [{"name": "fk_changed", "columns": ["product_id"]}],
+        "supporting_indexes": [{"name": "idx_items_cover"}],
+    })
+    monkeypatch.setattr(apply_module, "get_admin_conn",
+                        lambda: pytest.fail("Không DDL khi FK đã đổi"))
+    snapshot = {"foreign_keys": [{"name": "fk_order_items_product",
+                                  "columns": ["product_id"]}],
+                "supporting_indexes": [{"name": "fk_order_items_product"}]}
+    with pytest.raises(ForeignKeyIndexRisk, match="FK đã đổi"):
+        trial.restore_fk_support(snapshot)
+
+
+def test_restore_fk_support_refuses_snapshot_index_unrelated_to_fk(monkeypatch):
+    trial = TrialIndex({
+        "type": "index", "table": "order_items", "index_name": "idx_items_cover",
+        "columns": [{"name": "product_id", "order": "ASC"}],
+    }, proposal_id="p_ours")
+    original = {"name": "idx_unrelated", "non_unique": 1,
+                "index_type": "BTREE", "visible": True, "comment": "",
+                "columns": [{"name": "quantity", "order": "ASC", "sub_part": None}]}
+    snapshot = {"foreign_keys": [{"name": "fk_order_items_product",
+                                  "columns": ["product_id"]}],
+                "supporting_indexes": [original]}
+    monkeypatch.setattr(trial, "_index_state", lambda: "owned")
+    monkeypatch.setattr(trial, "fk_support_snapshot", lambda: {
+        "foreign_keys": snapshot["foreign_keys"],
+        "supporting_indexes": [{"name": "idx_items_cover"}],
+    })
+    monkeypatch.setattr(apply_module, "get_admin_conn",
+                        lambda: pytest.fail("Không DDL từ snapshot không hỗ trợ FK"))
+
+    with pytest.raises(ForeignKeyIndexRisk, match="snapshot"):
+        trial.restore_fk_support(snapshot)
+
+
+def test_restore_fk_support_refuses_missing_index_unrelated_to_trial(monkeypatch):
+    trial = TrialIndex({
+        "type": "index", "table": "order_items", "index_name": "idx_items_price",
+        "columns": [{"name": "unit_price", "order": "ASC"}],
+    }, proposal_id="p_ours")
+    original = {"name": "fk_order_items_product", "non_unique": 1,
+                "index_type": "BTREE", "visible": True, "comment": "",
+                "columns": [{"name": "product_id", "order": "ASC", "sub_part": None}]}
+    snapshot = {"foreign_keys": [{"name": "fk_order_items_product",
+                                  "columns": ["product_id"]}],
+                "supporting_indexes": [original]}
+    monkeypatch.setattr(trial, "_index_state", lambda: "owned")
+    monkeypatch.setattr(trial, "fk_support_snapshot", lambda: {
+        "foreign_keys": snapshot["foreign_keys"], "supporting_indexes": [],
+    })
+    monkeypatch.setattr(apply_module, "get_admin_conn",
+                        lambda: pytest.fail("Không khôi phục index không do trial thay thế"))
+    with pytest.raises(ForeignKeyIndexRisk, match="trial"):
+        trial.restore_fk_support(snapshot)
+
+
+def test_restore_fk_support_accepts_crash_before_trial_create(monkeypatch):
+    trial = TrialIndex({
+        "type": "index", "table": "order_items", "index_name": "idx_items_cover",
+        "columns": [{"name": "product_id", "order": "ASC"}],
+    }, proposal_id="p_ours")
+    snapshot = {"foreign_keys": [{"name": "fk_order_items_product",
+                                  "columns": ["product_id"]}],
+                "supporting_indexes": [{"name": "fk_order_items_product"}]}
+    monkeypatch.setattr(trial, "_index_state", lambda: "absent")
+    monkeypatch.setattr(trial, "fk_support_snapshot", lambda: snapshot)
+    monkeypatch.setattr(apply_module, "get_admin_conn",
+                        lambda: pytest.fail("Không DDL khi trial chưa được tạo"))
+
+    assert trial.restore_fk_support(snapshot) == "absent"
+
+
 def test_recovery_marks_missing_trial_as_interrupted_without_ddl(tmp_path):
     store = ProposalStore(tmp_path / "proposals.sqlite3")
     proposal_id = store.add("q07", "SELECT id FROM orders", {
