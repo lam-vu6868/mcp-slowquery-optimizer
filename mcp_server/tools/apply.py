@@ -13,7 +13,7 @@ LƯU Ý:
     - Kiểm token: đúng chữ ký, chưa hết hạn, chưa dùng, khớp proposal ID/version và hash DDL ALTER INDEX VISIBLE thực tế.
     - Proposal loại 'rewrite' luôn bị từ chối (FORBIDDEN).
     - Chỉ cho apply khi validation_report.status == 'passed' và đủ bằng chứng đo.
-    - Dùng tài khoản index_admin (chỉ CREATE/DROP INDEX, ALTER INDEX).
+    - Dùng index_admin cho DDL và SELECT riêng trên mysql.innodb_index_stats để đo index thử.
     - Helper DDL nội bộ trong file này phục vụ Validation tạo/dọn index INVISIBLE; không công bố thành MCP tool.
     - Mọi lần gọi (kể cả bị từ chối) đều ghi audit_log.
 
@@ -24,6 +24,8 @@ TRẠNG THÁI : ĐANG LÀM — đã có helper index thử nội bộ; Tool 6 ch
 
 import re
 import uuid
+
+import pymysql
 
 from mcp_server.utils.config import Config
 from mcp_server.utils.db import get_admin_conn, get_conn
@@ -78,6 +80,7 @@ class TrialIndex:
         self._owned = False
         self._attempted_create = False
         self._baseline_size = None
+        self._baseline_allocated_size = None
 
     def _index_length(self) -> int | None:
         with get_conn() as conn, conn.cursor() as cur:
@@ -89,6 +92,40 @@ class TrialIndex:
             )
             row = cur.fetchone()
         return None if row is None or row["INDEX_LENGTH"] is None else int(row["INDEX_LENGTH"])
+
+    def _tablespace_allocated_size(self) -> int | None:
+        """Dung lượng file riêng của bảng; không suy ra byte chính xác từng index."""
+        with get_conn() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT SPACE_TYPE, ALLOCATED_SIZE "
+                "FROM information_schema.INNODB_TABLESPACES WHERE NAME=%s",
+                (f"{Config.DB_NAME}/{self.table_name}",),
+            )
+            row = cur.fetchone()
+        if row is None or row["SPACE_TYPE"] != "Single":
+            return None
+        return None if row["ALLOCATED_SIZE"] is None else int(row["ALLOCATED_SIZE"])
+
+    def _index_stats_size(self) -> int | None:
+        """Số trang của đúng index thử; thiếu quyền SELECT thì dùng nguồn dự phòng."""
+        try:
+            with get_admin_conn() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "SELECT stat_value, @@innodb_page_size AS page_size "
+                    "FROM mysql.innodb_index_stats "
+                    "WHERE database_name=%s AND table_name=%s "
+                    "AND index_name=%s AND stat_name='size'",
+                    (Config.DB_NAME, self.table_name, self.index_name),
+                )
+                row = cur.fetchone()
+        except pymysql.err.OperationalError as exc:
+            if exc.args[0] == 1142:  # SELECT chưa được cấp trên bảng stats
+                return None
+            raise
+        if row is None or row["stat_value"] is None or row["page_size"] is None:
+            return None
+        pages, page_size = int(row["stat_value"]), int(row["page_size"])
+        return pages * page_size if pages > 0 and page_size > 0 else None
 
     def _check_schema(self) -> None:
         with get_conn() as conn, conn.cursor() as cur:
@@ -119,6 +156,7 @@ class TrialIndex:
     def create(self) -> None:
         self._check_schema()
         self._baseline_size = self._index_length()
+        self._baseline_allocated_size = self._tablespace_allocated_size()
         with get_admin_conn() as conn, conn.cursor() as cur:
             cur.execute("SET SESSION lock_wait_timeout = 5")
             self._attempted_create = True
@@ -149,11 +187,26 @@ class TrialIndex:
             raise RuntimeError("index không thuộc trial này hoặc đã đổi định nghĩa")
         return "owned"
 
-    def size_delta(self) -> int | None:
-        if not self._owned or self._baseline_size is None:
-            return None
+    def size_delta(self) -> dict:
+        if not self._owned or self._index_state() != "owned":
+            return {"index_size_bytes": None, "index_size_source": None}
+        stats_size = self._index_stats_size()
+        if stats_size is not None:
+            return {"index_size_bytes": stats_size,
+                    "index_size_source": "innodb_index_stats_pages"}
         after = self._index_length()
-        return None if after is None else max(0, after - self._baseline_size)
+        if after is not None and self._baseline_size is not None:
+            delta = after - self._baseline_size
+            if delta > 0:
+                return {"index_size_bytes": delta,
+                        "index_size_source": "table_index_length_delta"}
+        allocated_after = self._tablespace_allocated_size()
+        if allocated_after is not None and self._baseline_allocated_size is not None:
+            delta = allocated_after - self._baseline_allocated_size
+            if delta > 0:
+                return {"index_size_bytes": delta,
+                        "index_size_source": "tablespace_allocated_growth_delta"}
+        return {"index_size_bytes": None, "index_size_source": None}
 
     def drop(self) -> None:
         if not self._attempted_create and not self._owned:

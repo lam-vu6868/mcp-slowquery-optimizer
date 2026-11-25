@@ -69,6 +69,11 @@ def _write_measurement():
     }
 
 
+def _size_measurement():
+    return {"index_size_bytes": 1024,
+            "index_size_source": "table_index_length_delta"}
+
+
 def _assess(report, **kwargs):
     return assess_index_report(
         report, expected_index_name="idx_orders_status",
@@ -125,6 +130,7 @@ def test_index_proof_rejects_alias_reused_for_another_table():
     ({"after": {"timed_out_runs": 1}}, "inconclusive"),
     ({"after": {"key_used": "PRIMARY"}}, "inconclusive"),
     ({"write_overhead": {"index_size_bytes": None}}, "inconclusive"),
+    ({"write_overhead": {"index_size_source": "unknown"}}, "inconclusive"),
     ({"write_overhead": {"measurement_scope": None}}, "inconclusive"),
     ({"write_overhead": {"sample_rows": 99999}}, "inconclusive"),
     ({"write_overhead": {"insert_throughput_change_pct": -50}}, "inconclusive"),
@@ -138,6 +144,14 @@ def test_index_evidence_fails_closed(change, expected_status):
     assert result["failure_reason"]
     if expected_status == "inconclusive":
         assert result["evidence_complete"] is False
+
+
+def test_index_evidence_accepts_tablespace_growth_with_explicit_source():
+    report = _report()
+    report["write_overhead"]["index_size_source"] = "tablespace_allocated_growth_delta"
+    assert _assess(report)["status"] == "passed"
+    report["write_overhead"]["index_size_source"] = "innodb_index_stats_pages"
+    assert _assess(report)["status"] == "passed"
 
 
 def test_index_evidence_overwrites_untrusted_status_and_rejects_weaker_threshold():
@@ -208,7 +222,7 @@ async def test_validation_uses_real_tool_envelopes_and_cleans_failed_trial(
         proposal_id="p1", query_id="q07", original_sql="SELECT id FROM orders",
         index_name="idx_orders_status", target_table="orders",
         create_trial=create, drop_trial=drop,
-        measure_size=lambda: 1024,
+        measure_size=_size_measurement,
         measure_write=_write_measurement,
         explain=explain, benchmark=benchmark,
     )
@@ -230,7 +244,7 @@ async def test_validation_drops_trial_when_tool_fails():
         proposal_id="p1", query_id="q07", original_sql="SELECT id FROM orders",
         index_name="idx_orders_status", target_table="orders",
         create_trial=lambda: events.append("create"),
-        drop_trial=lambda: events.append("drop"), measure_size=lambda: 1024,
+        drop_trial=lambda: events.append("drop"), measure_size=_size_measurement,
         measure_write=_write_measurement, explain=broken_explain,
         benchmark=unused_benchmark,
     )
@@ -257,7 +271,14 @@ def test_trial_index_builds_only_structured_invisible_ddl():
         })
 
 
-def test_trial_index_uses_readonly_metadata_and_admin_only_for_ddl(monkeypatch):
+@pytest.mark.parametrize(("index_after", "stats_pages", "expected_source", "expected_size"), [
+    (2048, 4, "innodb_index_stats_pages", 65536),
+    (2048, None, "table_index_length_delta", 1024),
+    (1024, None, "tablespace_allocated_growth_delta", 4096),
+])
+def test_trial_index_uses_readonly_metadata_and_admin_only_for_ddl(
+    monkeypatch, index_after, stats_pages, expected_source, expected_size,
+):
     calls = []
 
     class Cursor:
@@ -284,9 +305,17 @@ def test_trial_index_uses_readonly_metadata_and_admin_only_for_ddl(monkeypatch):
             return []
 
         def fetchone(self):
+            if "mysql.innodb_index_stats" in self.sql:
+                return None if stats_pages is None else {
+                    "stat_value": stats_pages, "page_size": 16384,
+                }
             if "INDEX_LENGTH" in self.sql:
                 count = sum("CREATE INDEX" in sql for _, sql in calls)
-                return {"INDEX_LENGTH": 2048 if count else 1024}
+                return {"INDEX_LENGTH": index_after if count else 1024}
+            if "INNODB_TABLESPACES" in self.sql:
+                count = sum("CREATE INDEX" in sql for _, sql in calls)
+                return {"SPACE_TYPE": "Single",
+                        "ALLOCATED_SIZE": 8192 if count else 4096}
             return None
 
     class Conn:
@@ -311,11 +340,48 @@ def test_trial_index_uses_readonly_metadata_and_admin_only_for_ddl(monkeypatch):
         "columns": [{"name": "status", "order": "ASC"}],
     }, proposal_id="p_test")
     trial.create()
-    assert trial.size_delta() == 1024
+    assert trial.size_delta() == {
+        "index_size_bytes": expected_size,
+        "index_size_source": expected_source,
+    }
     trial.drop()
     assert all(role == "admin" for role, sql in calls
                if "CREATE INDEX" in sql or "DROP INDEX" in sql)
+    assert any(role == "admin" and "mysql.innodb_index_stats" in sql
+               for role, sql in calls)
     assert any(role == "readonly" and "IS_VISIBLE" in sql for role, sql in calls)
+
+
+def test_index_stats_permission_denied_is_only_fallback_error(monkeypatch):
+    trial = TrialIndex({
+        "type": "index", "table": "orders", "index_name": "idx_orders_status",
+        "columns": [{"name": "status", "order": "ASC"}],
+    }, proposal_id="p_test")
+
+    class Cursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def execute(self, sql, params):
+            raise apply_module.pymysql.err.OperationalError(error_code, "denied")
+
+    class Conn:
+        def cursor(self):
+            return Cursor()
+
+    @contextmanager
+    def admin():
+        yield Conn()
+
+    monkeypatch.setattr(apply_module, "get_admin_conn", admin)
+    error_code = 1142
+    assert trial._index_stats_size() is None
+    error_code = 2003
+    with pytest.raises(apply_module.pymysql.err.OperationalError):
+        trial._index_stats_size()
 
 
 def test_proposal_store_keeps_original_and_report_immutable(tmp_path):
@@ -363,7 +429,7 @@ async def test_saved_validation_persists_report_without_accepting_new_sql(
             events.append("drop")
 
         def size_delta(self):
-            return 1024
+            return _size_measurement()
 
     async def explain(sql, *, mode, use_invisible_indexes):
         assert sql == "SELECT id FROM orders"
@@ -436,7 +502,7 @@ async def test_saved_validation_cleans_passed_trial_when_report_save_fails(monke
             pass
 
         def size_delta(self):
-            return 1024
+            return _size_measurement()
 
         def drop(self):
             events.append("drop")
@@ -581,6 +647,7 @@ def test_trial_checks_ownership_after_ambiguous_create_error(monkeypatch):
     }, proposal_id="p_ours")
     monkeypatch.setattr(trial, "_check_schema", lambda: None)
     monkeypatch.setattr(trial, "_index_length", lambda: 1024)
+    monkeypatch.setattr(trial, "_tablespace_allocated_size", lambda: 4096)
     checked = []
     monkeypatch.setattr(trial, "recover_drop", lambda: checked.append("inspect"))
 

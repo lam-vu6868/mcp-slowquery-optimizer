@@ -247,7 +247,7 @@ docker compose -p mcp-write-lab --env-file .env.write-lab -f docker-compose.writ
 docker compose -p mcp-write-lab --env-file .env.write-lab -f docker-compose.write-lab.yml up -d write_lab_db validation_lab_db
 ```
 
-Trước khi tạo index thử, nạp dữ liệu mẫu vào `validation_lab_db` và kiểm tra marker; chỉ đổi `DB_HOST=127.0.0.1`, `DB_PORT=3309` trong tiến trình chạy validation, không sửa `.env` của DB chính. Tài khoản root lab có thể chạy `ANALYZE TABLE` trước/sau index để làm mới thống kê dung lượng; code mặc định vẫn trả `inconclusive` nếu `INDEX_LENGTH` không tăng. Sau phép thử, giữ file bằng chứng trong `data/outputs/`, kiểm index thử đã dọn rồi mới xóa các volume lab.
+Trước khi tạo index thử, nạp dữ liệu mẫu vào `validation_lab_db` và kiểm tra marker; chỉ đổi `DB_HOST=127.0.0.1`, `DB_PORT=3309` trong tiến trình chạy validation, không sửa `.env` của DB chính. `db/init.sql` cấp `index_admin` quyền `SELECT` **chỉ** trên `mysql.innodb_index_stats` khi khởi tạo volume lab mới. Code mặc định đọc số trang của đúng index; nếu không có quyền hoặc số liệu, thử hai nguồn ước lượng cấp bảng và trả `inconclusive` khi không có số dương. Không cần chạy `ANALYZE TABLE` bằng root cho đường này. DB chính đã tồn tại không nhận grant mới chỉ vì sửa `db/init.sql`; nếu muốn dùng nguồn ưu tiên trên DB chính, cần cấp grant riêng sau khi review quyền. Sau phép thử, giữ file bằng chứng trong `data/outputs/`, kiểm index thử đã dọn rồi mới xóa các volume lab.
 
 Chạy từ root repo với CSV ở `D:\labt2\data` (đổi `--csv-dir` theo máy). Lệnh không nhận SQL tự do; index được sinh từ tên bảng/cột đã kiểm tra. Output nằm trong `data/outputs/` và không ghi đè file cũ:
 

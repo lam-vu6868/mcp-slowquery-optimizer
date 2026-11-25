@@ -425,7 +425,7 @@ sequenceDiagram
 
 ### 6.4. Quy trình đo P95 chuẩn
 
-Để đo trade-off theo contract v2, ghi chênh lệch `information_schema.TABLES.INDEX_LENGTH` trước/sau trên cùng bảng; đây là ước lượng dung lượng index cấp bảng, không phải số byte chính xác của một index. Đo tác động ghi trên bản sao lab riêng. Thiếu lượt đo, hash, EXPLAIN xác nhận index được dùng hoặc metric bắt buộc thì báo `inconclusive`, không phát hành approval token.
+Để đo trade-off theo contract v2, ưu tiên số trang của đúng index thử trong `mysql.innodb_index_stats` nhân kích thước trang InnoDB (cần quyền `SELECT` riêng cho `index_admin`). Nếu nguồn này chưa được cấp quyền, dùng chênh lệch `information_schema.TABLES.INDEX_LENGTH` trước/sau; nếu số đó chưa cập nhật, dùng mức tăng dung lượng cấp phát của file bảng `INNODB_TABLESPACES.ALLOCATED_SIZE`. Hai nguồn dự phòng là ước lượng cấp bảng và có thể bằng 0 khi MySQL tái dùng chỗ trống; lúc đó báo `inconclusive`. Đo tác động ghi trên lab riêng. Thiếu lượt đo, hash, EXPLAIN xác nhận index được dùng hoặc metric bắt buộc thì không phát hành approval token.
 
 | Bước | Việc | Số lần |
 | :---: | ---- | :----: |

@@ -11,7 +11,7 @@ LƯU Ý:
     - Quy trình: tạo index INVISIBLE -> đo 'trước' (không bật cờ) -> đo 'sau' (SET SESSION optimizer_switch='use_invisible_indexes=on') -> so sánh -> ghi validation_report.
     - Pass khi: đủ lượt đo, hash tương đương, P95 giảm >= 20%, index được EXPLAIN dùng và không lỗi/timeout.
     - Fail hoặc inconclusive: gọi helper DDL nội bộ để dọn index thử; không phát approval token.
-    - Đo write overhead trên clone; ước lượng dung lượng index bằng chênh lệch TABLES.INDEX_LENGTH.
+    - Đo write overhead trên clone; ưu tiên stats của đúng index, rồi hai nguồn ước lượng cấp bảng.
     - Ngưỡng lấy từ config/settings.yaml.
 
 THAM KHẢO  : docs/api-contract.md (mục 4), project-management/ROADMAP.md (mục 2.3)
@@ -81,7 +81,10 @@ def _write_evidence_complete(item: object, required_rows: int) -> bool:
         and type(item.get("preload_rows")) is int
         and item["preload_rows"] == required_rows
         and _number(item.get("index_size_bytes"), positive=True)
-        and item.get("index_size_source") == "table_index_length_delta"
+        and item.get("index_size_source") in (
+            "innodb_index_stats_pages", "table_index_length_delta",
+            "tablespace_allocated_growth_delta",
+        )
         and item.get("index_size_estimated") is True
         and item.get("measurement_scope") == "isolated_lab"
     )
@@ -244,8 +247,8 @@ async def validate_index(
         write_measurement = measure_write()
         report["write_overhead"] = {
             **(write_measurement if isinstance(write_measurement, dict) else {}),
-            "index_size_bytes": size,
-            "index_size_source": "table_index_length_delta",
+            "index_size_bytes": size.get("index_size_bytes"),
+            "index_size_source": size.get("index_size_source"),
             "index_size_estimated": True,
         }
         result = assess_index_report(

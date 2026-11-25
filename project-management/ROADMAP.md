@@ -12,7 +12,7 @@
 - [api-contract.md](../docs/api-contract.md) v2 là bản DRAFT cho giao diện 6 tool; [architecture.md](../docs/architecture.md) mô tả luồng. Các điểm dưới đây cần Hải, Tình và Tường review trước khi coi là quyết định đã chốt.
 - Tool 1 hiện lấy digest từ `performance_schema`; mã `query_id` của digest khác ID `q01`–`q30` trong catalog thực nghiệm. LLM chỉ thấy wrapper giới hạn tham số của Tool 4–5 khi `server.py` đăng ký.
 - Validation Layer cần helper DDL nội bộ dùng `index_admin` để tạo/dọn index thử. Tool 6 vẫn là cửa áp dụng sau phê duyệt và chỉ nhận proposal ID cùng token. Token gắn với DDL `ALTER TABLE ... ALTER INDEX ... VISIBLE` thực sự áp dụng.
-- Dung lượng index phát sinh đo bằng chênh lệch `information_schema.TABLES.INDEX_LENGTH` trên cùng bảng, ghi rõ đó là ước lượng cấp bảng. Chi phí ghi đo trên bản sao lab riêng; `information_schema.STATISTICS` không cung cấp byte của từng index.
+- Dung lượng index thử ưu tiên số trang `size` của đúng index trong `mysql.innodb_index_stats` nhân `@@innodb_page_size`, với quyền `SELECT` chỉ trên bảng stats cho `index_admin`. Nếu chưa có quyền/số liệu, dùng chênh lệch `information_schema.TABLES.INDEX_LENGTH`; khi số đó chưa cập nhật, dùng mức tăng `information_schema.INNODB_TABLESPACES.ALLOCATED_SIZE` của file riêng. Hai nguồn sau chỉ là ước lượng cấp bảng; nếu đều không tăng thì `inconclusive`. Chi phí ghi đo trên lab riêng; `information_schema.STATISTICS` không cung cấp byte của từng index.
 
 ---
 
