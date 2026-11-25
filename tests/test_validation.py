@@ -510,8 +510,15 @@ async def test_saved_validation_persists_report_without_accepting_new_sql(
         def __init__(self, proposal, *, proposal_id):
             assert proposal["table"] == "orders"
 
+        def fk_support_snapshot(self):
+            events.append("snapshot")
+            return {"foreign_keys": [], "supporting_indexes": []}
+
         def create(self):
             assert store.get(proposal_id)["trial_state"] == "pending"
+            assert store.get(proposal_id)["fk_support_snapshot"] == {
+                "foreign_keys": [], "supporting_indexes": [],
+            }
             events.append("create")
 
         def drop(self):
@@ -553,7 +560,104 @@ async def test_saved_validation_persists_report_without_accepting_new_sql(
     assert result["status"] == "passed"
     assert store.get(proposal_id)["report"]["status"] == "passed"
     assert store.get(proposal_id)["trial_state"] == "passed"
-    assert events == ["create"]
+    assert events == ["snapshot", "create"]
+
+
+def test_trial_snapshots_fk_support_metadata_with_readonly_user(monkeypatch):
+    class Cursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def execute(self, sql, params=None):
+            self.sql = sql
+
+        def fetchall(self):
+            if "KEY_COLUMN_USAGE" in self.sql:
+                return [{"CONSTRAINT_NAME": "fk_order_items_product",
+                         "COLUMN_NAME": "product_id"}]
+            return [
+                {"INDEX_NAME": "fk_order_items_product", "COLUMN_NAME": "product_id",
+                 "COLLATION": "A", "SUB_PART": None, "NON_UNIQUE": 1,
+                 "INDEX_TYPE": "BTREE", "IS_VISIBLE": "YES", "INDEX_COMMENT": ""},
+                {"INDEX_NAME": "idx_other", "COLUMN_NAME": "quantity",
+                 "COLLATION": "A", "SUB_PART": None, "NON_UNIQUE": 1,
+                 "INDEX_TYPE": "BTREE", "IS_VISIBLE": "YES", "INDEX_COMMENT": ""},
+            ]
+
+    class Conn:
+        def cursor(self):
+            return Cursor()
+
+    @contextmanager
+    def readonly():
+        yield Conn()
+
+    monkeypatch.setattr(apply_module, "get_conn", readonly)
+    monkeypatch.setattr(apply_module, "get_admin_conn", lambda: pytest.fail("DDL sớm"))
+    trial = TrialIndex({
+        "type": "index", "table": "order_items", "index_name": "idx_items_cover",
+        "columns": [{"name": "product_id", "order": "ASC"}],
+    })
+
+    assert trial.fk_support_snapshot() == {
+        "foreign_keys": [{"name": "fk_order_items_product", "columns": ["product_id"]}],
+        "supporting_indexes": [{
+            "name": "fk_order_items_product", "non_unique": 1,
+            "index_type": "BTREE", "visible": True, "comment": "",
+            "columns": [{"name": "product_id", "order": "ASC", "sub_part": None}],
+        }],
+    }
+
+
+def test_begin_trial_persists_fk_snapshot_before_restart(tmp_path):
+    path = tmp_path / "proposals.sqlite3"
+    store = ProposalStore(path)
+    proposal_id = store.add("q01", "SELECT order_id FROM order_items", {
+        "type": "index", "table": "order_items", "index_name": "idx_items_cover",
+        "columns": [{"name": "product_id", "order": "ASC"}],
+    })
+    snapshot = {"foreign_keys": [{"name": "fk_order_items_product",
+                                  "columns": ["product_id"]}],
+                "supporting_indexes": [{"name": "fk_order_items_product"}]}
+
+    store.begin_trial(proposal_id, fk_support_snapshot=snapshot)
+    snapshot["supporting_indexes"].clear()
+
+    saved = ProposalStore(path).get(proposal_id)
+    assert saved["trial_state"] == "pending"
+    assert saved["fk_support_snapshot"]["supporting_indexes"] == [
+        {"name": "fk_order_items_product"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_snapshot_error_stops_before_pending_or_ddl(tmp_path):
+    store = ProposalStore(tmp_path / "proposals.sqlite3")
+    proposal_id = store.add("q01", "SELECT order_id FROM order_items", {
+        "type": "index", "table": "order_items", "index_name": "idx_items_cover",
+        "columns": [{"name": "product_id", "order": "ASC"}],
+    })
+
+    class FakeTrial:
+        def __init__(self, proposal, *, proposal_id):
+            pass
+
+        def fk_support_snapshot(self):
+            raise OSError("metadata unavailable")
+
+        def create(self):
+            pytest.fail("Không tạo index khi chưa lưu snapshot")
+
+    with pytest.raises(OSError, match="metadata unavailable"):
+        await validate_saved_index(
+            store, proposal_id, measure_write=dict, trial_factory=FakeTrial,
+        )
+    saved = store.get(proposal_id)
+    assert saved["trial_state"] == "new"
+    assert saved["fk_support_snapshot"] is None
 
 
 @pytest.mark.asyncio
@@ -580,12 +684,15 @@ async def test_saved_validation_cleans_passed_trial_when_report_save_fails(monke
         def save_report(self, proposal_id, report):
             raise OSError("storage unavailable")
 
-        def begin_trial(self, proposal_id):
+        def begin_trial(self, proposal_id, *, fk_support_snapshot):
             pass
 
     class FakeTrial:
         def __init__(self, proposal, *, proposal_id):
             pass
+
+        def fk_support_snapshot(self):
+            return {"foreign_keys": [], "supporting_indexes": []}
 
         def create(self):
             pass
@@ -713,6 +820,61 @@ def test_recover_drop_refuses_index_with_other_owner(monkeypatch):
     }, proposal_id="p_ours")
     with pytest.raises(RuntimeError, match="không thuộc trial"):
         trial.recover_drop()
+
+
+def test_recover_drop_refuses_when_trial_alone_supports_foreign_key(monkeypatch):
+    calls = []
+
+    class Cursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def execute(self, sql, params=None):
+            self.sql = sql
+            calls.append(sql)
+
+        def fetchall(self):
+            if "INDEX_COMMENT" in self.sql:
+                return [
+                    {"COLUMN_NAME": name, "COLLATION": "A",
+                     "INDEX_COMMENT": "mcp_trial:p_ours", "IS_VISIBLE": "NO"}
+                    for name in ("product_id", "quantity")
+                ]
+            if "KEY_COLUMN_USAGE" in self.sql:
+                return [{"CONSTRAINT_NAME": "fk_order_items_product",
+                         "COLUMN_NAME": "product_id"}]
+            if "information_schema.STATISTICS" in self.sql:
+                return [
+                    {"INDEX_NAME": "idx_items_cover", "COLUMN_NAME": name}
+                    for name in ("product_id", "quantity")
+                ]
+            return []
+
+    class Conn:
+        def cursor(self):
+            return Cursor()
+
+    @contextmanager
+    def readonly():
+        yield Conn()
+
+    def forbidden_admin():
+        pytest.fail("Không được DROP index duy nhất hỗ trợ khóa ngoại")
+
+    monkeypatch.setattr(apply_module, "get_conn", readonly)
+    monkeypatch.setattr(apply_module, "get_admin_conn", forbidden_admin)
+    trial = TrialIndex({
+        "type": "index", "table": "order_items", "index_name": "idx_items_cover",
+        "columns": [{"name": name, "order": "ASC"}
+                    for name in ("product_id", "quantity")],
+    }, proposal_id="p_ours")
+
+    with pytest.raises(ForeignKeyIndexRisk, match="khóa ngoại"):
+        trial.recover_drop()
+    assert not any("DROP INDEX" in sql for sql in calls)
 
 
 def test_store_keeps_trial_pending_if_cleanup_failed(tmp_path):

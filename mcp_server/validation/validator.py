@@ -292,7 +292,7 @@ async def validate_saved_index(
             return measure_insert_overhead(saved["proposal"], csv_dir=write_csv_dir)
 
     trial = trial_factory(saved["proposal"], proposal_id=proposal_id)
-    store.begin_trial(proposal_id)
+    store.begin_trial(proposal_id, fk_support_snapshot=trial.fk_support_snapshot())
     result = await validate_index(
         proposal_id=proposal_id, query_id=saved["query_id"],
         original_sql=saved["original_sql"],

@@ -379,6 +379,10 @@ Tool 4 và Tool 5 luôn đặt rõ OFF cho phép đo trước, ON cho phép đo 
 
 Trước DDL, helper hiện từ chối proposal có tiền tố cột trùng khóa ngoại tham chiếu và trả report `inconclusive/foreign_key_support_risk`. MySQL có thể tự bỏ index hỗ trợ FK khi index mới thay thế được nó; q01 trên lab 5M đã bộc lộ rủi ro này. Chỉ mở lại nhánh thử sau khi có cách bảo toàn và dọn index an toàn.
 
+Recovery cũng kiểm tra lại metadata FK/index sau khi xác nhận marker của trial: nếu trial là index duy nhất còn hỗ trợ một FK tham chiếu, nó dừng trước `DROP INDEX`, để trial ở trạng thái `pending` và backend không nhận validation mới. Để mở lại q01, cần lưu bền vững định nghĩa index hỗ trợ FK trước DDL, chứng minh cách khôi phục được index đó khi trial còn tồn tại, và thử cả trường hợp tiến trình ngắt giữa các lệnh DDL trên lab riêng. Không tự động dựng lại index từ tên FK vì tên index và định nghĩa thực tế có thể khác.
+
+Backend hiện chụp tên/cột FK cùng định nghĩa các index đang hỗ trợ chúng qua `readonly_user`, rồi ghi snapshot và `trial_state=pending` trong **cùng giao dịch SQLite** trước `CREATE INDEX`. Nếu đọc metadata hoặc ghi SQLite lỗi, không gọi DDL. Snapshot là dữ liệu để recovery đối chiếu sau này; chức năng tự khôi phục index hỗ trợ FK chưa được bật, nên q01 vẫn bị chặn.
+
 ### 6.3. Luồng validation chi tiết
 
 ```mermaid

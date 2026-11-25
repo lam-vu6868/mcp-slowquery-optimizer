@@ -16,6 +16,8 @@ LƯU Ý:
     - Dùng index_admin cho DDL và SELECT riêng trên mysql.innodb_index_stats để đo index thử.
     - Helper DDL nội bộ trong file này phục vụ Validation tạo/dọn index INVISIBLE; không công bố thành MCP tool.
     - Từ chối index thử có tiền tố trùng cột FK tham chiếu để tránh MySQL tự bỏ index hỗ trợ FK.
+    - Recovery không DROP trial nếu nó là index duy nhất còn hỗ trợ FK tham chiếu.
+    - Chụp metadata FK/index bằng tài khoản đọc trước khi backend ghi trial pending và tạo index.
     - Mọi lần gọi (kể cả bị từ chối) đều ghi audit_log.
 
 THAM KHẢO  : docs/api-contract.md (Tool 6), security/approval.py
@@ -170,6 +172,60 @@ class TrialIndex:
         if any(self.column_names[:len(cols)] == cols for cols in foreign_keys.values()):
             raise ForeignKeyIndexRisk("index đề xuất có thể thay thế index hỗ trợ khóa ngoại")
 
+    def fk_support_snapshot(self) -> dict:
+        """Chụp FK và định nghĩa index hỗ trợ bằng tài khoản đọc, trước mọi DDL."""
+        with get_conn() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT CONSTRAINT_NAME, COLUMN_NAME "
+                "FROM information_schema.KEY_COLUMN_USAGE "
+                "WHERE TABLE_SCHEMA=%s AND TABLE_NAME=%s "
+                "AND REFERENCED_TABLE_NAME IS NOT NULL "
+                "ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION",
+                (Config.DB_NAME, self.table_name),
+            )
+            foreign_keys = {}
+            for row in cur.fetchall():
+                foreign_keys.setdefault(row["CONSTRAINT_NAME"], []).append(row["COLUMN_NAME"])
+            if not foreign_keys:
+                return {"foreign_keys": [], "supporting_indexes": []}
+            cur.execute(
+                "SELECT INDEX_NAME, COLUMN_NAME, COLLATION, SUB_PART, NON_UNIQUE, "
+                "INDEX_TYPE, IS_VISIBLE, INDEX_COMMENT "
+                "FROM information_schema.STATISTICS "
+                "WHERE TABLE_SCHEMA=%s AND TABLE_NAME=%s "
+                "ORDER BY INDEX_NAME, SEQ_IN_INDEX",
+                (Config.DB_NAME, self.table_name),
+            )
+            indexes = {}
+            for row in cur.fetchall():
+                indexes.setdefault(row["INDEX_NAME"], []).append(row)
+        support = []
+        for name, rows in indexes.items():
+            columns = [row["COLUMN_NAME"] for row in rows]
+            if not any(columns[:len(fk_cols)] == fk_cols
+                       for fk_cols in foreign_keys.values()):
+                continue
+            support.append({
+                "name": name, "non_unique": int(rows[0]["NON_UNIQUE"]),
+                "index_type": rows[0]["INDEX_TYPE"],
+                "visible": rows[0]["IS_VISIBLE"] == "YES",
+                "comment": rows[0]["INDEX_COMMENT"],
+                "columns": [{
+                    "name": row["COLUMN_NAME"],
+                    "order": ({"A": "ASC", "D": "DESC"}.get(row["COLLATION"])),
+                    "sub_part": row["SUB_PART"],
+                } for row in rows],
+            })
+        if any(not any([row["name"] for row in index["columns"]][:len(fk_cols)]
+                       == fk_cols for index in support)
+               for fk_cols in foreign_keys.values()):
+            raise ForeignKeyIndexRisk("không đọc được index hỗ trợ khóa ngoại")
+        return {
+            "foreign_keys": [{"name": name, "columns": columns}
+                             for name, columns in foreign_keys.items()],
+            "supporting_indexes": support,
+        }
+
     def create(self) -> None:
         self._check_schema()
         self._baseline_size = self._index_length()
@@ -232,11 +288,44 @@ class TrialIndex:
         self._owned = False
         self._attempted_create = False
 
+    def _sole_fk_support(self) -> bool:
+        """Kiểm tra liệu bỏ trial có làm FK phía tham chiếu mất index hỗ trợ."""
+        with get_conn() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT CONSTRAINT_NAME, COLUMN_NAME "
+                "FROM information_schema.KEY_COLUMN_USAGE "
+                "WHERE TABLE_SCHEMA=%s AND TABLE_NAME=%s "
+                "AND REFERENCED_TABLE_NAME IS NOT NULL "
+                "ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION",
+                (Config.DB_NAME, self.table_name),
+            )
+            foreign_keys = {}
+            for row in cur.fetchall():
+                foreign_keys.setdefault(row["CONSTRAINT_NAME"], []).append(row["COLUMN_NAME"])
+            if not foreign_keys:
+                return False
+            cur.execute(
+                "SELECT INDEX_NAME, COLUMN_NAME FROM information_schema.STATISTICS "
+                "WHERE TABLE_SCHEMA=%s AND TABLE_NAME=%s "
+                "ORDER BY INDEX_NAME, SEQ_IN_INDEX",
+                (Config.DB_NAME, self.table_name),
+            )
+            indexes = {}
+            for row in cur.fetchall():
+                indexes.setdefault(row["INDEX_NAME"], []).append(row["COLUMN_NAME"])
+        return any(
+            not any(name != self.index_name and cols[:len(fk_cols)] == fk_cols
+                    for name, cols in indexes.items())
+            for fk_cols in foreign_keys.values()
+        )
+
     def recover_drop(self) -> str:
         """Dọn sau restart, chỉ khi marker/định nghĩa/INVISIBLE đều khớp."""
         state = self._index_state()
         if state == "absent":
             return "absent"
+        if self._sole_fk_support():
+            raise ForeignKeyIndexRisk("index thử là index duy nhất hỗ trợ khóa ngoại")
         with get_admin_conn() as conn, conn.cursor() as cur:
             cur.execute("SET SESSION lock_wait_timeout = 5")
             cur.execute(self.drop_ddl)

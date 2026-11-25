@@ -1,6 +1,6 @@
 # 📊 TIẾN ĐỘ DỰ ÁN
 
-> **Cập nhật lần cuối:** 25/11/2026 — kiểm chứng Validation trên lab đủ 5M dòng, bổ sung chặn rủi ro khóa ngoại; Vũ quản lý
+> **Cập nhật lần cuối:** 25/11/2026 — lưu snapshot FK/index trước DDL trong store; Vũ quản lý
 > **Mốc đối chiếu hiện tại:** 25/11/2026; các bảng tuần bên dưới là lịch sử
 > **Tổng tiến độ:** Chưa tính lại từ mốc ~27% ngày 19/10
 >
@@ -25,6 +25,20 @@
 |  7  | Metrics + Baseline                                   |     ⬜      | Tường · Hải      |           03/11            |
 |  8  | Dashboard 4 tab                                      |     ⬜      | Tình             |           10/11            |
 |  9  | Báo cáo + Demo                                       |     ⬜      | Cả nhóm          |       17/11 · 01/12        |
+
+---
+
+## Lưu metadata hỗ trợ FK trước trial ngày 25/11/2026
+
+- `TrialIndex.fk_support_snapshot()` đọc FK phía tham chiếu và định nghĩa index đang hỗ trợ bằng `readonly_user`. `validate_saved_index()` gọi hàm này trước `begin_trial()`; store ghi snapshot cùng `trial_state=pending` trong một giao dịch SQLite, rồi mới cho phép `CREATE INDEX`. Mở lại SQLite vẫn đọc được snapshot; lỗi đọc metadata dừng khi state còn `new`, không chạy DDL.
+- Test dùng DB giả và SQLite tạm: toàn bộ **261 tests pass**, Ruff pass. Không khởi động MySQL/Dashboard thật, không tạo/drop index trong lượt này. Snapshot chưa được dùng để tự khôi phục index; q01 vẫn bị chặn. Bước tiếp theo là thiết kế/thử khôi phục an toàn qua các điểm ngắt trên lab riêng trước khi mở lại q01.
+
+---
+
+## Chặn recovery dọn index duy nhất hỗ trợ FK ngày 25/11/2026
+
+- Khi trial cũ là index duy nhất còn hỗ trợ một FK tham chiếu, `TrialIndex.recover_drop()` nay kiểm metadata và từ chối trước DDL. `recover_interrupted_trials()` giữ proposal `pending`, báo `recovery_failed`; backend không nhận validation mới. Test DB giả chứng minh không gọi admin DDL trong trường hợp này.
+- Chưa mở lại q01. Thiết kế tiếp theo cần lưu định nghĩa index hỗ trợ FK trước khi tạo trial và chứng minh được cách khôi phục qua mọi điểm ngắt DDL trên lab riêng. Không dựng lại index chỉ theo tên FK. Trong lượt này không khởi động MySQL/Dashboard thật, không tạo/drop index.
 
 ---
 

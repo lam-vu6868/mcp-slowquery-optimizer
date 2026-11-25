@@ -68,6 +68,10 @@ LLM **không** gửi câu `CREATE INDEX`. Chỉ gửi cấu trúc, server tự s
 
 Proposal có tiền tố cột trùng với khóa ngoại tham chiếu vẫn có thể được LLM đề xuất, nhưng helper tạo index thử hiện từ chối trước DDL: MySQL có thể tự bỏ index đang hỗ trợ khóa ngoại khi index mới cũng hỗ trợ khóa đó. Validation trả `inconclusive` với `failure_reason="foreign_key_support_risk"`; caller không được đưa proposal này tới bước Approve. Cần thiết kế cách giữ/khôi phục index hỗ trợ FK an toàn trước khi mở lại nhánh thử này.
 
+Nếu recovery gặp trial cũ đang là index duy nhất hỗ trợ FK, helper dừng trước DROP; `recover_interrupted_trials()` để proposal ở `pending` và trả `recovery_failed` để backend chặn việc mới. Cần xác minh và khôi phục index hỗ trợ FK theo metadata đã lưu trước khi dọn trial; không suy ra định nghĩa index từ tên constraint.
+
+Trước `begin_trial`, backend đọc FK và các index hỗ trợ trên bảng bằng `readonly_user`. `begin_trial` ghi snapshot này cùng `trial_state=pending` trong một giao dịch SQLite; lỗi đọc/ghi dừng trước DDL. Snapshot gồm tên và thứ tự cột FK, tên/cột/thứ tự cột/kiểu/tính duy nhất/visibility/comment của index hỗ trợ. Hiện snapshot chỉ phục vụ đối chiếu về sau, chưa cho phép tự dựng lại index hay duyệt q01.
+
 ```json
 {
   "type": "index",
