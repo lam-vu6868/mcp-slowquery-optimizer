@@ -1,0 +1,46 @@
+services:
+  write_lab_db:
+    image: mysql:8.0
+    container_name: mcp_write_lab_db
+    command: --local-infile=1
+    environment:
+      MYSQL_ROOT_PASSWORD: ${WRITE_LAB_ROOT_PASSWORD:?Set WRITE_LAB_ROOT_PASSWORD in .env.write-lab}
+      MYSQL_DATABASE: shopdb
+    ports:
+      - "127.0.0.1:3308:3306"
+    volumes:
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./db/write_lab_marker.sql:/docker-entrypoint-initdb.d/02-marker.sql:ro
+      - ./db/init.sql:/docker-entrypoint-initdb.d/03-init.sql:ro
+      - write_lab_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${WRITE_LAB_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  validation_lab_db:
+    image: mysql:8.0
+    container_name: mcp_validation_lab_db
+    command: --local-infile=1
+    environment:
+      MYSQL_ROOT_PASSWORD: ${WRITE_LAB_ROOT_PASSWORD:?Set WRITE_LAB_ROOT_PASSWORD in .env.write-lab}
+      MYSQL_DATABASE: shopdb
+    ports:
+      - "127.0.0.1:3309:3306"
+    volumes:
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./db/validation_lab_marker.sql:/docker-entrypoint-initdb.d/02-marker.sql:ro
+      - ./db/init.sql:/docker-entrypoint-initdb.d/03-init.sql:ro
+      - validation_lab_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${WRITE_LAB_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  write_lab_data:
+  validation_lab_data:

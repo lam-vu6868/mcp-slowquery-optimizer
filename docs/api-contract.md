@@ -358,7 +358,7 @@ Giới hạn: `measured_runs` 5–50, `timeout_ms` ≤ 60000.
 - `rows_examined` lấy từ chênh lệch các bộ đếm `Handler_read*` trước/sau từng lượt và trả về trung vị.
 - Hash được tính trong một lượt riêng, không tính vào P50/P95.
 - Query không có `ORDER BY` được chuẩn hóa và sắp xếp trên ổ đĩa trước khi hash.
-- Kết quả thiếu số lượt yêu cầu, timeout hoặc thiếu hash khi `compute_result_hash=true` phải trả `ok=false`, `MEASUREMENT_INVALID` (hoặc `TIMEOUT` nếu toàn bộ lượt timeout); không trả P95 thành công để caller dùng làm baseline. Giao diện LLM được cố định `compute_result_hash=false`, nên không bắt buộc có hash. Code Tool 5 đã xử lý trường hợp này; Validation Layer vẫn chưa triển khai.
+- Kết quả thiếu số lượt yêu cầu, timeout hoặc thiếu hash khi `compute_result_hash=true` phải trả `ok=false`, `MEASUREMENT_INVALID` (hoặc `TIMEOUT` nếu toàn bộ lượt timeout); không trả P95 thành công để caller dùng làm baseline. Giao diện LLM được cố định `compute_result_hash=false`, nên không bắt buộc có hash. Validation Layer hiện có code đánh giá report và đường đo nội bộ, còn chờ kiểm chứng end-to-end trên lab riêng.
 - `use_invisible_indexes` cũng được đặt OFF/ON rõ ràng theo session như Tool 4. `true` cho phép optimizer cân nhắc index INVISIBLE, không đảm bảo index được chọn; cần đối chiếu EXPLAIN. Chỉ dùng nội bộ validation/lab, không cấp quyền bật cho LLM.
 - `rows_examined` từ `Handler_read*` là số đo thay thế của hoạt động đọc, không phải số `ROWS_EXAMINED` chính xác từ Performance Schema; cần ghi rõ khi báo cáo.
 
@@ -456,12 +456,17 @@ Hải xây, backend gọi sau khi parser đã chấp nhận proposal. Đường 
     "row_count": 84,
     "runs": 20,
     "timed_out_runs": 0,
-    "key_used": "idx_orders_status_date"
+    "key_used": "idx_orders_status_date",
+    "raw_plan": {"query_block": {"table": {"table_name": "orders", "key": "idx_orders_status_date"}}}
   },
   "result_equivalent": true,
   "improvement_ratio": 0.986,
   "write_overhead": {
     "insert_throughput_change_pct": -6.5,
+    "before_rows_per_second": 63425.38,
+    "after_rows_per_second": 59296.73,
+    "sample_rows": 100000,
+    "preload_rows": 100000,
     "index_size_bytes": 310000000,
     "index_size_source": "table_index_length_delta",
     "index_size_estimated": true,
@@ -472,9 +477,9 @@ Hải xây, backend gọi sau khi parser đã chấp nhận proposal. Đường 
 }
 ```
 
-**Luồng kiểm chứng index:** dùng SQL gốc đã qua AST; ghi `INDEX_LENGTH` trước khi tạo một index INVISIBLE từ proposal có cấu trúc trên lab được phép thử; đo baseline với `use_invisible_indexes=off`, đo sau với `on`, đối chiếu EXPLAIN xem optimizer có chọn index mới. Mỗi bên có 3 warm-up + 20 lượt đo thành công, cùng cache warm và timeout; tính P95 theo nearest-rank. Hash toàn bộ kết quả và số dòng phải khớp. `rows_examined` của Tool 5 là proxy `Handler_read*`, phải ghi nguồn trong báo cáo, không gọi là số MySQL `ROWS_EXAMINED` chính xác. Query Cost lấy từ EXPLAIN JSON; dashboard lưu trước/sau từng query và tính tổng trên các query hợp lệ.
+**Luồng kiểm chứng index:** dùng SQL gốc đã qua AST; ghi `INDEX_LENGTH` trước khi tạo một index INVISIBLE từ proposal có cấu trúc trên lab được phép thử; đo baseline với `use_invisible_indexes=off`, đo sau với `on`, đối chiếu EXPLAIN xem optimizer có chọn index mới trên **đúng bảng proposal**, kể cả khi bảng đó nằm sau trong JOIN. Caller lưu report phải giữ `after.raw_plan` từ Tool 4: `key_used` đơn lẻ chỉ mô tả bảng đầu tiên và không đủ chứng minh. Nếu alias bảng trong SQL bị dùng lại cho bảng khác hoặc thiếu plan, validation trả `inconclusive`. Mỗi bên có 3 warm-up + 20 lượt đo thành công, cùng cache warm và timeout; tính P95 theo nearest-rank. Hash toàn bộ kết quả và số dòng phải khớp. `rows_examined` của Tool 5 là proxy `Handler_read*`, phải ghi nguồn trong báo cáo, không gọi là số MySQL `ROWS_EXAMINED` chính xác. Query Cost lấy từ EXPLAIN JSON; dashboard lưu trước/sau từng query và tính tổng trên các query hợp lệ.
 
-**Dung lượng và chi phí ghi:** đo `INDEX_LENGTH` của bảng trước/sau khi chỉ thêm một secondary index trên lab không có ghi đồng thời; đặt `information_schema_stats_expiry=0` trong session đo để tránh dùng cache metadata cũ. Chênh lệch là **ước lượng dung lượng index phát sinh**, kèm `index_size_source` và `index_size_estimated=true`, không phải kích thước chính xác từng index. Đo INSERT throughput trước/sau với cùng số dòng (`validation.write_overhead_rows` trong `config/settings.yaml`) trên bản sao dữ liệu thử riêng, không chèn hàng thử vào bộ ground truth 5M. Nếu chênh lệch size không xác định hoặc thiếu một trong hai số đo thì `evidence_complete=false`; không công bố đã hoàn thành yêu cầu trade-off. `information_schema.TABLES` là nguồn ước lượng; chỉ kết quả có nguồn/điều kiện đo rõ ràng mới đưa vào biểu đồ.
+**Dung lượng và chi phí ghi:** đo `INDEX_LENGTH` của bảng trước/sau khi chỉ thêm một secondary index trên lab không có ghi đồng thời; đặt `information_schema_stats_expiry=0` trong session đo để tránh dùng cache metadata cũ. Chênh lệch là **ước lượng dung lượng index phát sinh**, kèm `index_size_source` và `index_size_estimated=true`, không phải kích thước chính xác từng index. MySQL có thể giữ thống kê InnoDB cũ ngay cả khi session đặt expiry bằng 0: nếu chênh lệch bằng 0, report phải là `inconclusive`. Lượt thử lab có thể chạy `ANALYZE TABLE` bằng root **trước và sau** khi tạo index để làm mới thống kê; không cấp quyền `INSERT` cho `index_admin` chỉ để chạy `ANALYZE` trên DB chính. Đo INSERT throughput trước/sau với cùng số dòng (`validation.write_overhead_rows` trong `config/settings.yaml`) trên MySQL lab riêng **khác** DB đang giữ index thử, không chèn hàng thử vào bộ ground truth 5M. Báo cáo ghi thêm `before_rows_per_second`, `after_rows_per_second`, `sample_rows`, `preload_rows`; caller lưu report cần giữ các trường này vì Validation kiểm chúng trước khi cho `passed`. Lab hiện dùng hai bảng tạm `CREATE TABLE LIKE`, preload cùng N dòng CSV rồi đo INSERT cùng N dòng tiếp theo; bảng sau có index đề xuất INVISIBLE. `CREATE TABLE LIKE` không sao chép FOREIGN KEY, và mẫu đầu CSV không đại diện toàn bộ workload 5M: phải ghi rõ giới hạn trong report. Nếu chênh lệch size không xác định hoặc thiếu một trong hai số đo thì `evidence_complete=false`; không công bố đã hoàn thành yêu cầu trade-off. `information_schema.TABLES` là nguồn ước lượng; chỉ kết quả có nguồn/điều kiện đo rõ ràng mới đưa vào biểu đồ.
 
 **Trạng thái:** `passed` khi hash và số dòng tương đương, P95 giảm ≥20%, đủ 20/20 lượt mỗi bên, không timeout/lỗi và với index proposal có bằng chứng optimizer chọn index mới. `failed` khi đo hợp lệ nhưng sai kết quả hoặc không đạt ngưỡng; `inconclusive` khi thiếu lượt, thiếu số đo bắt buộc hoặc không chứng minh được index được dùng. Tool 6 chỉ nhận `passed` **và** `evidence_complete=true` trên SQL gốc. Fail/inconclusive/ngoại lệ → dọn index thử và ghi lý do; pass giữ INVISIBLE để chờ người duyệt, Reject hoặc hết hạn chờ duyệt thì dọn. Rewrite thuần chỉ đo SQL gốc và SQL viết lại, không tạo index và không đi qua Tool 6; phương án rewrite + index phải ghi `candidate_sql_kind="rewritten"` và chỉ hiển thị nếu chưa kiểm chứng index độc lập trên SQL gốc.
 

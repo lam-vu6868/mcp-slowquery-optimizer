@@ -110,6 +110,8 @@ class ProposalStore:
             raise ValueError("report không khớp proposal")
         checked = assess_index_report(
             report, expected_index_name=saved["proposal"]["index_name"],
+            expected_table=saved["proposal"]["table"],
+            original_sql=saved["original_sql"],
         )
         if report.get("failure_reason") == "cleanup_failed":
             checked.update(status="inconclusive", evidence_complete=False,

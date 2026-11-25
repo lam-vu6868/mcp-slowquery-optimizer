@@ -78,6 +78,29 @@ Lệnh kiểm tra không chạy lại DB và cách chạy pytest trên Windows x
 - Test dùng DB/Tool giả: chưa tạo/drop index trên MySQL thật, chưa đo INSERT trên clone riêng, chưa nối hàm recovery vào điểm khởi động backend, chưa tích hợp Dashboard/Tool 6. Do đó **chưa Done**, chưa có report thật đủ điều kiện phê duyệt.
 - Kiểm tra sau bước recovery: 237 unit tests pass, Ruff pass trên các file Python đã sửa, `git diff --check` pass.
 
+### Write lab và phép đo INSERT ngày 24/11/2026
+
+- `docker-compose.write-lab.yml` tạo MySQL riêng tại `127.0.0.1:3308`, volume riêng và marker trong `db/write_lab_marker.sql`; đã khởi động và kiểm marker thật. DB chính vẫn ở cổng 3307. Mật khẩu lab nằm trong `.env.write-lab` cục bộ, đã gitignore.
+- `write_overhead.py` tạo hai bảng TEMPORARY từ schema cùng bảng, preload cùng 100.000 dòng đầu từ CSV, thêm index INVISIBLE vào một bảng, rồi đo INSERT cùng 100.000 dòng tiếp theo vào cả hai. Hàm kiểm marker, schema/header và dùng đúng số dòng từ config. `validate_saved_index()` có đường gọi phép đo này qua `write_csv_dir`; report kiểm tốc độ trước/sau, số dòng và tỷ lệ phần trăm nhất quán.
+- Đã đo thật **một phương án mẫu**, `orders(status ASC, order_date ASC)`, bằng script offline; bằng chứng ở `data/outputs/write_overhead_orders_status_date_20261124.json` (gitignored). Lượt lưu: trước 56.422,54 dòng/giây (1,772 s), sau 46.501,17 dòng/giây (2,150 s), thay đổi throughput **−17,58%**. Một lượt thăm dò trước đó cho −19,21%; chưa dùng các lượt này làm kết luận tổng quát.
+- Lab chỉ sao chép schema và dùng 200.000 dòng mẫu đầu CSV, không nạp toàn bộ 5M; bảng tạm không sao chép FOREIGN KEY. Sau phép đo, lab `orders` vẫn 0 dòng và không còn bảng scratch; DB chính `orders` vẫn 1.500.000 dòng. Chưa đo đủ mọi bảng/phương án, chưa chạy Validation end-to-end tạo index thật trên DB chính, chưa có số dung lượng index cho proposal này.
+- Sau khi lưu bằng chứng, đã dừng rồi xóa riêng container/network/volume `mcp-write-lab_write_lab_data` theo yêu cầu người dùng; `docker volume inspect` xác nhận volume không còn. File bằng chứng trong `data/outputs/` vẫn giữ; container DB chính vẫn `running/healthy`. Lần chạy write lab sau sẽ tạo volume mới và khởi tạo schema/marker lại.
+- Toàn bộ 242 unit tests pass sau thay đổi; Ruff và `git diff --check` được chạy cho file đã sửa.
+
+### Rà lại Validation Layer ngày 25/11/2026
+
+- Sửa kiểm chứng EXPLAIN cho JOIN: Tool 4 vẫn trả `key_used` của bảng đầu tiên, còn Validation Layer đọc `raw_plan` để xác nhận index mới nằm trên đúng bảng của proposal, kể cả bảng ở vị trí sau. Alias dùng lại cho bảng khác trả `inconclusive`. `ProposalStore.save_report()` kiểm lại bằng SQL gốc và tên bảng đã lưu; caller lưu report cần giữ `after.raw_plan`.
+- Khôi phục `docker-compose.write-lab.yml` mà setup guide tham chiếu; `docker compose ... config --quiet` hợp lệ. Không khởi tạo lại volume lab đã xóa theo yêu cầu người dùng.
+- Toàn bộ **244 unit tests pass**; Ruff cho Python đã sửa và `git diff --check` pass. Lần EXPLAIN q07 đầu tiên bị từ chối kết nối (WinError 10061); thử lại khi cổng 3307 sẵn sàng thì `ok=true`. Plan thật có `orders` alias `o` không chọn index và `addresses` alias `a` dùng `fk_addresses_customer`; helper xác nhận index thuộc `addresses`, không gán nhầm cho `orders`. Đây là kiểm chứng chỉ đọc với index sẵn có, chưa tạo/drop index thật hoặc chạy validation end-to-end; chặng vẫn **Đang làm**.
+
+### Thử end-to-end trên hai lab riêng ngày 25/11/2026
+
+- Dựng `write_lab_db` cổng 3308 và `validation_lab_db` cổng 3309, mỗi service có marker/volume riêng; nạp 200.000 dòng `orders` từ CSV vào validation lab. DB chính cổng 3307 vẫn có đúng 1.500.000 dòng `orders`. Proposal thử là `orders(status ASC, order_date ASC)` trên SQL gốc chỉ đọc, không thuộc 30 query catalog; mục tiêu là kiểm luồng, không chấm ground truth.
+- Lần thử dùng chung một DB cho index đọc và đo INSERT trả `inconclusive/measurement_error`: phép đo INSERT đúng ra phải chạy trên DB riêng có bảng gốc chưa mang index đề xuất. Sau khi tách hai service, lượt đo đọc/hash/INSERT thành công nhưng `INDEX_LENGTH` chưa cập nhật, nên code mặc định trả `inconclusive/write_evidence_incomplete` và tự dọn index. Bằng chứng ở `data/outputs/validation_lab_20261125_095725.json`.
+- Lượt kiểm chứng lab dùng root **chỉ ở validation lab** chạy `ANALYZE TABLE orders` trước và sau khi tạo index để làm mới thống kê, không đổi quyền `index_admin` hoặc code mặc định. Report SQLite/JSON `passed`, 20 lượt mỗi bên, P95 **72,53 → 19,38 ms** (giảm 73,28%), hash/số dòng khớp, EXPLAIN chọn index đề xuất, dung lượng tăng ước lượng **6.832.128 byte**, INSERT throughput thay đổi **−20,27%**. Bằng chứng ở `data/outputs/validation_lab_20261125_100015.json`; index thử đã dọn bằng marker sau khi ghi report. Report này **chỉ là lab evidence**, không được dùng để cấp approval token vì index đã dọn và dữ liệu chỉ là mẫu 200.000 dòng.
+- MySQL [yêu cầu `SELECT` và `INSERT` cho `ANALYZE TABLE`](https://dev.mysql.com/doc/refman/8.0/en/analyze-table.html). Do đó chưa có cách làm mới thống kê dung lượng với quyền `index_admin` hiện tại trên DB chính; không nới quyền chỉ để ép report `passed`. Validation Layer vẫn **Đang làm** cho đường runtime chung và chưa nối Dashboard/Tool 6.
+- Đã xác nhận main `orders` vẫn 1.500.000 dòng; cả hai lab đều không còn index thử. Sau khi lưu JSON/SQLite bằng chứng (gitignored), đã `docker compose -p mcp-write-lab ... down -v`: xóa đúng hai container, hai volume và network lab; không xóa volume DB chính. SQLite lab còn report `passed` nhưng index lab đã dọn và volume đã xóa, nên **không dùng SQLite này làm nguồn phê duyệt runtime**.
+
 ## Kiểm chứng ngày 24/11/2026 — LLM host
 
 - `agent.py` có vòng gọi Tool 1–5, retry JSON và hash run; `parsers.py` kiểm JSON Schema cùng schema Tool 2. Adapter `llm/groq.py` đổi messages/tool calls sang Groq; model thử nghiệm ghim `openai/gpt-oss-120b` trong `config/settings.yaml`.
