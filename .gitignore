@@ -10,6 +10,7 @@ env/
 # Môi trường
 .env
 .env.local
+.env.write-lab
 
 # IDE
 .vscode/

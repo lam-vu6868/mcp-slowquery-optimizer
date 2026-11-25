@@ -222,8 +222,37 @@ Nhánh đo của `verify_ground_truth.py` có CREATE/DROP index tạm và cập 
 ## 9. Phần chưa hoàn tất
 
 - Ground truth: trạng thái `performance_verified_pending_review`; Hải review và GVHD ký còn chờ. Không tuyên bố đáp án tối ưu toàn cục.
-- Chưa đo đầy đủ dung lượng index và chi phí ghi, metric LLM hoặc so sánh baseline truyền thống.
+- Chưa đo đầy đủ dung lượng index và chi phí ghi cho mọi phương án; đã có một phép đo INSERT mẫu trên write lab riêng (xem mục 10). Metric LLM và so sánh baseline truyền thống còn thiếu.
 - Dữ liệu giả hiện khá đều, có tương quan city/status; chưa chứng minh tải lệch/đỉnh Black Friday hoặc CPU 98%/downtime.
 - `python -m mcp_server.server` hiện chạy MCP stdio với Tool 1–5 trên MCP SDK 2.x. Tool 6, LLM agent và Dashboard chưa tích hợp; lệnh `streamlit run dashboard/app.py` chưa xác nhận luồng hoàn chỉnh.
 
 Lịch sử import một bảng và các kết quả đo cũ xem [PROGRESS](../project-management/PROGRESS.md). Thiết kế mục tiêu xem [architecture](architecture.md); input/output tool xem [api-contract](api-contract.md).
+
+## 10. Đo chi phí INSERT và thử Validation trên hai MySQL lab riêng
+
+`docker-compose.write-lab.yml` tạo MySQL thứ hai ở `127.0.0.1:3308` và volume riêng. DB chính ở cổng 3307 không nhận INSERT từ phép đo này. Lab chỉ có schema và marker `mcp-write-lab-v1`; phép đo dùng hai bảng TEMPORARY và 200.000 dòng đầu từ CSV của bảng: 100.000 dòng preload giống nhau, sau đó đo 100.000 INSERT giống nhau trước/sau index. Bảng tạm tự mất khi đóng kết nối. Đây là **mẫu**, không phải bản sao đầy đủ 5M dòng hoặc phép đo tải sản xuất; `CREATE TABLE LIKE` không sao chép FOREIGN KEY.
+
+Service `validation_lab_db` trong cùng compose dùng cổng `127.0.0.1:3309`, volume và marker `mcp-validation-lab-v1` riêng. Nó giữ dữ liệu mẫu để Tool 4/5 và `TrialIndex` đo index thật. Không trỏ `TrialIndex` vào write lab cổng 3308: phép đo INSERT đòi bảng gốc ở write lab chưa có index đề xuất. Hai lab chỉ dùng để kiểm tra luồng; kết quả trên 200.000 dòng không thay thế phép đo của bộ 5M.
+
+Tạo mật khẩu lab cục bộ (file `.env.write-lab` đã gitignore, không in/commit mật khẩu), rồi khởi động đúng compose riêng:
+
+```powershell
+.\venv\Scripts\python.exe -c "from pathlib import Path; from secrets import token_hex; p=Path('.env.write-lab'); p.write_text('WRITE_LAB_ROOT_PASSWORD='+token_hex(24)+'\n', encoding='utf-8') if not p.exists() else None"
+docker compose -p mcp-write-lab --env-file .env.write-lab -f docker-compose.write-lab.yml up -d write_lab_db
+```
+
+Để chạy cả hai lab, dùng cùng file môi trường với project Docker riêng:
+
+```powershell
+docker compose -p mcp-write-lab --env-file .env.write-lab -f docker-compose.write-lab.yml up -d write_lab_db validation_lab_db
+```
+
+Trước khi tạo index thử, nạp dữ liệu mẫu vào `validation_lab_db` và kiểm tra marker; chỉ đổi `DB_HOST=127.0.0.1`, `DB_PORT=3309` trong tiến trình chạy validation, không sửa `.env` của DB chính. Tài khoản root lab có thể chạy `ANALYZE TABLE` trước/sau index để làm mới thống kê dung lượng; code mặc định vẫn trả `inconclusive` nếu `INDEX_LENGTH` không tăng. Sau phép thử, giữ file bằng chứng trong `data/outputs/`, kiểm index thử đã dọn rồi mới xóa các volume lab.
+
+Chạy từ root repo với CSV ở `D:\labt2\data` (đổi `--csv-dir` theo máy). Lệnh không nhận SQL tự do; index được sinh từ tên bảng/cột đã kiểm tra. Output nằm trong `data/outputs/` và không ghi đè file cũ:
+
+```powershell
+.\venv\Scripts\python.exe -m scripts.measure_write_overhead --table orders --index-name idx_orders_status_date --columns status:ASC order_date:ASC --csv-dir D:\labt2\data --output data\outputs\write_overhead_orders_status_date.json
+```
+
+Code chỉ chấp nhận lab có marker đúng. CSV phải có đủ `2 × validation.write_overhead_rows` dòng và header khớp schema. Thiếu điều kiện thì phép đo thất bại, không tạo report `passed`. Kết quả này chỉ là phần chi phí ghi; Validation Layer còn cần P95/hash/EXPLAIN và dung lượng index trước khi duyệt proposal.

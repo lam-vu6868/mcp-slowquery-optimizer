@@ -40,9 +40,16 @@ def _report():
             "p95_ms": 80.0, "query_cost": 100.0, "rows_examined": 10,
             "result_hash": "hash-a", "row_count": 10, "runs": 20, "timed_out_runs": 0,
             "key_used": "idx_orders_status",
+            "raw_plan": {"query_block": {"table": {
+                "table_name": "orders", "key": "idx_orders_status",
+            }}},
         },
         "write_overhead": {
             "insert_throughput_change_pct": -5.0,
+            "before_rows_per_second": 10000.0,
+            "after_rows_per_second": 9500.0,
+            "sample_rows": 100000,
+            "preload_rows": 100000,
             "index_size_bytes": 1024,
             "index_size_source": "table_index_length_delta",
             "index_size_estimated": True,
@@ -51,13 +58,63 @@ def _report():
     }
 
 
+def _write_measurement():
+    return {
+        "insert_throughput_change_pct": -5.0,
+        "before_rows_per_second": 10000.0,
+        "after_rows_per_second": 9500.0,
+        "sample_rows": 100000,
+        "preload_rows": 100000,
+        "measurement_scope": "isolated_lab",
+    }
+
+
+def _assess(report, **kwargs):
+    return assess_index_report(
+        report, expected_index_name="idx_orders_status",
+        expected_table="orders", original_sql="SELECT id FROM orders",
+        **kwargs,
+    )
+
+
 def test_index_evidence_passes_at_exact_twenty_percent_improvement():
-    result = assess_index_report(_report(), expected_index_name="idx_orders_status")
+    result = _assess(_report())
     assert result["status"] == "passed"
     assert result["evidence_complete"] is True
     assert result["result_equivalent"] is True
     assert result["improvement_ratio"] == pytest.approx(0.2)
     assert result["failure_reason"] is None
+
+
+def test_index_proof_checks_target_table_in_join_plan():
+    sql = ("SELECT o.order_id FROM orders o JOIN addresses a "
+           "ON a.customer_id=o.customer_id")
+    report = _report()
+    report["after"]["raw_plan"] = {"query_block": {"nested_loop": [
+        {"table": {"table_name": "a", "key": "idx_other"}},
+        {"table": {"table_name": "o", "key": "idx_orders_status"}},
+    ]}}
+    assert assess_index_report(
+        report, expected_index_name="idx_orders_status",
+        expected_table="orders", original_sql=sql,
+    )["status"] == "passed"
+    report["after"]["raw_plan"]["query_block"]["nested_loop"][1]["table"]["key"] = "PRIMARY"
+    report["after"]["raw_plan"]["query_block"]["nested_loop"][0]["table"]["key"] = "idx_orders_status"
+    assert assess_index_report(
+        report, expected_index_name="idx_orders_status",
+        expected_table="orders", original_sql=sql,
+    )["status"] == "inconclusive"
+
+
+def test_index_proof_rejects_alias_reused_for_another_table():
+    report = _report()
+    report["after"]["raw_plan"]["query_block"]["table"]["table_name"] = "x"
+    sql = ("SELECT x.id FROM orders x WHERE EXISTS "
+           "(SELECT 1 FROM addresses x WHERE x.customer_id > 0)")
+    assert assess_index_report(
+        report, expected_index_name="idx_orders_status",
+        expected_table="orders", original_sql=sql,
+    )["status"] == "inconclusive"
 
 
 @pytest.mark.parametrize(("change", "expected_status"), [
@@ -69,12 +126,14 @@ def test_index_evidence_passes_at_exact_twenty_percent_improvement():
     ({"after": {"key_used": "PRIMARY"}}, "inconclusive"),
     ({"write_overhead": {"index_size_bytes": None}}, "inconclusive"),
     ({"write_overhead": {"measurement_scope": None}}, "inconclusive"),
+    ({"write_overhead": {"sample_rows": 99999}}, "inconclusive"),
+    ({"write_overhead": {"insert_throughput_change_pct": -50}}, "inconclusive"),
 ])
 def test_index_evidence_fails_closed(change, expected_status):
     report = deepcopy(_report())
     for section, fields in change.items():
         report[section].update(fields)
-    result = assess_index_report(report, expected_index_name="idx_orders_status")
+    result = _assess(report)
     assert result["status"] == expected_status
     assert result["failure_reason"]
     if expected_status == "inconclusive":
@@ -85,17 +144,17 @@ def test_index_evidence_overwrites_untrusted_status_and_rejects_weaker_threshold
     report = _report()
     report["status"] = "passed"
     report["after"]["runs"] = 5
-    assert assess_index_report(report, expected_index_name="idx_orders_status")["status"] == "inconclusive"
+    assert _assess(report)["status"] == "inconclusive"
     with pytest.raises(ValueError, match="required_runs"):
-        assess_index_report(_report(), expected_index_name="idx_orders_status", required_runs=5)
+        _assess(_report(), required_runs=5)
     with pytest.raises(ValueError, match="min_improvement_ratio"):
-        assess_index_report(_report(), expected_index_name="idx_orders_status", min_improvement_ratio=0.1)
+        _assess(_report(), min_improvement_ratio=0.1)
 
 
 def test_rewritten_sql_cannot_validate_index_for_approval():
     report = _report()
     report["candidate_sql_kind"] = "rewritten"
-    result = assess_index_report(report, expected_index_name="idx_orders_status")
+    result = _assess(report)
     assert result["status"] == "inconclusive"
     assert result["failure_reason"] == "proposal_context_invalid"
 
@@ -106,9 +165,7 @@ def test_report_uses_stricter_configured_thresholds(monkeypatch):
     monkeypatch.setattr(validation_module, "_settings", lambda: {
         "measured_runs": 25, "min_p95_improvement_pct": 25,
     })
-    assert assess_index_report(
-        _report(), expected_index_name="idx_orders_status",
-    )["status"] == "inconclusive"
+    assert _assess(_report())["status"] == "inconclusive"
 
 
 @pytest.mark.asyncio
@@ -132,6 +189,10 @@ async def test_validation_uses_real_tool_envelopes_and_cleans_failed_trial(
         return json.dumps({"ok": True, "data": {
             "query_cost": "100.0" if not use_invisible_indexes else "10.0",
             "key_used": None if not use_invisible_indexes else "idx_orders_status",
+            "raw_plan": {"query_block": {"table": {
+                "table_name": "orders",
+                "key": "idx_orders_status" if use_invisible_indexes else None,
+            }}},
         }})
 
     async def benchmark(sql, *, warmup_runs, measured_runs, use_invisible_indexes,
@@ -145,12 +206,10 @@ async def test_validation_uses_real_tool_envelopes_and_cleans_failed_trial(
 
     report = await validate_index(
         proposal_id="p1", query_id="q07", original_sql="SELECT id FROM orders",
-        index_name="idx_orders_status", create_trial=create, drop_trial=drop,
+        index_name="idx_orders_status", target_table="orders",
+        create_trial=create, drop_trial=drop,
         measure_size=lambda: 1024,
-        measure_write=lambda: {
-            "insert_throughput_change_pct": -5.0,
-            "measurement_scope": "isolated_lab",
-        },
+        measure_write=_write_measurement,
         explain=explain, benchmark=benchmark,
     )
     assert report["status"] == expected
@@ -169,12 +228,11 @@ async def test_validation_drops_trial_when_tool_fails():
 
     report = await validate_index(
         proposal_id="p1", query_id="q07", original_sql="SELECT id FROM orders",
-        index_name="idx_orders_status", create_trial=lambda: events.append("create"),
+        index_name="idx_orders_status", target_table="orders",
+        create_trial=lambda: events.append("create"),
         drop_trial=lambda: events.append("drop"), measure_size=lambda: 1024,
-        measure_write=lambda: {
-            "insert_throughput_change_pct": -5.0,
-            "measurement_scope": "isolated_lab",
-        }, explain=broken_explain, benchmark=unused_benchmark,
+        measure_write=_write_measurement, explain=broken_explain,
+        benchmark=unused_benchmark,
     )
     assert report["status"] == "inconclusive"
     assert events == ["create", "drop"]
@@ -283,7 +341,9 @@ def test_proposal_store_keeps_original_and_report_immutable(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_saved_validation_persists_report_without_accepting_new_sql(tmp_path):
+async def test_saved_validation_persists_report_without_accepting_new_sql(
+    tmp_path, monkeypatch,
+):
     store = ProposalStore(tmp_path / "proposals.sqlite3")
     proposal_id = store.add("q07", "SELECT id FROM orders", {
         "type": "index", "table": "orders", "index_name": "idx_orders_status",
@@ -309,6 +369,9 @@ async def test_saved_validation_persists_report_without_accepting_new_sql(tmp_pa
         assert sql == "SELECT id FROM orders"
         return json.dumps({"ok": True, "data": {
             "query_cost": "100", "key_used": "idx_orders_status",
+            "raw_plan": {"query_block": {"table": {
+                "table_name": "orders", "key": "idx_orders_status",
+            }}},
         }})
 
     async def benchmark(sql, *, warmup_runs, measured_runs, use_invisible_indexes,
@@ -320,16 +383,34 @@ async def test_saved_validation_persists_report_without_accepting_new_sql(tmp_pa
             "runs": 20, "timed_out_runs": 0,
         }})
 
+    def fake_write(proposal, *, csv_dir):
+        assert proposal["table"] == "orders"
+        assert csv_dir == tmp_path
+        return _write_measurement()
+
+    monkeypatch.setattr(
+        "mcp_server.validation.write_overhead.measure_insert_overhead", fake_write,
+    )
     result = await validate_saved_index(
-        store, proposal_id, measure_write=lambda: {
-            "insert_throughput_change_pct": -5,
-            "measurement_scope": "isolated_lab",
-        }, trial_factory=FakeTrial, explain=explain, benchmark=benchmark,
+        store, proposal_id, write_csv_dir=tmp_path,
+        trial_factory=FakeTrial, explain=explain, benchmark=benchmark,
     )
     assert result["status"] == "passed"
     assert store.get(proposal_id)["report"]["status"] == "passed"
     assert store.get(proposal_id)["trial_state"] == "passed"
     assert events == ["create"]
+
+
+@pytest.mark.asyncio
+async def test_saved_validation_requires_write_lab_before_trial(tmp_path):
+    store = ProposalStore(tmp_path / "proposals.sqlite3")
+    proposal_id = store.add("q07", "SELECT id FROM orders", {
+        "type": "index", "table": "orders", "index_name": "idx_orders_status",
+        "columns": [{"name": "status", "order": "ASC"}],
+    })
+    with pytest.raises(ValueError, match="write_csv_dir"):
+        await validate_saved_index(store, proposal_id)
+    assert store.get(proposal_id)["trial_state"] == "new"
 
 
 @pytest.mark.asyncio
@@ -339,7 +420,7 @@ async def test_saved_validation_cleans_passed_trial_when_report_save_fails(monke
     class FakeStore:
         def get(self, proposal_id):
             return {"query_id": "q07", "original_sql": "SELECT 1",
-                    "proposal": {"index_name": "idx_test"}}
+                    "proposal": {"index_name": "idx_test", "table": "orders"}}
 
         def save_report(self, proposal_id, report):
             raise OSError("storage unavailable")

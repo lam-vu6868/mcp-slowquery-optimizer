@@ -16,7 +16,7 @@ LƯU Ý:
 
 THAM KHẢO  : docs/api-contract.md (mục 4), project-management/ROADMAP.md (mục 2.3)
 
-TRẠNG THÁI : ĐANG LÀM — đã có luồng đo, lưu report và dọn index thử; mới test bằng DB giả.
+TRẠNG THÁI : ĐANG LÀM — luồng index chính test bằng DB giả; chi phí ghi đã đo mẫu trên write lab thật.
 """
 
 import json
@@ -24,6 +24,8 @@ import math
 from pathlib import Path
 
 import yaml
+from sqlglot import exp, parse_one
+from sqlglot.errors import ParseError
 
 from security.ast_whitelist import check as ast_check
 
@@ -63,12 +65,21 @@ def _measurement_complete(item: object, required_runs: int, *, before: bool) -> 
     )
 
 
-def _write_evidence_complete(item: object) -> bool:
+def _write_evidence_complete(item: object, required_rows: int) -> bool:
     if not isinstance(item, dict):
         return False
     throughput = item.get("insert_throughput_change_pct")
+    before_rate = item.get("before_rows_per_second")
+    after_rate = item.get("after_rows_per_second")
     return (
         type(throughput) in (int, float) and math.isfinite(throughput)
+        and _number(before_rate, positive=True)
+        and _number(after_rate, positive=True)
+        and abs(throughput - (after_rate / before_rate - 1) * 100) <= 0.1
+        and type(item.get("sample_rows")) is int
+        and item["sample_rows"] == required_rows
+        and type(item.get("preload_rows")) is int
+        and item["preload_rows"] == required_rows
         and _number(item.get("index_size_bytes"), positive=True)
         and item.get("index_size_source") == "table_index_length_delta"
         and item.get("index_size_estimated") is True
@@ -76,8 +87,42 @@ def _write_evidence_complete(item: object) -> bool:
     )
 
 
+def _plan_uses_index(raw_plan: object, sql: str, table_name: str,
+                     index_name: str) -> bool:
+    """Tìm index trên đúng bảng, kể cả khi bảng nằm sau trong JOIN."""
+    if not isinstance(raw_plan, dict):
+        return False
+    try:
+        parsed = parse_one(sql, read="mysql")
+    except (ParseError, TypeError, ValueError):
+        return False
+    if parsed is None:
+        return False
+    tables = list(parsed.find_all(exp.Table))
+    aliases = {table.alias_or_name for table in tables if table.name == table_name}
+    # An alias reused for another table in a nested scope cannot identify
+    # the plan node unambiguously; fail closed instead of proving the wrong index.
+    aliases -= {table.alias_or_name for table in tables if table.name != table_name}
+    if not aliases:
+        return False
+
+    def walks(node: object) -> bool:
+        if isinstance(node, list):
+            return any(walks(item) for item in node)
+        if not isinstance(node, dict):
+            return False
+        table = node.get("table")
+        if (isinstance(table, dict) and table.get("table_name") in aliases
+                and table.get("key") == index_name):
+            return True
+        return any(walks(value) for value in node.values())
+
+    return walks(raw_plan)
+
+
 def assess_index_report(
     report: dict, *, expected_index_name: str,
+    expected_table: str, original_sql: str,
     required_runs: int | None = None, min_improvement_ratio: float | None = None,
 ) -> dict:
     """Đánh giá bằng chứng index mà không đụng DB hoặc tin trạng thái caller gửi."""
@@ -111,8 +156,12 @@ def assess_index_report(
             and before["row_count"] == after["row_count"])
     gain = (before["p95_ms"] - after["p95_ms"]) / before["p95_ms"]
     result.update(result_equivalent=same, improvement_ratio=gain)
-    index_used = after.get("key_used") == expected_index_name
-    write_complete = _write_evidence_complete(report.get("write_overhead"))
+    index_used = (after.get("key_used") == expected_index_name
+                  and _plan_uses_index(after.get("raw_plan"), original_sql,
+                                       expected_table, expected_index_name))
+    write_complete = _write_evidence_complete(
+        report.get("write_overhead"), settings["write_overhead_rows"],
+    )
     result["evidence_complete"] = index_used and write_complete
 
     if not same:
@@ -140,6 +189,7 @@ def _tool_data(response: str) -> dict:
 
 async def validate_index(
     *, proposal_id: str, query_id: str, original_sql: str, index_name: str,
+    target_table: str,
     create_trial, drop_trial, measure_size, measure_write,
     explain=None, benchmark=None,
 ) -> dict:
@@ -157,7 +207,9 @@ async def validate_index(
     }
     ok, _ = ast_check(original_sql)
     if not ok:
-        return {**assess_index_report(report, expected_index_name=index_name),
+        return {**assess_index_report(report, expected_index_name=index_name,
+                                      expected_table=target_table,
+                                      original_sql=original_sql),
                 "failure_reason": "ast_rejected"}
 
     trial_started = False
@@ -180,7 +232,13 @@ async def validate_index(
                 cost = None
             report[label] = {**measurement, "query_cost": cost}
             if enabled:
-                report[label]["key_used"] = plan.get("key_used")
+                raw_plan = plan.get("raw_plan")
+                report[label]["raw_plan"] = raw_plan
+                report[label]["key_used"] = (
+                    index_name if _plan_uses_index(
+                        raw_plan, original_sql, target_table, index_name,
+                    ) else plan.get("key_used")
+                )
 
         size = measure_size()
         write_measurement = measure_write()
@@ -190,9 +248,15 @@ async def validate_index(
             "index_size_source": "table_index_length_delta",
             "index_size_estimated": True,
         }
-        result = assess_index_report(report, expected_index_name=index_name)
+        result = assess_index_report(
+            report, expected_index_name=index_name,
+            expected_table=target_table, original_sql=original_sql,
+        )
     except Exception:  # noqa: BLE001 - always attempt cleanup after DB/tool failures
-        result = assess_index_report(report, expected_index_name=index_name)
+        result = assess_index_report(
+            report, expected_index_name=index_name,
+            expected_table=target_table, original_sql=original_sql,
+        )
         result["failure_reason"] = "measurement_error"
 
     if trial_started and result["status"] != "passed":
@@ -205,19 +269,28 @@ async def validate_index(
 
 
 async def validate_saved_index(
-    store, proposal_id: str, *, measure_write,
+    store, proposal_id: str, *, measure_write=None, write_csv_dir=None,
     trial_factory=None, explain=None, benchmark=None,
 ) -> dict:
     """Đường nội bộ: lấy SQL/proposal đã lưu, đo và lưu report đúng một lần."""
     if trial_factory is None:
         from mcp_server.tools.apply import TrialIndex as trial_factory
     saved = store.get(proposal_id)
+    if measure_write is None:
+        if write_csv_dir is None:
+            raise ValueError("cần write_csv_dir để đo chi phí ghi trên lab riêng")
+        from mcp_server.validation.write_overhead import measure_insert_overhead
+
+        def measure_write():
+            return measure_insert_overhead(saved["proposal"], csv_dir=write_csv_dir)
+
     trial = trial_factory(saved["proposal"], proposal_id=proposal_id)
     store.begin_trial(proposal_id)
     result = await validate_index(
         proposal_id=proposal_id, query_id=saved["query_id"],
         original_sql=saved["original_sql"],
         index_name=saved["proposal"]["index_name"],
+        target_table=saved["proposal"]["table"],
         create_trial=trial.create, drop_trial=trial.drop,
         measure_size=trial.size_delta, measure_write=measure_write,
         explain=explain, benchmark=benchmark,
