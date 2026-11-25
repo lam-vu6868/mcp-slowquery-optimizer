@@ -1,7 +1,7 @@
 # 📊 TIẾN ĐỘ DỰ ÁN
 
-> **Cập nhật lần cuối:** 24/11/2026 — kiểm chứng Tool 1–5 qua MCP stdio/MySQL; Vũ quản lý
-> **Mốc đối chiếu hiện tại:** 24/11/2026; các bảng tuần bên dưới là lịch sử
+> **Cập nhật lần cuối:** 25/11/2026 — kiểm chứng Validation trên lab đủ 5M dòng, bổ sung chặn rủi ro khóa ngoại; Vũ quản lý
+> **Mốc đối chiếu hiện tại:** 25/11/2026; các bảng tuần bên dưới là lịch sử
 > **Tổng tiến độ:** Chưa tính lại từ mốc ~27% ngày 19/10
 >
 > ⚠️ **File này chỉ ghi TRẠNG THÁI.** Deadline, người phụ trách và tiêu chí Done xem [ROADMAP.md](ROADMAP.md) (mục 4–5). Mục tiêu Precision/Recall/Consistency xem [ROADMAP.md](ROADMAP.md) mục 2.4.
@@ -15,7 +15,7 @@
 |  #  | Giai đoạn                                            | Trạng thái  | Người chính      |          Deadline          |
 | :-: | ---------------------------------------------------- | :---------: | ---------------- | :------------------------: |
 |  0  | Setup môi trường                                     |   ✅ Done   | Vũ               |           28/09            |
-| 0b  | Thiết kế (`api-contract.md`, `architecture.md`) | 🟡 v2 DRAFT, chờ review | Vũ | 06/10 |
+| 0b  | Thiết kế (`api-contract.md`, `architecture.md`) | ✅ Contract v2 đã chốt; triển khai theo từng chặng | Vũ | 06/10 |
 |  1  | CSDL 5 bảng, tổng 5M records                         |   ✅ Đã nạp/kiểm tra   | Hải              |           05/10            |
 |  2  | 30 query + ground truth                              | 🟡 Đạt đo kiểm chứng; chờ review/ký | Tường | 06/10 (draft) · 20/10 (ký) |
 |  3  | Tool 1–5 MCP                                         | 🟡 Đang làm | Vũ · Hải · Tường |           13/10            |
@@ -25,6 +25,67 @@
 |  7  | Metrics + Baseline                                   |     ⬜      | Tường · Hải      |           03/11            |
 |  8  | Dashboard 4 tab                                      |     ⬜      | Tình             |           10/11            |
 |  9  | Báo cáo + Demo                                       |     ⬜      | Cả nhóm          |       17/11 · 01/12        |
+
+---
+
+## Kiểm chứng Validation trên lab 5M dòng ngày 25/11/2026
+
+- Chỉ dùng hai lab tách biệt: validation lab cổng 3309 có đủ 5 bảng/tổng 5.000.000 dòng (customers 500.000, addresses 500.000, products 50.000, orders 1.500.000, order_items 2.450.000); write lab cổng 3308 giữ 0 dòng. DB chính cổng 3307 chỉ kiểm bằng truy vấn đọc, không chạy DDL hoặc nạp dữ liệu trong lượt này.
+- q01: index thử `order_items(product_id, quantity, unit_price)` đã đo xong nhưng MySQL tự bỏ index `fk_order_items_product` hỗ trợ khóa ngoại; lần dọn đầu bị lỗi 1553. Đã xác minh định nghĩa/marker index thử, tạo lại index hỗ trợ FK trên **validation lab**, rồi dọn index thử và xác nhận FK còn nguyên. Report `passed` cũ trong SQLite lab chỉ là bằng chứng sự cố, **không đủ điều kiện duyệt**. Bằng chứng: `data/outputs/lab_only_full5m_q01_cleanup_incident_20261125.json` (gitignored).
+- Đã thêm chặn trước DDL cho proposal có tiền tố cột trùng FK tham chiếu. q01 chạy lại trả `inconclusive/foreign_key_support_risk` và không tạo index; `ProposalStore` giữ nguyên lý do này. Bằng chứng: `data/outputs/lab_only_full5m_q01_guard_20261125.json`. Cần thiết kế cách giữ index hỗ trợ FK trước khi hỗ trợ lại trường hợp này.
+- q05 với SQL gốc và index thử `order_items(unit_price, product_id, quantity)` trả `passed`, `evidence_complete=true`, hash/số dòng khớp, 20/20 lượt đo mỗi bên, không timeout; P95 **2872,51 → 1051,51 ms** (giảm **63,39%**), index khoảng **91.963.392 byte**, INSERT throughput thay đổi **−16,19%** trên write lab. Index thử đã dọn sau report; report lab không dùng để cấp approval token. Bằng chứng: `data/outputs/lab_only_full5m_q05_20261125.json` và SQLite cùng tên (gitignored).
+- Kiểm lại sau cùng: validation lab vẫn đủ 5M dòng, write lab 0 dòng, DB chính đủ 5M dòng; `fk_order_items_product` VISIBLE ở cả ba, không còn index thử q01/q05 trên hai lab. **257 tests pass**, Ruff pass cho Python đã sửa, `git diff --check` pass. Validation Layer vẫn **Đang làm**: mới thử q05 và nhánh chặn q01 trên lab 5M, chưa kiểm đủ 30 proposal, chưa nối Tool 6/Dashboard end-to-end.
+- Đã dừng đúng hai container `write_lab_db` và `validation_lab_db` sau phép đo; volume và file bằng chứng được giữ nguyên. Lần dừng đầu bị hệ thống duyệt tự động từ chối do hạn mức tạm thời, lần thử lại sau 14:38 đã thực thi thành công.
+
+---
+
+## Thử recovery từ chối marker sai trên validation lab ngày 25/11/2026
+
+- Chỉ chạy trên `validation_lab_db` cổng 3309, có marker riêng và 200.000 dòng `orders`. Tạo SQLite lab `data/outputs/lab_only_recovery_wrong_marker_20261125.sqlite3` với trial `pending`, rồi tạo index `INVISIBLE` trùng tên/định nghĩa nhưng mang marker khác `mcp_trial:<proposal_id>`.
+- `dashboard.backend.initialize_backend()` từ chối khởi động; index marker lạ vẫn còn nguyên và SQLite vẫn `pending`, không có report. Sau khi xác minh marker đúng là của phép thử này, dọn thủ công index đó **chỉ trên lab**, gọi khởi tạo lại: trial chuyển `cleaned`, report `inconclusive/interrupted`. Bằng chứng ở `data/outputs/lab_only_recovery_wrong_marker_20261125.json` (gitignored).
+- Kiểm sau cùng: index thử không còn ở validation lab hoặc DB chính; lab vẫn 200.000 dòng, DB chính cổng 3307 vẫn 1.500.000 dòng `orders`. Đã dừng container lab, giữ volume và bằng chứng. Lượt kiểm đầu báo fail giả do chuỗi tiếng Việt trong lệnh thử qua console Windows khác bảng mã; kiểm lại bằng loại lỗi và proposal ID ASCII cho kết quả đúng, không sửa code recovery.
+- Đây là kiểm chứng nhánh từ chối an toàn trên lab mẫu; chưa kiểm toàn bộ bộ 5M. Validation Layer vẫn **Đang làm**.
+
+---
+
+## Thử recovery sau gián đoạn trên validation lab ngày 25/11/2026
+
+- Chỉ khởi động lại `validation_lab_db` cổng 3309, xác nhận marker `mcp-validation-lab-v1`, 200.000 dòng `orders` và index thử chưa tồn tại. DB chính cổng 3307 được kiểm bằng tài khoản đọc, có 1.500.000 dòng `orders`.
+- Trong tiến trình thứ nhất, tạo proposal/index thử `INVISIBLE` với marker `mcp_trial:<proposal_id>` và ghi `trial_state=pending` vào SQLite lab `data/outputs/lab_only_recovery_20261125.sqlite3`; cố ý kết thúc tiến trình trước khi lưu report để mô phỏng lần Validation bị ngắt. Trong tiến trình thứ hai, `dashboard.backend.initialize_backend()` gọi recovery: dọn đúng index thử, chuyển trạng thái sang `cleaned`, lưu report `inconclusive` với `failure_reason=interrupted`. Gọi khởi tạo lần nữa không còn trial pending; không chạy DDL lặp lại.
+- Xác nhận sau recovery: index thử không còn trên validation lab hoặc DB chính; lab vẫn 200.000 dòng, DB chính vẫn 1.500.000 dòng. Bằng chứng `data/outputs/lab_only_recovery_20261125.json` và SQLite lab được giữ (gitignored); container lab đã dừng, volume không xóa.
+- Đây là **mô phỏng gián đoạn giữa hai tiến trình**, có tạo/drop index thật chỉ trên lab. Chưa chứng minh xử lý mọi kiểu crash hoặc kết quả trên bộ 5M; Validation Layer vẫn **Đang làm**.
+
+---
+
+## Thử backend Validation trên lab riêng ngày 25/11/2026
+
+- Khởi động hai service riêng từ `docker-compose.write-lab.yml`: write lab cổng 3308 có marker `mcp-write-lab-v1`, validation lab cổng 3309 có marker `mcp-validation-lab-v1`. Nạp 200.000 dòng đầu `orders.csv` vào validation lab; write lab giữ bảng `orders` rỗng. DB chính cổng 3307 không nhận DDL/INSERT từ lượt này.
+- Gọi `dashboard.backend.initialize_backend()` rồi `validate_proposal()` trên SQLite lab riêng `data/outputs/lab_only_backend_validation_20261125_110918.sqlite3`, với proposal thử `orders(status ASC, order_date ASC)` và SQL SELECT mẫu ngoài 30 query catalog. Report trong `data/outputs/lab_only_backend_validation_20261125_110918.json` trả `passed`, `evidence_complete=true`, hash/số dòng khớp, 20/20 lượt mỗi bên, không timeout; P95 **63,70 → 10,53 ms** (giảm **83,47%**), EXPLAIN chọn index thử. Dung lượng ước lượng **6.832.128 byte** từ `innodb_index_stats_pages`; INSERT throughput thay đổi **−22,31%** trên write lab.
+- Sau report, đã dọn index thử bằng marker và xác nhận nó không còn trên validation lab; write lab vẫn 0 dòng, validation lab 200.000 dòng, DB chính vẫn 1.500.000 dòng `orders` và không có index thử. Đã dừng hai container lab, **giữ nguyên volume và file bằng chứng**. SQLite lab còn report `passed` nhưng index đã dọn: chỉ là bằng chứng lab, tuyệt đối không dùng để cấp approval token.
+- Đây là kiểm chứng đường backend mới trên mẫu 200.000 dòng, chưa phải validation bộ 5M hoặc kiểm recovery DDL khi tiến trình thật bị ngắt. Chặng Validation Layer vẫn **Đang làm**.
+
+---
+
+## Nối đường gọi Validation với store runtime ngày 25/11/2026
+
+- `dashboard.backend.validate_proposal()` nhận đúng `ProposalStore` do `initialize_backend()` trả về và chuyển tiếp cùng `proposal_id`, `write_csv_dir` cho `validate_saved_index()`. `dashboard/app.py` giữ store đã recovery trong `proposal_store` để caller giao diện sau này dùng lại, tránh mở một SQLite khác.
+- Test giả xác nhận thứ tự recovery trước validation, dùng cùng đối tượng/path và chuyển đủ tham số. Giao diện hiện chưa có thao tác kích hoạt Validation; không chạy MySQL hoặc tạo/drop index trong lượt này.
+
+---
+
+## Nối recovery khi Dashboard khởi động ngày 25/11/2026
+
+- `dashboard/app.py` mở store runtime `data/outputs/proposals.sqlite3` qua `dashboard/backend.py` và gọi `recover_interrupted_trials()` trước khi tiếp tục. Streamlit cache kết quả khởi tạo để không lặp recovery ở mỗi lần rerun; nếu có trial `recovery_failed`, Dashboard dừng, không nhận việc mới.
+- Hàm recovery chỉ xét proposal có `trial_state=pending`; `TrialIndex.recover_drop()` chỉ dọn index còn INVISIBLE với marker và định nghĩa đúng proposal. Dọn thành công hoặc index đã vắng thì lưu report `inconclusive/interrupted`; lỗi để lại `pending` cho lần kiểm tra sau. Caller validation runtime phải dùng cùng đường dẫn store, còn store lab riêng không tự được quét.
+- 4 test mới dùng store/trial/Streamlit giả; chưa khởi động Dashboard với MySQL thật hoặc tạo/drop index để thử. Các chặng Tool 6, Dashboard 4 tab và Validation trên bộ 5M vẫn chưa Done.
+
+---
+
+## Chốt thiết kế contract v2 ngày 25/11/2026
+
+- Theo ủy quyền của người dùng thay nhóm review, đã đối chiếu contract với registry Tool 1–5, parser LLM, Validation Layer, proposal store, helper DDL và test hiện có; chốt giao diện v2 làm mốc cho caller. Đây không phải chữ ký riêng của từng thành viên hoặc GVHD.
+- Đồng bộ tình trạng `mysql.slow_log` đã thử với quyền đọc riêng trên lab; giữ rõ Tool 6/approval token/Dashboard là thiết kế chưa triển khai. Report Validation từ lab đã dọn index không được dùng để cấp token trên DB khác hoặc khi index thử không còn.
+- Kiểm tra lại: working tree sạch trước khi sửa tài liệu; 249 unit tests pass và audit bằng chứng ground truth 30/30 pass. Không chạy lại MySQL/Dashboard thật trong lượt chốt contract. Validation Layer, LLM metric 30 query, Tool 6 và Dashboard vẫn theo trạng thái riêng ở bảng trên.
 
 ---
 

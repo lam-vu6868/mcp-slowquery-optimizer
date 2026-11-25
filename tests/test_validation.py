@@ -20,7 +20,7 @@ import pytest
 
 from mcp_server.store.proposals import ProposalStore
 from mcp_server.tools import apply as apply_module
-from mcp_server.tools.apply import TrialIndex
+from mcp_server.tools.apply import ForeignKeyIndexRisk, TrialIndex
 from mcp_server.validation.rollback import recover_interrupted_trials
 from mcp_server.validation.validator import (
     assess_index_report,
@@ -252,6 +252,28 @@ async def test_validation_drops_trial_when_tool_fails():
     assert events == ["create", "drop"]
 
 
+@pytest.mark.asyncio
+async def test_validation_reports_foreign_key_support_risk_before_measurement():
+    events = []
+
+    def create():
+        raise ForeignKeyIndexRisk("index may replace foreign key support")
+
+    async def unused_tool(*args, **kwargs):
+        pytest.fail("Không đo khi index có thể thay thế hỗ trợ khóa ngoại")
+
+    report = await validate_index(
+        proposal_id="p1", query_id="q07", original_sql="SELECT id FROM orders",
+        index_name="idx_orders_status", target_table="orders",
+        create_trial=create, drop_trial=lambda: events.append("drop"),
+        measure_size=_size_measurement, measure_write=_write_measurement,
+        explain=unused_tool, benchmark=unused_tool,
+    )
+    assert report["status"] == "inconclusive"
+    assert report["failure_reason"] == "foreign_key_support_risk"
+    assert events == ["drop"]
+
+
 def test_trial_index_builds_only_structured_invisible_ddl():
     trial = TrialIndex({
         "type": "index", "table": "orders", "index_name": "idx_orders_status",
@@ -269,6 +291,53 @@ def test_trial_index_builds_only_structured_invisible_ddl():
             "index_name": "idx_orders_status",
             "columns": [{"name": "status", "order": "ASC"}],
         })
+
+
+def test_trial_rejects_index_that_could_replace_foreign_key_support(monkeypatch):
+    class Cursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def execute(self, sql, params=None):
+            self.sql = sql
+
+        def fetchall(self):
+            if "information_schema.COLUMNS" in self.sql:
+                return [{"COLUMN_NAME": name} for name in
+                        ("product_id", "quantity", "unit_price")]
+            if "information_schema.STATISTICS" in self.sql:
+                return [{"INDEX_NAME": "fk_order_items_product",
+                         "COLUMN_NAME": "product_id", "SEQ_IN_INDEX": 1}]
+            if "KEY_COLUMN_USAGE" in self.sql:
+                return [{"CONSTRAINT_NAME": "fk_order_items_product",
+                         "COLUMN_NAME": "product_id", "ORDINAL_POSITION": 1}]
+            return []
+
+    class Conn:
+        def cursor(self):
+            return Cursor()
+
+    @contextmanager
+    def readonly():
+        yield Conn()
+
+    def forbidden_admin():
+        pytest.fail("Không được tạo index trước khi kiểm tra khóa ngoại")
+
+    monkeypatch.setattr(apply_module, "get_conn", readonly)
+    monkeypatch.setattr(apply_module, "get_admin_conn", forbidden_admin)
+    trial = TrialIndex({
+        "type": "index", "table": "order_items",
+        "index_name": "idx_lab_full_q01_cover",
+        "columns": [{"name": name, "order": "ASC"} for name in
+                    ("product_id", "quantity", "unit_price")],
+    })
+
+    with pytest.raises(ValueError, match="khóa ngoại"):
+        trial.create()
 
 
 @pytest.mark.parametrize(("index_after", "stats_pages", "expected_source", "expected_size"), [
@@ -404,6 +473,26 @@ def test_proposal_store_keeps_original_and_report_immutable(tmp_path):
         store.save_report(proposal_id, report)
     with pytest.raises(ValueError, match="SQL"):
         store.add("q07", "DROP TABLE orders", proposal)
+
+
+def test_store_preserves_foreign_key_risk_reason(tmp_path):
+    store = ProposalStore(tmp_path / "proposals.sqlite3")
+    proposal_id = store.add("q01", "SELECT order_id FROM order_items", {
+        "type": "index", "table": "order_items", "index_name": "idx_items_cover",
+        "columns": [{"name": "product_id", "order": "ASC"}],
+    })
+    store.begin_trial(proposal_id)
+    report = {
+        "proposal_id": proposal_id, "query_id": "q01",
+        "candidate_sql_kind": "original", "before": None, "after": None,
+        "write_overhead": None, "failure_reason": "foreign_key_support_risk",
+    }
+
+    saved = store.save_report(proposal_id, report)
+
+    assert saved["status"] == "inconclusive"
+    assert saved["failure_reason"] == "foreign_key_support_risk"
+    assert store.get(proposal_id)["trial_state"] == "cleaned"
 
 
 @pytest.mark.asyncio

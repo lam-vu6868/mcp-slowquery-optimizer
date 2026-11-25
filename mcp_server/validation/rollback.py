@@ -11,7 +11,7 @@ LƯU Ý:
     - Rollback = DROP INDEX (hoặc chuyển lại INVISIBLE).
     - Phải chạy được cả khi validation bị ngắt giữa chừng.
 
-TRẠNG THÁI : ĐANG LÀM — có khôi phục trial pending; chưa nối điểm khởi động backend.
+TRẠNG THÁI : ĐANG LÀM — đã thử dọn trial bị ngắt và từ chối index sai marker trên validation lab riêng.
 """
 
 from mcp_server.tools.apply import TrialIndex

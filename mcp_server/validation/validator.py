@@ -16,7 +16,7 @@ LƯU Ý:
 
 THAM KHẢO  : docs/api-contract.md (mục 4), project-management/ROADMAP.md (mục 2.3)
 
-TRẠNG THÁI : ĐANG LÀM — luồng index chính test bằng DB giả; chi phí ghi đã đo mẫu trên write lab thật.
+TRẠNG THÁI : ĐANG LÀM — đã thử q05 trên validation lab 5M; chưa kiểm hết proposal và chưa nối Tool 6.
 """
 
 import json
@@ -27,6 +27,7 @@ import yaml
 from sqlglot import exp, parse_one
 from sqlglot.errors import ParseError
 
+from mcp_server.tools.apply import ForeignKeyIndexRisk
 from security.ast_whitelist import check as ast_check
 
 
@@ -255,12 +256,15 @@ async def validate_index(
             report, expected_index_name=index_name,
             expected_table=target_table, original_sql=original_sql,
         )
-    except Exception:  # noqa: BLE001 - always attempt cleanup after DB/tool failures
+    except Exception as exc:  # noqa: BLE001 - always attempt cleanup after DB/tool failures
         result = assess_index_report(
             report, expected_index_name=index_name,
             expected_table=target_table, original_sql=original_sql,
         )
-        result["failure_reason"] = "measurement_error"
+        result["failure_reason"] = (
+            "foreign_key_support_risk" if isinstance(exc, ForeignKeyIndexRisk)
+            else "measurement_error"
+        )
 
     if trial_started and result["status"] != "passed":
         try:

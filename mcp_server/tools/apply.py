@@ -15,6 +15,7 @@ LƯU Ý:
     - Chỉ cho apply khi validation_report.status == 'passed' và đủ bằng chứng đo.
     - Dùng index_admin cho DDL và SELECT riêng trên mysql.innodb_index_stats để đo index thử.
     - Helper DDL nội bộ trong file này phục vụ Validation tạo/dọn index INVISIBLE; không công bố thành MCP tool.
+    - Từ chối index thử có tiền tố trùng cột FK tham chiếu để tránh MySQL tự bỏ index hỗ trợ FK.
     - Mọi lần gọi (kể cả bị từ chối) đều ghi audit_log.
 
 THAM KHẢO  : docs/api-contract.md (Tool 6), security/approval.py
@@ -33,6 +34,10 @@ from mcp_server.utils.db import get_admin_conn, get_conn
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _INDEX_NAME = re.compile(r"^idx_[a-z0-9_]{1,50}$")
 _PROPOSAL_ID = re.compile(r"^p_[a-z0-9_]{1,64}$")
+
+
+class ForeignKeyIndexRisk(ValueError):
+    """Index mới có thể thay thế index mà khóa ngoại đang dùng."""
 
 
 def _quote_identifier(value: str) -> str:
@@ -145,6 +150,16 @@ class TrialIndex:
             existing = {}
             for row in cur.fetchall():
                 existing.setdefault(row["INDEX_NAME"], []).append(row["COLUMN_NAME"])
+            cur.execute(
+                "SELECT CONSTRAINT_NAME, COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE "
+                "WHERE TABLE_SCHEMA=%s AND TABLE_NAME=%s "
+                "AND REFERENCED_TABLE_NAME IS NOT NULL "
+                "ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION",
+                (Config.DB_NAME, self.table_name),
+            )
+            foreign_keys = {}
+            for row in cur.fetchall():
+                foreign_keys.setdefault(row["CONSTRAINT_NAME"], []).append(row["COLUMN_NAME"])
         if not known or any(name not in known for name in self.column_names):
             raise ValueError("table/column không tồn tại trong schema")
         if self.index_name in existing:
@@ -152,6 +167,8 @@ class TrialIndex:
         if any(self.column_names == cols[:len(self.column_names)]
                for cols in existing.values()):
             raise ValueError("columns là tiền tố thừa của index hiện có")
+        if any(self.column_names[:len(cols)] == cols for cols in foreign_keys.values()):
+            raise ForeignKeyIndexRisk("index đề xuất có thể thay thế index hỗ trợ khóa ngoại")
 
     def create(self) -> None:
         self._check_schema()

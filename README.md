@@ -76,22 +76,22 @@ flowchart TD
 | Giai đoạn                              |   Trạng thái    |
 | -------------------------------------- | :-------------: |
 | Setup môi trường                       |     ✅ Done     |
-| Thiết kế contract v2 + architecture | 🟡 DRAFT, chờ nhóm review |
+| Thiết kế contract v2 + architecture | ✅ Contract v2 đã chốt ngày 25/11; triển khai vẫn theo từng chặng |
 | CSDL 5 bảng, tổng 5M dòng              |     ✅ Đã nạp và kiểm tra     |
 | 30 query + ground truth                | 🟡 30 đáp án đạt đo kiểm chứng; chờ Hải review/GVHD ký |
 | AST whitelist + 47 unit tests          |     ✅ Done     |
 | Tool 4 `explain_query`                 |     ✅ Done     |
 | Tool 5 `benchmark_query`               |     ✅ Done     |
 | Đo P95 bộ 30 query                     | ✅ Baseline 30/30 valid; đáp án 30/30 đạt P95/hash |
-| Tool 1–5 MCP                           | 🟡 Đã kiểm chứng 5/5 qua stdio/MySQL; contract v2 chờ review |
-| Validation Layer                       | ⬜ Chưa bắt đầu |
+| Tool 1–5 MCP                           | 🟡 Đã kiểm chứng 5/5 qua stdio/MySQL; chặng chưa đánh dấu Done |
+| Validation Layer                       | 🟡 q05 đạt trên lab 5M; q01 bị chặn an toàn do FK; chưa kiểm đủ 30 query hoặc nối Tool 6 |
 | 20 Prompt Injection                    | ⬜ Chưa bắt đầu |
 | Dashboard                              | ⬜ Chưa bắt đầu |
 | Báo cáo + Demo                         | ⬜ Chưa bắt đầu |
 
 **Chú thích:** ✅ Done | 🟡 Đang làm | ⬜ Chưa làm | 🔴 Trễ hạn
 
-Các mốc dưới đây giữ theo thời điểm thực hiện; trạng thái mới nhất là mục kiểm tra lại ngày 24/11/2026.
+Các mốc dưới đây giữ theo thời điểm thực hiện; trạng thái mới nhất xem [PROGRESS.md](project-management/PROGRESS.md) ngày 25/11/2026.
 
 **Kiểm chứng ngày 21/11/2026:** mỗi phép đo chính thức có 3 warm-up + 20 lượt, hash/số dòng khớp và P95 giảm ít nhất 20%. Đã đo đối chứng thứ tự composite cho q07–q12; 125 unit tests pass. Đây là kết quả script lab, chưa phải luồng MCP–LLM–Dashboard hoàn chỉnh. Chưa đo đầy đủ dung lượng index/chi phí ghi hoặc metric LLM.
 
@@ -107,7 +107,7 @@ Các mốc dưới đây giữ theo thời điểm thực hiện; trạng thái 
 
 **Tool 1 ngày 24/11/2026:** nhánh `source="slow_log"` đã có code và test. Sau khi người dùng cấp `SELECT` riêng trên `mysql.slow_log`, gọi trực tiếp và qua MCP stdio đều `ok=true` với 1 bản ghi thật; nguồn mặc định `performance_schema` cũng `ok=true`. Xem [setup-guide](docs/setup-guide.md#4-cấu-hình-slow-log) cho cách cấp quyền trên lab khác; chưa đánh dấu chặng Tool 1–5 Done. Toàn bộ 211 unit tests pass.
 
-**Kiểm chứng Tool 1–5 ngày 24/11/2026:** qua MCP stdio và MySQL thật, registry chỉ có 5 tool, Tool 4–5 chỉ nhận `sql`, cả 5 trả `ok=true` với input đọc giới hạn. Tool 1 đã thử cả hai nguồn; Tool 5 đo 5 lượt trên một query PK ngắn. Đây là kiểm chứng kỹ thuật; contract v2 vẫn DRAFT chờ nhóm review, Tool 6/Validation/Dashboard chưa có luồng hoàn chỉnh.
+**Kiểm chứng Tool 1–5 ngày 24/11/2026:** qua MCP stdio và MySQL thật, registry chỉ có 5 tool, Tool 4–5 chỉ nhận `sql`, cả 5 trả `ok=true` với input đọc giới hạn. Tool 1 đã thử cả hai nguồn; Tool 5 đo 5 lượt trên một query PK ngắn. Đây là kiểm chứng kỹ thuật; contract v2 đã chốt về thiết kế ngày 25/11/2026, còn Tool 6/Validation/Dashboard chưa có luồng hoàn chỉnh.
 
 > 📖 Chi tiết: [project-management/PROGRESS.md](project-management/PROGRESS.md) · Lịch và deadline: [project-management/ROADMAP.md](project-management/ROADMAP.md)
 

@@ -1,8 +1,8 @@
 # 🏗️ KIẾN TRÚC HỆ THỐNG — MCP Slow Query Optimizer
 
 > **Người giữ file:** Vũ · **Reviewer:** Cả nhóm
-> **Cập nhật:** 24/11/2026
-> **Trạng thái:** Thiết kế mục tiêu theo contract v2 (DRAFT, chờ nhóm review). Chưa xác nhận luồng end-to-end.
+> **Cập nhật:** 25/11/2026
+> **Trạng thái:** Thiết kế mục tiêu theo contract v2 đã chốt; chưa xác nhận luồng end-to-end.
 > **Thử nghiệm 24/11/2026:** q07 đã đi qua Groq → LLM host → MCP Tool 2 → MySQL và trả JSON hợp lệ trong một lượt. Các sơ đồ từ Validation đến Dashboard/Tool 6 bên dưới vẫn là thiết kế mục tiêu.
 >
 > File này mô tả **luồng và ranh giới giữa các thành phần**; [api-contract.md](api-contract.md) quy định input/output của 6 tool. Cần giữ cả hai file.
@@ -210,7 +210,7 @@ Bảng này là các tool `server.py` đã đăng ký cho LLM qua MCP. Dấu ✅
 
 | Tool | Cấp cho LLM? | Lý do |
 |---|:---:|---|
-| Tool 1 `get_slow_queries` | ✅ | Hiện đọc digest từ `performance_schema`; `mysql.slow_log` chưa triển khai |
+| Tool 1 `get_slow_queries` | ✅ | Đọc digest từ `performance_schema` hoặc từng bản ghi `mysql.slow_log` khi có quyền `SELECT` riêng |
 | Tool 2 `get_schema` | ✅ | Đọc cấu trúc bảng |
 | Tool 3 `get_table_stats` | ✅ | Đọc thống kê |
 | Tool 4 `explain_query` | ✅ | MCP đăng ký wrapper `explain_for_llm` với `mode=estimate`, không bật invisible index |
@@ -376,6 +376,8 @@ Bật optimizer_switch:    SET SESSION optimizer_switch='use_invisible_indexes=o
 ```
 
 Tool 4 và Tool 5 luôn đặt rõ OFF cho phép đo trước, ON cho phép đo sau, không kế thừa cờ global. Kiểm tra EXPLAIN để biết index thực sự được chọn. INVISIBLE vẫn là index thật: việc tạo index tốn thời gian, dung lượng và tài nguyên ghi; chỉ thử trên lab đã được cho phép.
+
+Trước DDL, helper hiện từ chối proposal có tiền tố cột trùng khóa ngoại tham chiếu và trả report `inconclusive/foreign_key_support_risk`. MySQL có thể tự bỏ index hỗ trợ FK khi index mới thay thế được nó; q01 trên lab 5M đã bộc lộ rủi ro này. Chỉ mở lại nhánh thử sau khi có cách bảo toàn và dọn index an toàn.
 
 ### 6.3. Luồng validation chi tiết
 
@@ -799,4 +801,4 @@ Các dấu chọn dưới đây ghi nhận quyết định thiết kế, không 
 
 ---
 
-**Cập nhật lần cuối:** 22/11/2026 — đồng bộ thiết kế mục tiêu với contract v2; chờ nhóm review
+**Cập nhật lần cuối:** 25/11/2026 — đồng bộ thiết kế mục tiêu với contract v2 đã chốt; Validation, Tool 6 và Dashboard vẫn cần tích hợp end-to-end
