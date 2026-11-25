@@ -20,7 +20,7 @@
 
 - Dataset hiện tại là `shopdb.multitable-v1`: 5 bảng, tổng **5.000.000 dòng** (customers 500.000; addresses 500.000; products 50.000; orders 1.500.000; order_items 2.450.000). Thay thiết kế `sales_data` một bảng để có JOIN và khóa ngoại thực tế; không cần tăng lên 10–12M dòng cho lab.
 - Đã có baseline 30/30 valid và 30 phương án đạt kiểm chứng P95/hash, bao gồm đối chứng thứ tự composite cho q07–q12. Bằng chứng và trạng thái hiện tại ở [PROGRESS](PROGRESS.md); đây là kiểm chứng script lab, chưa hoàn tất Validation Layer tích hợp.
-- Validation runtime hiện chặn trước DDL các index thử có tiền tố trùng cột khóa ngoại tham chiếu: MySQL có thể tự bỏ index hỗ trợ FK và làm index thử không dọn được. Cần thiết kế và kiểm chứng cách bảo toàn index hỗ trợ FK trước khi mở lại nhánh này; không hạ tiêu chí Validation hoặc dùng report lab đã dọn index để duyệt.
+- Validation runtime/Dashboard vẫn chặn trước DDL các index thử có tiền tố trùng cột khóa ngoại tham chiếu: MySQL có thể tự bỏ index hỗ trợ FK. Nhánh opt-in chỉ trên validation lab 3309 có snapshot và recovery đã đo q01 đầy đủ trên 5M, khôi phục index FK trước baseline và dọn trial sau report. Chưa mở nhánh này cho DB chính/Tool 6; không hạ tiêu chí Validation hoặc dùng report lab đã dọn index để duyệt.
 - Ground truth vẫn cần Hải review và GVHD ký. Một số đáp án kết hợp index với rewrite/hint; khi đánh giá phải ghi rõ phần SQL bắt buộc, không quy toàn bộ mức cải thiện cho index riêng lẻ.
 - Giữ nguyên tiêu chí chất lượng, metric, deadline gốc và các mốc lịch sử bên dưới. Các mục import `sales_data` ở lịch tuần là công việc của bộ dữ liệu cũ, không phải hướng dẫn dùng hiện tại.
 

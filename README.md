@@ -84,7 +84,7 @@ flowchart TD
 | Tool 5 `benchmark_query`               |     ✅ Done     |
 | Đo P95 bộ 30 query                     | ✅ Baseline 30/30 valid; đáp án 30/30 đạt P95/hash |
 | Tool 1–5 MCP                           | 🟡 Đã kiểm chứng 5/5 qua stdio/MySQL; chặng chưa đánh dấu Done |
-| Validation Layer                       | 🟡 q05 đạt trên lab 5M; q01 bị chặn an toàn do FK; chưa kiểm đủ 30 query hoặc nối Tool 6 |
+| Validation Layer                       | 🟡 q01/q05 đạt trên lab 5M; q01 runtime vẫn chặn FK, chưa kiểm đủ 30 query hoặc nối Tool 6 |
 | 20 Prompt Injection                    | ⬜ Chưa bắt đầu |
 | Dashboard                              | ⬜ Chưa bắt đầu |
 | Báo cáo + Demo                         | ⬜ Chưa bắt đầu |

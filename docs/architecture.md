@@ -377,7 +377,7 @@ Bật optimizer_switch:    SET SESSION optimizer_switch='use_invisible_indexes=o
 
 Tool 4 và Tool 5 luôn đặt rõ OFF cho phép đo trước, ON cho phép đo sau, không kế thừa cờ global. Kiểm tra EXPLAIN để biết index thực sự được chọn. INVISIBLE vẫn là index thật: việc tạo index tốn thời gian, dung lượng và tài nguyên ghi; chỉ thử trên lab đã được cho phép.
 
-Trước DDL, helper hiện từ chối proposal có tiền tố cột trùng khóa ngoại tham chiếu và trả report `inconclusive/foreign_key_support_risk`. MySQL có thể tự bỏ index hỗ trợ FK khi index mới thay thế được nó; q01 trên lab 5M đã bộc lộ rủi ro này. Chỉ mở lại nhánh thử sau khi có cách bảo toàn và dọn index an toàn.
+Đường Dashboard/runtime mặc định từ chối proposal có tiền tố cột trùng khóa ngoại tham chiếu và trả `inconclusive/foreign_key_support_risk`. MySQL có thể tự bỏ index hỗ trợ FK khi index mới thay thế được nó. Nhánh lab 3309 có cờ riêng và snapshot bền vững cho phép trường hợp đơn giản: tạo trial, khôi phục index FK gốc nếu bị bỏ **trước khi đo baseline**, rồi kiểm schema sau cleanup. q01 đã pass lượt đo lab 5M với timeout lab 60 giây; chưa mở nhánh này cho Dashboard/DB chính.
 
 Recovery kiểm tra marker trial và snapshot FK/index đã lưu. Nếu một index hỗ trợ FK đơn giản bị MySQL tự bỏ, helper tạo lại đúng định nghĩa trong snapshot, xác minh index gốc cùng trial, rồi dọn trial; sau đó đối chiếu schema FK/index với snapshot trước khi chuyển trạng thái. Thiếu snapshot, nhiều index thiếu, định nghĩa phức tạp hoặc metadata đổi thì để `pending` và dừng backend. Không dựng index từ tên FK. Đã thử đường này trên hai bảng nhỏ riêng trong validation lab 3309; guard trước CREATE của q01 vẫn giữ đến khi kiểm đủ các điểm ngắt và phép đo trên lab 5M.
 

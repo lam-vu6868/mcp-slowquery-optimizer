@@ -15,7 +15,7 @@ LƯU Ý:
     - Chỉ cho apply khi validation_report.status == 'passed' và đủ bằng chứng đo.
     - Dùng index_admin cho DDL và SELECT riêng trên mysql.innodb_index_stats để đo index thử.
     - Helper DDL nội bộ trong file này phục vụ Validation tạo/dọn index INVISIBLE; không công bố thành MCP tool.
-    - Từ chối index thử có tiền tố trùng cột FK tham chiếu để tránh MySQL tự bỏ index hỗ trợ FK.
+    - Index thử có tiền tố trùng FK chỉ được tạo với snapshot khớp trên đường lab cho phép; dựng lại index FK trước khi đo.
     - Recovery không DROP trial nếu nó là index duy nhất còn hỗ trợ FK tham chiếu.
     - Chụp metadata FK/index bằng tài khoản đọc trước khi backend ghi trial pending và tạo index.
     - Recovery chỉ khôi phục một index FK đơn giản từ snapshot đã lưu, xác minh lại rồi mới dọn trial.
@@ -85,10 +85,12 @@ class TrialIndex:
             f"({', '.join(column_sql)}) COMMENT '{self.marker}' INVISIBLE"
         )
         self.drop_ddl = f"DROP INDEX {self.name} ON {self.table}"
+        self.visible_ddl = f"ALTER TABLE {self.table} ALTER INDEX {self.name} VISIBLE"
         self._owned = False
         self._attempted_create = False
         self._baseline_size = None
         self._baseline_allocated_size = None
+        self._active_fk_snapshot = None
 
     def _index_length(self) -> int | None:
         with get_conn() as conn, conn.cursor() as cur:
@@ -135,7 +137,7 @@ class TrialIndex:
         pages, page_size = int(row["stat_value"]), int(row["page_size"])
         return pages * page_size if pages > 0 and page_size > 0 else None
 
-    def _check_schema(self) -> None:
+    def _check_schema(self, *, fk_snapshot: dict | None = None) -> None:
         with get_conn() as conn, conn.cursor() as cur:
             cur.execute(
                 "SELECT COLUMN_NAME FROM information_schema.COLUMNS "
@@ -170,8 +172,22 @@ class TrialIndex:
         if any(self.column_names == cols[:len(self.column_names)]
                for cols in existing.values()):
             raise ValueError("columns là tiền tố thừa của index hiện có")
-        if any(self.column_names[:len(cols)] == cols for cols in foreign_keys.values()):
-            raise ForeignKeyIndexRisk("index đề xuất có thể thay thế index hỗ trợ khóa ngoại")
+        affected = [cols for cols in foreign_keys.values()
+                    if self.column_names[:len(cols)] == cols]
+        if affected:
+            if fk_snapshot is None or self.fk_support_snapshot() != fk_snapshot:
+                raise ForeignKeyIndexRisk("thiếu snapshot FK khớp schema trước DDL")
+            if len(affected) != 1:
+                raise ForeignKeyIndexRisk("trial ảnh hưởng nhiều FK")
+            support = [index for index in fk_snapshot["supporting_indexes"]
+                       if [col["name"] for col in index["columns"]][:len(affected[0])]
+                       == affected[0]]
+            if (len(support) != 1 or support[0]["non_unique"] != 1
+                    or support[0]["index_type"] != "BTREE"
+                    or support[0]["visible"] is not True or support[0]["comment"] != ""
+                    or any(col["order"] != "ASC" or col["sub_part"] is not None
+                           for col in support[0]["columns"])):
+                raise ForeignKeyIndexRisk("index hỗ trợ FK chưa đủ điều kiện khôi phục")
 
     def fk_support_snapshot(self) -> dict:
         """Chụp FK và định nghĩa index hỗ trợ bằng tài khoản đọc, trước mọi DDL."""
@@ -227,8 +243,12 @@ class TrialIndex:
             "supporting_indexes": support,
         }
 
-    def create(self) -> None:
-        self._check_schema()
+    def create(self, *, fk_snapshot: dict | None = None) -> None:
+        if fk_snapshot is None:
+            self._check_schema()
+        else:
+            self._check_schema(fk_snapshot=fk_snapshot)
+        self._active_fk_snapshot = fk_snapshot
         self._baseline_size = self._index_length()
         self._baseline_allocated_size = self._tablespace_allocated_size()
         with get_admin_conn() as conn, conn.cursor() as cur:
@@ -238,6 +258,8 @@ class TrialIndex:
             self._owned = True
         if self._index_state() != "owned":
             raise RuntimeError("index thử chưa được xác nhận INVISIBLE/cùng proposal")
+        if fk_snapshot is not None:
+            self.restore_fk_support(fk_snapshot)
 
     def _index_state(self) -> str:
         with get_conn() as conn, conn.cursor() as cur:
@@ -286,8 +308,12 @@ class TrialIndex:
         if not self._attempted_create and not self._owned:
             return
         self.recover_drop()
+        if (self._active_fk_snapshot is not None
+                and self.fk_support_snapshot() != self._active_fk_snapshot):
+            raise ForeignKeyIndexRisk("schema FK/index khác snapshot sau cleanup")
         self._owned = False
         self._attempted_create = False
+        self._active_fk_snapshot = None
 
     def _sole_fk_support(self) -> bool:
         """Kiểm tra liệu bỏ trial có làm FK phía tham chiếu mất index hỗ trợ."""
