@@ -16,7 +16,7 @@ LƯU Ý:
 
 THAM KHẢO  : docs/api-contract.md (mục 4), project-management/ROADMAP.md (mục 2.3)
 
-TRẠNG THÁI : ĐANG LÀM — đã thử q05 trên validation lab 5M; chưa kiểm hết proposal và chưa nối Tool 6.
+TRẠNG THÁI : ĐANG LÀM — q01/q05 đã thử trên lab 5M; nhánh FK chỉ bật ở lab 3309, Tool 6 chưa nối.
 """
 
 import json
@@ -28,6 +28,8 @@ from sqlglot import exp, parse_one
 from sqlglot.errors import ParseError
 
 from mcp_server.tools.apply import ForeignKeyIndexRisk
+from mcp_server.utils.config import Config
+from mcp_server.utils.db import get_conn
 from security.ast_whitelist import check as ast_check
 
 
@@ -275,11 +277,25 @@ async def validate_index(
     return result
 
 
+def _require_fk_trial_lab() -> None:
+    """Chỉ bật nhánh FK thử nghiệm trên validation lab có marker riêng."""
+    if (Config.DB_HOST != "127.0.0.1" or Config.DB_PORT != 3309
+            or Config.DB_NAME != "shopdb"):
+        raise ValueError("FK trial chỉ được bật trên validation lab 3309")
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute("SELECT marker FROM mcp_validation_lab_identity LIMIT 1")
+        row = cur.fetchone()
+    if not row or row["marker"] != "mcp-validation-lab-v1":
+        raise ValueError("validation lab 3309 không có marker hợp lệ")
+
+
 async def validate_saved_index(
     store, proposal_id: str, *, measure_write=None, write_csv_dir=None,
-    trial_factory=None, explain=None, benchmark=None,
+    trial_factory=None, explain=None, benchmark=None, allow_fk_trials=False,
 ) -> dict:
     """Đường nội bộ: lấy SQL/proposal đã lưu, đo và lưu report đúng một lần."""
+    if allow_fk_trials:
+        _require_fk_trial_lab()
     if trial_factory is None:
         from mcp_server.tools.apply import TrialIndex as trial_factory
     saved = store.get(proposal_id)
@@ -292,13 +308,20 @@ async def validate_saved_index(
             return measure_insert_overhead(saved["proposal"], csv_dir=write_csv_dir)
 
     trial = trial_factory(saved["proposal"], proposal_id=proposal_id)
-    store.begin_trial(proposal_id)
+    snapshot = trial.fk_support_snapshot()
+    store.begin_trial(proposal_id, fk_support_snapshot=snapshot)
+    persisted_snapshot = None
+    if allow_fk_trials:
+        persisted_snapshot = store.get(proposal_id)["fk_support_snapshot"]
+        if persisted_snapshot != snapshot:
+            raise ValueError("FK snapshot chưa được lưu trước trial")
     result = await validate_index(
         proposal_id=proposal_id, query_id=saved["query_id"],
         original_sql=saved["original_sql"],
         index_name=saved["proposal"]["index_name"],
         target_table=saved["proposal"]["table"],
-        create_trial=trial.create, drop_trial=trial.drop,
+        create_trial=lambda: trial.create(fk_snapshot=persisted_snapshot),
+        drop_trial=trial.drop,
         measure_size=trial.size_delta, measure_write=measure_write,
         explain=explain, benchmark=benchmark,
     )

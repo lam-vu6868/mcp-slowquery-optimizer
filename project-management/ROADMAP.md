@@ -12,6 +12,7 @@
 - [api-contract.md](../docs/api-contract.md) v2 đã được chốt về thiết kế theo ủy quyền của người dùng thay nhóm review; [architecture.md](../docs/architecture.md) mô tả luồng. Việc chốt contract không thay thế kiểm chứng triển khai, review ground truth hoặc chữ ký GVHD.
 - Tool 1 hiện lấy digest từ `performance_schema`; mã `query_id` của digest khác ID `q01`–`q30` trong catalog thực nghiệm. LLM chỉ thấy wrapper giới hạn tham số của Tool 4–5 khi `server.py` đăng ký.
 - Validation Layer cần helper DDL nội bộ dùng `index_admin` để tạo/dọn index thử. Tool 6 vẫn là cửa áp dụng sau phê duyệt và chỉ nhận proposal ID cùng token. Token gắn với DDL `ALTER TABLE ... ALTER INDEX ... VISIBLE` thực sự áp dụng.
+- Mốc triển khai 25/11: lớp token HMAC một lần và `approval_precheck()` đã có test giả; precheck kiểm report và index thử còn INVISIBLE/đúng marker rồi trả DDL chuẩn, chưa phát token theo report thật. Cần ghi/kiểm danh tính DB trong report trước khi nối cấp token, Tool 6, audit và nút Approve. Trạng thái/kiểm thử xem [PROGRESS](PROGRESS.md); các tiêu chí Done bên dưới giữ nguyên.
 - Dung lượng index thử ưu tiên số trang `size` của đúng index trong `mysql.innodb_index_stats` nhân `@@innodb_page_size`, với quyền `SELECT` chỉ trên bảng stats cho `index_admin`. Nếu chưa có quyền/số liệu, dùng chênh lệch `information_schema.TABLES.INDEX_LENGTH`; khi số đó chưa cập nhật, dùng mức tăng `information_schema.INNODB_TABLESPACES.ALLOCATED_SIZE` của file riêng. Hai nguồn sau chỉ là ước lượng cấp bảng; nếu đều không tăng thì `inconclusive`. Chi phí ghi đo trên lab riêng; `information_schema.STATISTICS` không cung cấp byte của từng index.
 
 ---
@@ -20,7 +21,7 @@
 
 - Dataset hiện tại là `shopdb.multitable-v1`: 5 bảng, tổng **5.000.000 dòng** (customers 500.000; addresses 500.000; products 50.000; orders 1.500.000; order_items 2.450.000). Thay thiết kế `sales_data` một bảng để có JOIN và khóa ngoại thực tế; không cần tăng lên 10–12M dòng cho lab.
 - Đã có baseline 30/30 valid và 30 phương án đạt kiểm chứng P95/hash, bao gồm đối chứng thứ tự composite cho q07–q12. Bằng chứng và trạng thái hiện tại ở [PROGRESS](PROGRESS.md); đây là kiểm chứng script lab, chưa hoàn tất Validation Layer tích hợp.
-- Validation runtime hiện chặn trước DDL các index thử có tiền tố trùng cột khóa ngoại tham chiếu: MySQL có thể tự bỏ index hỗ trợ FK và làm index thử không dọn được. Cần thiết kế và kiểm chứng cách bảo toàn index hỗ trợ FK trước khi mở lại nhánh này; không hạ tiêu chí Validation hoặc dùng report lab đã dọn index để duyệt.
+- Validation runtime/Dashboard vẫn chặn trước DDL các index thử có tiền tố trùng cột khóa ngoại tham chiếu: MySQL có thể tự bỏ index hỗ trợ FK. Nhánh opt-in chỉ trên validation lab 3309 có snapshot và recovery đã đo q01 đầy đủ trên 5M, khôi phục index FK trước baseline và dọn trial sau report. Chưa mở nhánh này cho DB chính/Tool 6; không hạ tiêu chí Validation hoặc dùng report lab đã dọn index để duyệt.
 - Ground truth vẫn cần Hải review và GVHD ký. Một số đáp án kết hợp index với rewrite/hint; khi đánh giá phải ghi rõ phần SQL bắt buộc, không quy toàn bộ mức cải thiện cho index riêng lẻ.
 - Giữ nguyên tiêu chí chất lượng, metric, deadline gốc và các mốc lịch sử bên dưới. Các mục import `sales_data` ở lịch tuần là công việc của bộ dữ liệu cũ, không phải hướng dẫn dùng hiện tại.
 

@@ -39,6 +39,70 @@ def test_initialize_backend_recovers_pending_before_returning_store(monkeypatch,
     ]
 
 
+def _approval_saved(**changes):
+    saved = {
+        "proposal_id": "p_abc", "query_id": "q07", "version": 1,
+        "trial_state": "passed",
+        "proposal": {"type": "index", "table": "orders",
+                     "index_name": "idx_orders_status",
+                     "columns": [{"name": "status", "order": "ASC"}]},
+        "report": {"proposal_id": "p_abc", "query_id": "q07",
+                   "status": "passed", "evidence_complete": True,
+                   "candidate_sql_kind": "original", "result_equivalent": True,
+                   "failure_reason": None},
+    }
+    saved.update(changes)
+    return saved
+
+
+def test_approval_precheck_returns_canonical_ddl_only_for_owned_trial():
+    class Trial:
+        def __init__(self, proposal, *, proposal_id):
+            assert proposal_id == "p_abc"
+            assert proposal["index_name"] == "idx_orders_status"
+            self.visible_ddl = "ALTER TABLE `orders` ALTER INDEX `idx_orders_status` VISIBLE"
+
+        def _index_state(self):
+            return "owned"
+
+    saved = _approval_saved()
+    store = type("Store", (), {"get": lambda self, proposal_id: saved})()
+    assert backend.approval_precheck(store, "p_abc", trial_factory=Trial) == (
+        "ALTER TABLE `orders` ALTER INDEX `idx_orders_status` VISIBLE"
+    )
+
+
+@pytest.mark.parametrize("change", [
+    {"trial_state": "cleaned"},
+    {"report": None},
+    {"report": {**_approval_saved()["report"], "status": "inconclusive"}},
+    {"report": {**_approval_saved()["report"], "evidence_complete": False}},
+    {"report": {**_approval_saved()["report"], "candidate_sql_kind": "rewritten"}},
+    {"report": {**_approval_saved()["report"], "proposal_id": "p_other"}},
+    {"proposal": {"type": "rewrite"}},
+])
+def test_approval_precheck_rejects_ineligible_saved_proposal(change):
+    saved = _approval_saved(**change)
+    store = type("Store", (), {"get": lambda self, proposal_id: saved})()
+    with pytest.raises(ValueError):
+        backend.approval_precheck(store, "p_abc", trial_factory=lambda *a, **k: None)
+
+
+def test_approval_precheck_rejects_missing_or_changed_trial():
+    saved = _approval_saved()
+    store = type("Store", (), {"get": lambda self, proposal_id: saved})()
+
+    class Trial:
+        def __init__(self, proposal, *, proposal_id):
+            self.visible_ddl = "ALTER TABLE `orders` ALTER INDEX `idx_orders_status` VISIBLE"
+
+        def _index_state(self):
+            return "absent"
+
+    with pytest.raises(ValueError):
+        backend.approval_precheck(store, "p_abc", trial_factory=Trial)
+
+
 def test_initialize_backend_refuses_failed_recovery(monkeypatch, tmp_path):
     monkeypatch.setattr(backend, "ProposalStore", lambda path: object())
     monkeypatch.setattr(

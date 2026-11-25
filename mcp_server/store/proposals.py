@@ -12,7 +12,7 @@ LƯU Ý:
 
 THAM KHẢO  : docs/api-contract.md
 
-TRẠNG THÁI : ĐANG LÀM — lưu proposal/report bất biến trong SQLite riêng; chưa nối Dashboard.
+TRẠNG THÁI : ĐANG LÀM — lưu proposal/report và snapshot FK trong SQLite riêng; Tool 6 chưa nối.
 """
 
 import json
@@ -40,6 +40,7 @@ class ProposalStore:
                     original_sql TEXT NOT NULL,
                     proposal_json TEXT NOT NULL,
                     report_json TEXT,
+                    fk_support_snapshot_json TEXT,
                     version INTEGER NOT NULL DEFAULT 1,
                     trial_state TEXT NOT NULL DEFAULT 'new'
                 )
@@ -49,6 +50,8 @@ class ProposalStore:
                 conn.execute(
                     "ALTER TABLE proposals ADD COLUMN trial_state TEXT NOT NULL DEFAULT 'new'"
                 )
+            if "fk_support_snapshot_json" not in columns:
+                conn.execute("ALTER TABLE proposals ADD COLUMN fk_support_snapshot_json TEXT")
             conn.commit()
 
     def add(self, query_id: str, original_sql: str, proposal: dict) -> str:
@@ -81,17 +84,23 @@ class ProposalStore:
             "proposal_id": row["proposal_id"], "query_id": row["query_id"],
             "original_sql": row["original_sql"], "version": row["version"],
             "trial_state": row["trial_state"],
+            "fk_support_snapshot": (json.loads(row["fk_support_snapshot_json"])
+                                    if row["fk_support_snapshot_json"] else None),
             "proposal": json.loads(row["proposal_json"]),
             "report": json.loads(row["report_json"]) if row["report_json"] else None,
         }
 
-    def begin_trial(self, proposal_id: str) -> None:
+    def begin_trial(self, proposal_id: str, *, fk_support_snapshot: dict | None = None) -> None:
         """Ghi durable intent trước CREATE INDEX; chặn chạy hai lần cùng proposal."""
+        if fk_support_snapshot is not None and not isinstance(fk_support_snapshot, dict):
+            raise ValueError("FK snapshot không hợp lệ")
+        snapshot_json = (json.dumps(fk_support_snapshot, ensure_ascii=False, allow_nan=False)
+                         if fk_support_snapshot is not None else None)
         with closing(sqlite3.connect(self.path)) as conn:
             result = conn.execute(
-                "UPDATE proposals SET trial_state='pending' "
+                "UPDATE proposals SET trial_state='pending', fk_support_snapshot_json=? "
                 "WHERE proposal_id=? AND trial_state='new' AND report_json IS NULL",
-                (proposal_id,),
+                (snapshot_json, proposal_id),
             )
             if result.rowcount != 1:
                 raise ValueError("proposal không thể bắt đầu trial")

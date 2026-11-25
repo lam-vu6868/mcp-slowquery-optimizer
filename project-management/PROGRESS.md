@@ -1,6 +1,6 @@
 # 📊 TIẾN ĐỘ DỰ ÁN
 
-> **Cập nhật lần cuối:** 25/11/2026 — kiểm chứng Validation trên lab đủ 5M dòng, bổ sung chặn rủi ro khóa ngoại; Vũ quản lý
+> **Cập nhật lần cuối:** 25/11/2026 — q01 lab 5M, approval token và precheck; Vũ quản lý
 > **Mốc đối chiếu hiện tại:** 25/11/2026; các bảng tuần bên dưới là lịch sử
 > **Tổng tiến độ:** Chưa tính lại từ mốc ~27% ngày 19/10
 >
@@ -21,10 +21,68 @@
 |  3  | Tool 1–5 MCP                                         | 🟡 Đang làm | Vũ · Hải · Tường |           13/10            |
 |  4  | Tích hợp LLM                                         | 🟡 Đang làm | Vũ               |           18/10            |
 |  5  | Validation Layer                                     | 🟡 Đang làm | Hải              |           22/10            |
-|  6  | Tool 6 + approval token + 20 injection               |     ⬜      | Tình             |           27/10            |
+|  6  | Tool 6 + approval token + 20 injection               | 🟡 Đang làm | Tình             |           27/10            |
 |  7  | Metrics + Baseline                                   |     ⬜      | Tường · Hải      |           03/11            |
 |  8  | Dashboard 4 tab                                      |     ⬜      | Tình             |           10/11            |
 |  9  | Báo cáo + Demo                                       |     ⬜      | Cả nhóm          |       17/11 · 01/12        |
+
+---
+
+## Approval token độc lập ngày 25/11/2026
+
+- `security/approval.py` đã có lớp ký token HMAC gắn proposal ID, version và hash của đúng lệnh ALTER; nonce và hạn 10 phút được lưu trong SQLite riêng. Xác thực dùng `hmac.compare_digest`, tiêu thụ nonce bằng một lệnh UPDATE có điều kiện để chặn dùng lại, kể cả hai lượt đồng thời. Thiếu secret thì không khởi tạo được.
+- Backend có `approval_precheck()` đọc proposal/report đã lưu, chỉ chấp nhận index `passed` trên SQL gốc với `evidence_complete=true`, trial ở state `passed`, rồi đọc lại index INVISIBLE có marker/định nghĩa khớp bằng `TrialIndex._index_state()`. Hàm chỉ trả DDL `ALTER INDEX ... VISIBLE` do server dựng; chưa cấp token hay chạy DDL. Report hiện chưa gắn danh tính DB nơi đo, nên chưa được nối precheck với nút Approve hoặc Tool 6 trước khi bổ sung ràng buộc môi trường.
+- Test bằng SQLite tạm và trial giả: token dùng một lần; precheck từ chối report không đạt, trial đã dọn hoặc index không còn. **290 unit tests pass**, Ruff pass. Chưa nối Tool 6, giao diện Dashboard hay audit log, chưa cấp token dựa trên report/index thật, chưa chạy DDL trên lab/DB chính. Bước tiếp theo là ghi/kiểm danh tính DB trong report trước khi nối cấp token.
+
+---
+
+## Validation q01 đầy đủ trên lab 5M ngày 25/11/2026
+
+- `TrialIndex.create()` giữ guard FK ở đường mặc định. Chỉ `validate_saved_index(..., allow_fk_trials=True)` trên `127.0.0.1:3309` có marker validation lab mới được thử FK khi snapshot đã lưu khớp schema, đúng một FK bị ảnh hưởng và index hỗ trợ đơn giản có thể khôi phục. Sau CREATE, helper dựng lại index FK cũ nếu MySQL tự bỏ nó, **trước lượt đo baseline**; cleanup so schema sau DROP với snapshot. Dashboard không truyền cờ này, DB chính không được kết nối trong lượt thử.
+- Một lượt q01 đầu với timeout mặc định 30 giây trả `inconclusive/measurement_error`, không có P95 hợp lệ; cleanup vẫn sạch. Phép chẩn đoán 5 lượt chỉ đọc trả P95 25.575,62 ms, sát timeout; đây là dấu hiệu timeout ở lượt 20/20 nhưng report hiện chưa giữ mã lỗi Tool 5 nên không khẳng định nguyên nhân chính xác. Script lab chạy lại **một lượt đầy đủ** với timeout 60 giây, vẫn giữ 3 warm-up + 20 lượt mỗi phía.
+- Lượt 60 giây trả `passed`, `evidence_complete=true`, `result_equivalent=true`, 20/20 lượt mỗi phía, 0 timeout, hash/số dòng khớp; P95 **29.479,27 → 222,28 ms** (giảm **99,25%**). Kích thước index **91.963.392 byte** từ `innodb_index_stats_pages`; INSERT throughput thay đổi **−3,02%** trên write lab riêng. Đây là so sánh trong cùng lượt lab; không so trực tiếp P95 với lần đo cũ. Report trong `data/outputs/lab_only_full5m_q01_validation_df244d1d.json` và SQLite lab cùng hậu tố (gitignored).
+- Index thử đã dọn, `fk_order_items_product` VISIBLE và schema FK khớp snapshot; report lab **không đủ điều kiện cấp token** vì trial không còn. Thử thêm đường `TrialIndex.create()` trên hai bảng nhỏ có FK tự tạo: MySQL bỏ index cũ, helper khôi phục nó trước khi trả về cho phép đo và dọn sạch sau đó. Kiểm độc lập: validation lab vẫn 5 bảng/tổng 5M dòng, không còn trial/bảng nhỏ; write lab `order_items` vẫn 0 dòng. Hai container đã dừng, giữ volume và bằng chứng.
+- **273 unit tests pass**, Ruff pass cho Python đã sửa. Validation Layer vẫn **Đang làm**: nhánh FK chỉ được bật cho lab, Tool 6/Dashboard chưa tích hợp và chưa kiểm đủ mọi proposal. Không áp dụng index nào trên DB chính.
+
+---
+
+## Kiểm cleanup q01 trên validation lab 5M ngày 25/11/2026
+
+- Chỉ khởi động validation lab 3309, xác nhận marker `mcp-validation-lab-v1`, `order_items` 2.450.000 dòng, index `fk_order_items_product` ban đầu VISIBLE và ổ D còn khoảng 72 GB. Dùng SQLite lab riêng ghi snapshot FK/index cùng `pending`, rồi `index_admin` tạo trial INVISIBLE `order_items(product_id, quantity, unit_price)` có marker; tiến trình này kết thúc trước recovery. Guard runtime q01 **không đổi**; script offline lab gọi DDL đã cấu trúc để kiểm riêng cleanup.
+- Lần này MySQL **không tự bỏ** index hỗ trợ FK ban đầu, phù hợp với việc index trên lab đã được khôi phục tường minh sau sự cố trước. Để tái hiện trạng thái cần recovery, script xác minh trial đang hỗ trợ đúng FK và snapshot/marker khớp, rồi **chỉ trên lab** dùng `index_admin` bỏ `fk_order_items_product`. Tiến trình mới gọi `recover_interrupted_trials()`: tạo lại index FK từ snapshot, dọn trial và chuyển `cleaned`; report kiểm `schema_restored=true`, `trial_absent=true`, `fk_support_visible=true`.
+- Kiểm độc lập sau cùng bằng `readonly_user`: 5 bảng vẫn tổng 5.000.000 dòng (500.000/500.000/50.000/1.500.000/2.450.000), FK `fk_order_items_product` còn, index hỗ trợ VISIBLE và không có `idx_lab_q01_recovery_*`. Container lab đã dừng, volume/bằng chứng giữ nguyên. File `data/outputs/lab_only_full5m_q01_recovery_20261125.json` và SQLite lab riêng được gitignore. DB chính 3307 không được kết nối trong lượt này.
+- Đây là phép kiểm **cleanup/recovery ở quy mô dữ liệu đầy đủ**, không đo lại P95, chi phí ghi, không thử đường Validation q01 tự tạo index sau khi bỏ guard. q01 vẫn bị chặn trước CREATE; chưa đủ điều kiện duyệt hoặc áp dụng lên DB chính. Lượt này không sửa code runtime; test 268 pass từ chặng trước không chạy lại, tài liệu kiểm bằng `git diff --check`.
+
+---
+
+## Kiểm quyền DB thật cho recovery FK ngày 25/11/2026
+
+- Chỉ dùng `validation_lab_db` cổng 3309, xác nhận marker `mcp-validation-lab-v1` trước DDL. Tạo hai bảng thử nhỏ có FK và một dòng bằng root lab; phần runtime giữ nguyên `get_conn()`/`get_admin_conn()` với tài khoản thật `readonly_user`/`index_admin`. `readonly_user` đọc được snapshot FK/index nhưng bị từ chối `CREATE INDEX` (MySQL 1142). `index_admin` tạo được trial INVISIBLE, và MySQL tự bỏ index FK cũ như sự cố q01.
+- Tiến trình thứ nhất ghi snapshot + `pending` vào SQLite lab rồi tạo trial; tiến trình thứ hai gọi `recover_interrupted_trials()`: dựng lại index FK bằng `index_admin`, dọn trial, xác minh schema khớp snapshot và chuyển `cleaned`. Bằng chứng `data/outputs/lab_only_fk_privilege_20261125.json` và SQLite `lab_only_fk_privilege_*.sqlite3` (gitignored); script lab cũng nằm trong `data/outputs/` và không thuộc runtime.
+- Kiểm sau cùng: không còn bảng thử `mcp_fk_priv_*`, validation lab vẫn có 2.450.000 dòng `order_items`, `fk_order_items_product` VISIBLE; đã dừng container, giữ volume và bằng chứng. DB chính cổng 3307 không được kết nối trong lượt này. Không sửa code runtime hoặc grant DB; q01 vẫn bị guard chặn trước CREATE. Bước kế tiếp là thử q01 trên lab 5M bằng đường kiểm soát riêng sau khi rà lại điều kiện cleanup, chưa áp dụng lên DB chính.
+
+---
+
+## Thử recovery khôi phục index hỗ trợ FK ngày 25/11/2026
+
+- Thêm nhánh `TrialIndex.restore_fk_support(snapshot)`: xác minh marker trial và FK hiện tại; chỉ dựng lại đúng một index hỗ trợ FK đơn giản, có định nghĩa khớp snapshot; xác minh lại trước khi dọn trial. `recover_interrupted_trials()` còn đối chiếu schema FK/index sau DROP; mọi sai lệch giữ `pending`/`recovery_failed`. Trường hợp ngắt sau `pending` nhưng trước CREATE được nhận diện là trial vắng và schema gốc còn nguyên.
+- Test DB giả bao phủ thứ tự khôi phục→DROP→đối chiếu, ngắt trước CREATE, thử lại sau khôi phục, FK đổi, snapshot không hỗ trợ FK, trial không hỗ trợ FK bị mất và schema sai sau DROP. **268 tests pass**, Ruff pass cho Python đã sửa và `git diff --check` pass.
+- Trên **validation lab 3309**, kiểm marker `mcp-validation-lab-v1` rồi tạo riêng hai bảng nhỏ có FK và một dòng; tạo trial INVISIBLE có marker. MySQL tự bỏ index FK ban đầu như q01. Recovery từ SQLite snapshot đã tạo lại index FK, dọn trial, đối chiếu schema khớp ban đầu và chuyển store sang `cleaned`. Lặp lại sau khi thêm điều kiện trial phải hỗ trợ chính FK bị mất, kết quả vẫn sạch. Bằng chứng `data/outputs/lab_only_fk_restore_e39cf25b.json` và `data/outputs/lab_only_fk_restore_4e258865.json` cùng SQLite tương ứng (gitignored). Dùng root lab cho phép thử DDL, nên lượt này chưa kiểm ranh giới quyền `readonly_user`/`index_admin` trên MySQL thật.
+- Sau phép thử, hai bảng nhỏ đã dọn; lab vẫn có 2.450.000 dòng `order_items`, không còn bảng `mcp_fk_*`. Đã dừng container validation lab, giữ volume và bằng chứng. DB chính 3307 không được kết nối hoặc chạy DDL trong lượt này. **q01 vẫn bị chặn trước CREATE**, chưa thử luồng đo đầy đủ hay áp dụng index trên DB chính.
+
+---
+
+## Lưu metadata hỗ trợ FK trước trial ngày 25/11/2026
+
+- `TrialIndex.fk_support_snapshot()` đọc FK phía tham chiếu và định nghĩa index đang hỗ trợ bằng `readonly_user`. `validate_saved_index()` gọi hàm này trước `begin_trial()`; store ghi snapshot cùng `trial_state=pending` trong một giao dịch SQLite, rồi mới cho phép `CREATE INDEX`. Mở lại SQLite vẫn đọc được snapshot; lỗi đọc metadata dừng khi state còn `new`, không chạy DDL.
+- Test dùng DB giả và SQLite tạm: toàn bộ **261 tests pass**, Ruff pass. Không khởi động MySQL/Dashboard thật, không tạo/drop index trong lượt này. Snapshot chưa được dùng để tự khôi phục index; q01 vẫn bị chặn. Bước tiếp theo là thiết kế/thử khôi phục an toàn qua các điểm ngắt trên lab riêng trước khi mở lại q01.
+
+---
+
+## Chặn recovery dọn index duy nhất hỗ trợ FK ngày 25/11/2026
+
+- Khi trial cũ là index duy nhất còn hỗ trợ một FK tham chiếu, `TrialIndex.recover_drop()` nay kiểm metadata và từ chối trước DDL. `recover_interrupted_trials()` giữ proposal `pending`, báo `recovery_failed`; backend không nhận validation mới. Test DB giả chứng minh không gọi admin DDL trong trường hợp này.
+- Chưa mở lại q01. Thiết kế tiếp theo cần lưu định nghĩa index hỗ trợ FK trước khi tạo trial và chứng minh được cách khôi phục qua mọi điểm ngắt DDL trên lab riêng. Không dựng lại index chỉ theo tên FK. Trong lượt này không khởi động MySQL/Dashboard thật, không tạo/drop index.
 
 ---
 
