@@ -1,6 +1,6 @@
 # 📊 TIẾN ĐỘ DỰ ÁN
 
-> **Cập nhật lần cuối:** 25/11/2026 — đo q01 đầy đủ trên lab 5M, giữ FK gốc trước baseline; Vũ quản lý
+> **Cập nhật lần cuối:** 25/11/2026 — q01 lab 5M, approval token và precheck; Vũ quản lý
 > **Mốc đối chiếu hiện tại:** 25/11/2026; các bảng tuần bên dưới là lịch sử
 > **Tổng tiến độ:** Chưa tính lại từ mốc ~27% ngày 19/10
 >
