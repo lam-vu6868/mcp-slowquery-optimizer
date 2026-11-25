@@ -119,6 +119,7 @@ class ProposalStore:
         elif (checked["status"] == "inconclusive"
               and report.get("failure_reason") in {
                   "interrupted", "measurement_error", "ast_rejected",
+                  "foreign_key_support_risk",
               }):
             checked["failure_reason"] = report["failure_reason"]
         state = ("pending" if checked["failure_reason"] == "cleanup_failed"

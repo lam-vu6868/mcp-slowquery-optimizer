@@ -17,5 +17,21 @@ CẦN LÀM:
 
 THAM KHẢO  : docs/api-contract.md, dashboard/pages/
 
-TRẠNG THÁI : KHUNG RỖNG — chưa cài đặt. Xóa dòng này khi bắt đầu code.
+TRẠNG THÁI : ĐANG LÀM — giữ store đã recovery cho backend Validation; giao diện 4 tab chưa cài đặt.
 """
+
+import streamlit as st
+
+from dashboard.backend import initialize_backend
+
+
+@st.cache_resource
+def _startup_backend():
+    return initialize_backend()
+
+
+try:
+    proposal_store = _startup_backend()
+except Exception:  # noqa: BLE001 - không cho Dashboard nhận việc khi recovery lỗi
+    st.error("Không khôi phục được index thử. Kiểm tra trial pending trước khi tiếp tục.")
+    st.stop()
