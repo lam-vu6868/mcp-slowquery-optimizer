@@ -1,7 +1,7 @@
 # 📊 TIẾN ĐỘ DỰ ÁN
 
-> **Cập nhật lần cuối:** 22/11/2026 — đăng ký Tool 1–5 vào MCP stdio; Vũ quản lý
-> **Mốc đối chiếu hiện tại:** 22/11/2026; các bảng tuần bên dưới là lịch sử
+> **Cập nhật lần cuối:** 24/11/2026 — kiểm chứng Tool 1–5 qua MCP stdio/MySQL; Vũ quản lý
+> **Mốc đối chiếu hiện tại:** 24/11/2026; các bảng tuần bên dưới là lịch sử
 > **Tổng tiến độ:** Chưa tính lại từ mốc ~27% ngày 19/10
 >
 > ⚠️ **File này chỉ ghi TRẠNG THÁI.** Deadline, người phụ trách và tiêu chí Done xem [ROADMAP.md](ROADMAP.md) (mục 4–5). Mục tiêu Precision/Recall/Consistency xem [ROADMAP.md](ROADMAP.md) mục 2.4.
@@ -19,8 +19,8 @@
 |  1  | CSDL 5 bảng, tổng 5M records                         |   ✅ Đã nạp/kiểm tra   | Hải              |           05/10            |
 |  2  | 30 query + ground truth                              | 🟡 Đạt đo kiểm chứng; chờ review/ký | Tường | 06/10 (draft) · 20/10 (ký) |
 |  3  | Tool 1–5 MCP                                         | 🟡 Đang làm | Vũ · Hải · Tường |           13/10            |
-|  4  | Tích hợp LLM                                         |     ⬜      | Vũ               |           18/10            |
-|  5  | Validation Layer                                     |     ⬜      | Hải              |           22/10            |
+|  4  | Tích hợp LLM                                         | 🟡 Đang làm | Vũ               |           18/10            |
+|  5  | Validation Layer                                     | 🟡 Đang làm | Hải              |           22/10            |
 |  6  | Tool 6 + approval token + 20 injection               |     ⬜      | Tình             |           27/10            |
 |  7  | Metrics + Baseline                                   |     ⬜      | Tường · Hải      |           03/11            |
 |  8  | Dashboard 4 tab                                      |     ⬜      | Tình             |           10/11            |
@@ -70,9 +70,66 @@ Lệnh kiểm tra không chạy lại DB và cách chạy pytest trên Windows x
 
 ---
 
+## Validation Layer ngày 24/11/2026
+
+- Đã có bước đánh giá report thuần Python: chỉ pass khi đo đủ số lượt từ `config/settings.yaml` (hiện 20/20), không timeout, hash/số dòng khớp, P95 giảm ít nhất ngưỡng config (hiện 20%), EXPLAIN chọn index mới và có bằng chứng dung lượng/chi phí ghi trên lab riêng. Report thiếu hoặc dùng SQL viết lại trả `inconclusive`; sai kết quả hoặc chậm trả `failed`.
+- `validate_index()` gọi Tool 4/5 nội bộ với index INVISIBLE tắt/bật, ghép Query Cost và số đo, dọn index thử khi fail/lỗi. Helper `TrialIndex` sinh DDL từ proposal có cấu trúc, kiểm tra schema hiện tại, dùng `index_admin` chỉ cho CREATE/DROP, dùng `readonly_user` cho metadata. Chưa đăng ký helper thành MCP tool.
+- `ProposalStore` lưu proposal/report bất biến trong SQLite riêng; `validate_saved_index()` lấy SQL gốc từ store, ghi `trial_state=pending` trước DDL, đo rồi lưu report. Index thử gắn `mcp_trial:<proposal_id>` trong `INDEX_COMMENT`; `recover_interrupted_trials()` chỉ dọn index có đúng marker, định nghĩa cột và trạng thái INVISIBLE, rồi ghi report `inconclusive` nếu lần thử bị ngắt. Lỗi dọn giữ trạng thái `pending` để thử lại/kiểm tra.
+- Test dùng DB/Tool giả: chưa tạo/drop index trên MySQL thật, chưa đo INSERT trên clone riêng, chưa nối hàm recovery vào điểm khởi động backend, chưa tích hợp Dashboard/Tool 6. Do đó **chưa Done**, chưa có report thật đủ điều kiện phê duyệt.
+- Kiểm tra sau bước recovery: 237 unit tests pass, Ruff pass trên các file Python đã sửa, `git diff --check` pass.
+
+### Write lab và phép đo INSERT ngày 24/11/2026
+
+- `docker-compose.write-lab.yml` tạo MySQL riêng tại `127.0.0.1:3308`, volume riêng và marker trong `db/write_lab_marker.sql`; đã khởi động và kiểm marker thật. DB chính vẫn ở cổng 3307. Mật khẩu lab nằm trong `.env.write-lab` cục bộ, đã gitignore.
+- `write_overhead.py` tạo hai bảng TEMPORARY từ schema cùng bảng, preload cùng 100.000 dòng đầu từ CSV, thêm index INVISIBLE vào một bảng, rồi đo INSERT cùng 100.000 dòng tiếp theo vào cả hai. Hàm kiểm marker, schema/header và dùng đúng số dòng từ config. `validate_saved_index()` có đường gọi phép đo này qua `write_csv_dir`; report kiểm tốc độ trước/sau, số dòng và tỷ lệ phần trăm nhất quán.
+- Đã đo thật **một phương án mẫu**, `orders(status ASC, order_date ASC)`, bằng script offline; bằng chứng ở `data/outputs/write_overhead_orders_status_date_20261124.json` (gitignored). Lượt lưu: trước 56.422,54 dòng/giây (1,772 s), sau 46.501,17 dòng/giây (2,150 s), thay đổi throughput **−17,58%**. Một lượt thăm dò trước đó cho −19,21%; chưa dùng các lượt này làm kết luận tổng quát.
+- Lab chỉ sao chép schema và dùng 200.000 dòng mẫu đầu CSV, không nạp toàn bộ 5M; bảng tạm không sao chép FOREIGN KEY. Sau phép đo, lab `orders` vẫn 0 dòng và không còn bảng scratch; DB chính `orders` vẫn 1.500.000 dòng. Chưa đo đủ mọi bảng/phương án, chưa chạy Validation end-to-end tạo index thật trên DB chính, chưa có số dung lượng index cho proposal này.
+- Sau khi lưu bằng chứng, đã dừng rồi xóa riêng container/network/volume `mcp-write-lab_write_lab_data` theo yêu cầu người dùng; `docker volume inspect` xác nhận volume không còn. File bằng chứng trong `data/outputs/` vẫn giữ; container DB chính vẫn `running/healthy`. Lần chạy write lab sau sẽ tạo volume mới và khởi tạo schema/marker lại.
+- Toàn bộ 242 unit tests pass sau thay đổi; Ruff và `git diff --check` được chạy cho file đã sửa.
+
+### Rà lại Validation Layer ngày 25/11/2026
+
+- Sửa kiểm chứng EXPLAIN cho JOIN: Tool 4 vẫn trả `key_used` của bảng đầu tiên, còn Validation Layer đọc `raw_plan` để xác nhận index mới nằm trên đúng bảng của proposal, kể cả bảng ở vị trí sau. Alias dùng lại cho bảng khác trả `inconclusive`. `ProposalStore.save_report()` kiểm lại bằng SQL gốc và tên bảng đã lưu; caller lưu report cần giữ `after.raw_plan`.
+- Khôi phục `docker-compose.write-lab.yml` mà setup guide tham chiếu; `docker compose ... config --quiet` hợp lệ. Không khởi tạo lại volume lab đã xóa theo yêu cầu người dùng.
+- Toàn bộ **244 unit tests pass**; Ruff cho Python đã sửa và `git diff --check` pass. Lần EXPLAIN q07 đầu tiên bị từ chối kết nối (WinError 10061); thử lại khi cổng 3307 sẵn sàng thì `ok=true`. Plan thật có `orders` alias `o` không chọn index và `addresses` alias `a` dùng `fk_addresses_customer`; helper xác nhận index thuộc `addresses`, không gán nhầm cho `orders`. Đây là kiểm chứng chỉ đọc với index sẵn có, chưa tạo/drop index thật hoặc chạy validation end-to-end; chặng vẫn **Đang làm**.
+
+### Thử end-to-end trên hai lab riêng ngày 25/11/2026
+
+- Dựng `write_lab_db` cổng 3308 và `validation_lab_db` cổng 3309, mỗi service có marker/volume riêng; nạp 200.000 dòng `orders` từ CSV vào validation lab. DB chính cổng 3307 vẫn có đúng 1.500.000 dòng `orders`. Proposal thử là `orders(status ASC, order_date ASC)` trên SQL gốc chỉ đọc, không thuộc 30 query catalog; mục tiêu là kiểm luồng, không chấm ground truth.
+- Lần thử dùng chung một DB cho index đọc và đo INSERT trả `inconclusive/measurement_error`: phép đo INSERT đúng ra phải chạy trên DB riêng có bảng gốc chưa mang index đề xuất. Sau khi tách hai service, lượt đo đọc/hash/INSERT thành công nhưng `INDEX_LENGTH` chưa cập nhật, nên code mặc định trả `inconclusive/write_evidence_incomplete` và tự dọn index. Bằng chứng ở `data/outputs/validation_lab_20261125_095725.json`.
+- Lượt kiểm chứng lab dùng root **chỉ ở validation lab** chạy `ANALYZE TABLE orders` trước và sau khi tạo index để làm mới thống kê, không đổi quyền `index_admin` hoặc code mặc định. Report SQLite/JSON `passed`, 20 lượt mỗi bên, P95 **72,53 → 19,38 ms** (giảm 73,28%), hash/số dòng khớp, EXPLAIN chọn index đề xuất, dung lượng tăng ước lượng **6.832.128 byte**, INSERT throughput thay đổi **−20,27%**. Bằng chứng ở `data/outputs/validation_lab_20261125_100015.json`; index thử đã dọn bằng marker sau khi ghi report. Report này **chỉ là lab evidence**, không được dùng để cấp approval token vì index đã dọn và dữ liệu chỉ là mẫu 200.000 dòng.
+- MySQL [yêu cầu `SELECT` và `INSERT` cho `ANALYZE TABLE`](https://dev.mysql.com/doc/refman/8.0/en/analyze-table.html). Do đó chưa có cách làm mới thống kê dung lượng với quyền `index_admin` hiện tại trên DB chính; không nới quyền chỉ để ép report `passed`. Validation Layer vẫn **Đang làm** cho đường runtime chung và chưa nối Dashboard/Tool 6.
+- Đã xác nhận main `orders` vẫn 1.500.000 dòng; cả hai lab đều không còn index thử. Sau khi lưu JSON/SQLite bằng chứng (gitignored), đã `docker compose -p mcp-write-lab ... down -v`: xóa đúng hai container, hai volume và network lab; không xóa volume DB chính. SQLite lab còn report `passed` nhưng index lab đã dọn và volume đã xóa, nên **không dùng SQLite này làm nguồn phê duyệt runtime**.
+
+## Kiểm chứng ngày 24/11/2026 — LLM host
+
+- `agent.py` có vòng gọi Tool 1–5, retry JSON và hash run; `parsers.py` kiểm JSON Schema cùng schema Tool 2. Adapter `llm/groq.py` đổi messages/tool calls sang Groq; model thử nghiệm ghim `openai/gpt-oss-120b` trong `config/settings.yaml`.
+- LLM giả + MCP giả/registry/stdio: 207 test toàn bộ pass, Ruff pass cho file Python đã sửa. Một lần thử Groq API thật với **tool mẫu** nhận `tool_use`, gửi kết quả mẫu rồi nhận phản hồi cuối; không gọi MySQL.
+- Groq đã nhận schema Tool 1–5 thật; Tool 2 đọc schema MySQL qua `readonly_user`. Với q07: hai lượt prompt v1 `parse_failed` vì `columns[0]` sai kiểu; prompt v2 thêm ví dụ cấu trúc cột. Một lượt v2 lỗi HTTP 400 sau Tool 2, một lượt v2 parse thành công với 2 index (`orders(status, order_date, customer_id, total_amount)` và `addresses(customer_id, city)`) cùng 1 rewrite. Tập cột index trùng đáp án q07, nhưng chưa đối chiếu hướng cột/rewrite đầy đủ, chưa chạy Validation Layer hoặc đo hiệu năng. Không dùng 4 lượt này để tính metric ổn định vì prompt version khác nhau.
+- Chưa chạy đủ 30 query/metric LLM; Validation Layer và Tool 6 vẫn chưa triển khai.
+
+### Kiểm tra lại q07 ngày 24/11/2026
+
+- Bốn lượt mới qua Python host → Groq → MCP → MySQL với `readonly_user` đều trả JSON hợp lệ, mỗi lượt có 3 proposal; ba lượt gọi Tool 2, một lượt gọi thêm Tool 3. Không tạo/drop index hoặc sửa dữ liệu MySQL.
+- HTTP 400 cũ không tái hiện. Bản ghi cũ chỉ có `BadRequestError`, không có mã/body lỗi nên chưa xác định nguyên nhân. `agent.py` nay ghi HTTP status, loại/mã lỗi API và dấu hiệu `failed_generation` khi có, nhưng không ghi nội dung phản hồi hoặc SQL.
+- Toàn bộ 208 unit tests pass; Ruff pass cho `agent.py` và test mới. Bốn lượt này chưa đủ để tính độ ổn định, Precision/Recall hoặc kiểm chứng hiệu năng proposal; chưa chạy Validation Layer hay đủ 30 query.
+
+### Tool 1 đọc slow log ngày 24/11/2026
+
+- `get_slow_queries` có tham số `source="slow_log"` tùy chọn; mặc định vẫn đọc `performance_schema`. Nhánh mới chỉ dùng `get_conn()`/`readonly_user`, giới hạn 5 giây, `limit+1` dòng và SQL tối đa 8.000 byte, bỏ comment rồi gắn `untrusted: true`. Mỗi dòng log là một lần chạy, nên `p95_latency_ms=null` và `digest=null`; chi tiết ở contract v2 DRAFT.
+- Test giả kiểm tra kết quả, giới hạn và lỗi thiếu quyền. Trước khi cấp quyền, MySQL trả `FORBIDDEN`. Người dùng đã cấp `SELECT` riêng trên `mysql.slow_log` cho `readonly_user` tại lab; gọi trực tiếp và qua MCP stdio với `source="slow_log", limit=1` đều `ok=true`, trả 1 bản ghi thật có `untrusted=true`, `p95_latency_ms=null`. Nguồn mặc định `performance_schema` vẫn `ok=true`, hiện không có digest đạt ngưỡng 500 ms. Không in SQL log trong lần kiểm tra. Chặng Tool 1–5 MCP vẫn Đang làm vì chưa kiểm chứng toàn bộ tiêu chí roadmap.
+- Toàn bộ 211 unit tests pass; Ruff pass cho file Python đã sửa. Không chạy lại `db/init.sql`, không sửa index hoặc dữ liệu lab.
+
+### Kiểm chứng Tool 1–5 qua MCP stdio ngày 24/11/2026
+
+- Registry trả đúng 5 tên Tool 1–5, không có Tool 6; schema của Tool 4–5 chỉ nhận `sql`, Tool 1 có tham số `source` tùy chọn. Gọi Tool 1 ở cả `performance_schema` (0 digest đạt 500 ms) và `slow_log` (1 bản ghi thật), Tool 2 với `orders`, Tool 3 với `orders.status`, Tool 4 EXPLAIN và Tool 5 benchmark một truy vấn PK đọc một dòng: tất cả trả `ok=true` với envelope `ok/data/error/meta` đúng tên tool.
+- Tool 4 dùng `mode=estimate`; Tool 5 đo 5 lượt theo wrapper LLM. SQL đọc từ log không được in trong lần kiểm tra. Toàn bộ 211 unit tests và Ruff pass. Đây là kiểm chứng kỹ thuật cho Tool 1–5; contract v2 vẫn DRAFT chờ review, Tool 6/Validation/Dashboard chưa triển khai, nên giai đoạn Tool 1–5 giữ trạng thái Đang làm chờ chốt review.
+
+---
+
 ## 📅 CẬP NHẬT THEO TUẦN
 
-Các kết quả và lỗi dưới đây được giữ theo thời điểm thực hiện; trạng thái hiện tại xem cập nhật 22/11 ở trên.
+Các kết quả và lỗi dưới đây được giữ theo thời điểm thực hiện; trạng thái hiện tại xem cập nhật 24/11 ở trên.
 
 ### 🗓️ Tuần 1 (23/09 – 29/09) — ✅ DONE
 

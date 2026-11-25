@@ -9,7 +9,7 @@
 Hệ thống hỗ trợ **tìm và đề xuất cách sửa các câu truy vấn MySQL chậm** bằng LLM, với con người quyết định cuối cùng:
 
 1. **Đọc** slow query log / `performance_schema` → tìm query chạy > 0.5s
-2. **Phân tích** bằng LLM (Claude) qua các tool MCP: schema, thống kê dữ liệu, EXPLAIN
+2. **Phân tích** bằng LLM (đang thử Groq GPT-OSS 120B) qua các tool MCP: schema, thống kê dữ liệu, EXPLAIN
 3. **Đề xuất** dạng có cấu trúc: thêm index, hoặc viết lại query
 4. **Kiểm chứng tự động** bằng INVISIBLE INDEX: đo P95 trước/sau, so sánh kết quả có tương đương không, tự rollback nếu kém
 5. **Con người duyệt** trên Dashboard → hệ thống sinh **approval token dùng một lần** → mới áp dụng thật
@@ -29,7 +29,7 @@ Lab hiện dùng **5 bảng, tổng 5 triệu dòng**, trong đó `orders` có 1
 ```mermaid
 flowchart TD
     A[MySQL 8.0<br/>5 bảng · tổng 5M dòng] -->|slow log / performance_schema| B[MCP Server<br/>Tool 1-5]
-    B <-->|gọi tool| C[LLM host<br/>Claude]
+    B <-->|gọi tool| C[LLM host<br/>Groq đang thử nghiệm]
     C -->|đề xuất có cấu trúc| V[Validation Layer]
     V --> V1[INVISIBLE INDEX<br/>đo P95 trước/sau]
     V --> V2[Hash so sánh kết quả]
@@ -83,13 +83,15 @@ flowchart TD
 | Tool 4 `explain_query`                 |     ✅ Done     |
 | Tool 5 `benchmark_query`               |     ✅ Done     |
 | Đo P95 bộ 30 query                     | ✅ Baseline 30/30 valid; đáp án 30/30 đạt P95/hash |
-| Tool 1–3 MCP                           |   🟡 Đang làm   |
+| Tool 1–5 MCP                           | 🟡 Đã kiểm chứng 5/5 qua stdio/MySQL; contract v2 chờ review |
 | Validation Layer                       | ⬜ Chưa bắt đầu |
 | 20 Prompt Injection                    | ⬜ Chưa bắt đầu |
 | Dashboard                              | ⬜ Chưa bắt đầu |
 | Báo cáo + Demo                         | ⬜ Chưa bắt đầu |
 
 **Chú thích:** ✅ Done | 🟡 Đang làm | ⬜ Chưa làm | 🔴 Trễ hạn
+
+Các mốc dưới đây giữ theo thời điểm thực hiện; trạng thái mới nhất là mục kiểm tra lại ngày 24/11/2026.
 
 **Kiểm chứng ngày 21/11/2026:** mỗi phép đo chính thức có 3 warm-up + 20 lượt, hash/số dòng khớp và P95 giảm ít nhất 20%. Đã đo đối chứng thứ tự composite cho q07–q12; 125 unit tests pass. Đây là kết quả script lab, chưa phải luồng MCP–LLM–Dashboard hoàn chỉnh. Chưa đo đầy đủ dung lượng index/chi phí ghi hoặc metric LLM.
 
@@ -98,6 +100,14 @@ flowchart TD
 **Tiếp theo trong ngày 22/11/2026:** Tool 3 `get_table_stats` đã có code, 9 test đơn vị pass và đã đọc thử MySQL thật bằng `readonly_user` trên `orders`/`addresses`. Lấy mẫu tối đa 1.000 dòng qua cửa sổ PK; `server.py` vẫn là khung nên Tool 1–5 chưa thành MCP tool gọi được.
 
 **Tích hợp MCP trong ngày 22/11/2026:** `server.py` đã đăng ký Tool 1–3 và wrapper giới hạn của Tool 4–5 qua MCP SDK 2.x trên stdio. Danh sách tool LLM thấy chỉ có 5 tool; Tool 6 chưa được đăng ký. Chưa có LLM host, Validation Layer hoặc Dashboard end-to-end.
+
+**Thử Groq ngày 24/11/2026:** adapter Groq đã gọi API với tool mẫu; sau đó q07 chạy qua Groq–MCP–MySQL và có một lượt trả JSON hợp lệ gồm 2 index + 1 rewrite. Hai lượt prompt v1 bị `parse_failed`, một lượt v2 lỗi HTTP 400; chưa đo độ ổn định, hiệu năng đề xuất hoặc toàn bộ 30 query. Model thử nghiệm được ghim trong `config/settings.yaml`.
+
+**Kiểm tra lại ngày 24/11/2026:** bốn lượt q07 mới qua Python host → Groq → MCP → MySQL đều trả JSON hợp lệ, mỗi lượt có 3 proposal; một lượt gọi thêm Tool 3 ngoài Tool 2. HTTP 400 cũ chưa tái hiện và bản ghi cũ không có mã lỗi chi tiết, nên chưa xác định nguyên nhân. Run mới chỉ lưu mã/loại lỗi API đã lọc, không lưu nội dung phản hồi. Toàn bộ 208 unit tests pass; chưa đo metric ổn định hoặc hiệu năng đề xuất.
+
+**Tool 1 ngày 24/11/2026:** nhánh `source="slow_log"` đã có code và test. Sau khi người dùng cấp `SELECT` riêng trên `mysql.slow_log`, gọi trực tiếp và qua MCP stdio đều `ok=true` với 1 bản ghi thật; nguồn mặc định `performance_schema` cũng `ok=true`. Xem [setup-guide](docs/setup-guide.md#4-cấu-hình-slow-log) cho cách cấp quyền trên lab khác; chưa đánh dấu chặng Tool 1–5 Done. Toàn bộ 211 unit tests pass.
+
+**Kiểm chứng Tool 1–5 ngày 24/11/2026:** qua MCP stdio và MySQL thật, registry chỉ có 5 tool, Tool 4–5 chỉ nhận `sql`, cả 5 trả `ok=true` với input đọc giới hạn. Tool 1 đã thử cả hai nguồn; Tool 5 đo 5 lượt trên một query PK ngắn. Đây là kiểm chứng kỹ thuật; contract v2 vẫn DRAFT chờ nhóm review, Tool 6/Validation/Dashboard chưa có luồng hoàn chỉnh.
 
 > 📖 Chi tiết: [project-management/PROGRESS.md](project-management/PROGRESS.md) · Lịch và deadline: [project-management/ROADMAP.md](project-management/ROADMAP.md)
 
@@ -131,7 +141,7 @@ pip install -r requirements.txt
 
 # 4. Cấu hình môi trường
 cp .env.example .env
-# Sửa .env: API key Anthropic, mật khẩu DB (readonly_user, index_admin), APPROVAL_SECRET
+# Sửa .env: GROQ_API_KEY, mật khẩu DB (readonly_user, index_admin), APPROVAL_SECRET
 # ⚠️ Không commit file .env
 
 # 5. Khởi động MySQL
@@ -143,7 +153,7 @@ timeout /t 30
 #    Chi tiết và số dòng trong docs/setup-guide.md mục 5
 #    DB đã có đủ dữ liệu: bỏ qua bước nạp
 
-# 7–8. Các lệnh dự kiến khi hoàn tất tích hợp (server.py hiện còn khung)
+# 7. Chạy MCP Server Tool 1–5 qua stdio; Dashboard vẫn chưa tích hợp
 python -m mcp_server.server
 
 # 8. Chạy Dashboard (terminal khác)

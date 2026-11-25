@@ -20,7 +20,7 @@ CẦN LÀM:
 
 THAM KHẢO  : docs/api-contract.md, docs/architecture.md
 
-TRẠNG THÁI : ĐANG LÀM — Tool 1-5 đã đăng ký; Tool 6 và LLM host chưa tích hợp.
+TRẠNG THÁI : ĐANG LÀM — Tool 1-5 đã đăng ký và host đã thử qua stdio; Tool 6 chưa tích hợp.
 """
 from mcp.server.mcpserver import MCPServer
 

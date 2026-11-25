@@ -265,14 +265,16 @@ Ghi rõ trong báo cáo: `pt-query-digest` **không** đề xuất index nên kh
 | Chốt `architecture.md` + `setup-guide.md`                         | Vũ + Hải    |     ✅     |
 | Import 5M dòng sales_data + fix NULL date                         | Hải         |     ✅     |
 | Xác nhận 30 query > 0.5s                                          | Tường       |     ✅     |
-| Tool 1 `get_slow_queries`                                         | Vũ          |     ⬜     |
-| Tool 2 `get_schema`                                               | Vũ          |     ⬜     |
-| Tool 3 `get_table_stats`                                          | Vũ          |     ⬜     |
-| `mcp_server/server.py` đăng ký 5 tool                             | Vũ          |     ⬜     |
-| Đo P95 cho ground truth (baseline)                                | Tường + Hải |     ⬜     |
+| Tool 1 `get_slow_queries`                                         | Vũ          |     ✅     |
+| Tool 2 `get_schema`                                               | Vũ          |     ✅     |
+| Tool 3 `get_table_stats`                                          | Vũ          |     ✅     |
+| `mcp_server/server.py` đăng ký 5 tool                             | Vũ          |     ✅     |
+| Đo P95 cho ground truth (baseline)                                | Tường + Hải |     ✅     |
 | Nháp chương "Cơ sở lý thuyết"                                     | Vũ          |     ⬜     |
 
 **Done tuần 3 (mục tiêu):** Tool 1–5 gọi được, trả JSON đúng contract · 30 query đều > 0.5s · ground truth nháp xong.
+
+Kiểm chứng kỹ thuật Tool 1–5 qua MCP stdio/MySQL hoàn tất ngày 24/11/2026; phần nháp chương lý thuyết chưa xác nhận và contract v2 vẫn DRAFT chờ nhóm review, nên tuần 3 chưa đổi thành Done.
 
 ### 🟡 Tuần 4 (14/10 → 20/10): LLM + Validation + ground truth ký
 

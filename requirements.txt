@@ -35,6 +35,8 @@ numpy>=1.26.0                 # (đã liệt kê trên, dùng cho Zipf distribut
 
 # ---------- Environment ----------
 python-dotenv>=1.0.0          # Đọc file .env
+PyYAML>=6.0,<7                # Đọc config/settings.yaml bằng safe_load
+jsonschema>=4.20,<5           # Kiểm tra cấu trúc JSON đề xuất của LLM
 
 # ---------- Testing ----------
 pytest>=8.0.0                 # Framework test

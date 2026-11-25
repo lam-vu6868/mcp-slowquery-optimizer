@@ -5,7 +5,7 @@
 > Căn cứ: đề bài do nhóm cung cấp, [ROADMAP.md](../project-management/ROADMAP.md) mục 2, [architecture.md](architecture.md) và code hiện tại. Đây là **đích triển khai**, không phải tuyên bố 6 Tool và Dashboard đã chạy đầu cuối.
 > **Lab:** MySQL 8.0, `shopdb.multitable-v1`, 5 bảng/tổng 5 triệu dòng. Case study 12 triệu đơn hàng/CPU 98% là bối cảnh đề bài, chưa được tái hiện hoặc đo trên lab.
 > **Ánh xạ case study:** đề bài dùng `(created_at, status)` trên 12 triệu đơn; schema lab có `orders.order_date` thay `created_at`. Query q07 đo `(status, order_date)` và `(order_date, status)` trên 1,5 triệu `orders`; chỉ dùng để thảo luận thứ tự composite, không coi là tái hiện chính xác sự cố Black Friday.
-> **LLM:** contract không phụ thuộc nhà cung cấp; lab hiện dự kiến Claude, nhưng GPT/Qwen-Coder phải dùng cùng schema proposal và cùng ranh giới Tool 1–5 nếu được thay thế.
+> **LLM:** contract không phụ thuộc nhà cung cấp; lab đang thử Groq với model `openai/gpt-oss-120b`. Nếu đổi model hoặc nhà cung cấp, vẫn phải giữ cùng schema proposal và ranh giới Tool 1–5.
 
 ---
 
@@ -139,11 +139,12 @@ Parser (`llm/parsers.py`) kiểm tra bằng JSON Schema: `query_id` phải bằn
   "limit": 10,
   "min_avg_latency_ms": 500,
   "order_by": "total_latency",
-  "since": "2025-10-01T00:00:00Z"
+  "since": "2025-10-01T00:00:00Z",
+  "source": "performance_schema"
 }
 ```
 
-`limit` mặc định 10, tối đa 100; `min_avg_latency_ms` lọc theo **latency trung bình** của digest. `since` tùy chọn: với `performance_schema`, chỉ lọc `LAST_SEEN >= since`; `exec_count`, P95 và latency vẫn là **số liệu tích lũy của digest**, không phải số đo riêng từ `since`. Không dùng chúng để vẽ biểu đồ cửa sổ thời gian. Không có digest đạt ngưỡng thì trả `ok=true, queries=[]`.
+`limit` mặc định 10, tối đa 100. `source` mặc định `performance_schema`; chọn `slow_log` để đọc từng lần chạy từ `mysql.slow_log` khi đã cấp quyền `SELECT` riêng trên bảng đó. `min_avg_latency_ms` lọc theo **latency trung bình** của digest ở nguồn chính, hoặc thời gian của từng lần chạy ở slow log. `since` tùy chọn: với `performance_schema`, chỉ lọc `LAST_SEEN >= since`; `exec_count`, P95 và latency vẫn là **số liệu tích lũy của digest**, không phải số đo riêng từ `since`. Với `slow_log`, `since` lọc `start_time`. Không dùng thống kê digest để vẽ biểu đồ cửa sổ thời gian. Không có bản ghi đạt ngưỡng thì trả `ok=true, queries=[]`.
 
 **Output `data`:**
 
@@ -169,7 +170,7 @@ Parser (`llm/parsers.py`) kiểm tra bằng JSON Schema: `query_id` phải bằn
 }
 ```
 
-`query_id` ở nguồn chính là digest MySQL, không phải ID catalog `q01`…`q30`; `source` xác định xuất xứ. Bản code hiện mới dùng `performance_schema`. Để đáp ứng yêu cầu đọc slow query log của đề bài, nhánh `mysql.slow_log` phải được triển khai với quyền `SELECT` chỉ trên bảng đó (không cấp `mysql.*`), giới hạn dòng/timeout, loại comment và gắn `untrusted`; ID của bản ghi log dùng `slowlog:` + SHA-256 của SQL đã chuẩn hóa. Trước khi cấp quyền, không mô tả nguồn phụ là đã hoạt động. File slow log vẫn dùng cho `pt-query-digest` dù nhánh bảng chưa được bật.
+`query_id` ở nguồn chính là digest MySQL, không phải ID catalog `q01`…`q30`; `source` xác định xuất xứ. Nhánh `slow_log` trả **từng bản ghi**, không gom digest: `digest=null`, `exec_count=1`, `avg_latency_ms` và `total_latency_ms` bằng thời gian lần chạy, `p95_latency_ms=null`, `first_seen=last_seen=start_time`; `rows_*_avg` là số của lần chạy đó. `order_by=exec_count` trên nguồn này sắp theo `start_time` vì mỗi bản ghi có cùng `exec_count=1`; các cách sắp latency dùng `query_time`. ID là `slowlog:` + SHA-256 của SQL sau khi bỏ comment. SQL dài hơn 8.000 byte bị loại trước khi chuyển về Python; truy vấn giới hạn 5 giây và tối đa `limit+1` dòng, strip comment và gắn `untrusted`. Nếu chưa có quyền `SELECT` riêng trên `mysql.slow_log`, trả `FORBIDDEN` và không tự chuyển nguồn. File slow log vẫn dùng cho `pt-query-digest`.
 
 ### Tool 2 — `get_schema`
 
@@ -324,7 +325,7 @@ Parser (`llm/parsers.py`) kiểm tra bằng JSON Schema: `query_id` phải bằn
 
 `rows_examined_actual` chỉ có khi `mode = analyze`.
 
-**Giao diện cấp cho LLM:** chỉ nhận `sql`, cố định `mode="estimate"` và `use_invisible_indexes=false` tại backend. Không đăng ký trực tiếp hàm đầy đủ làm tool của LLM. Hàm `explain_for_llm` đã có nhưng `server.py` chưa đăng ký; hàm đầy đủ dành cho Validation Layer nội bộ.
+**Giao diện cấp cho LLM:** chỉ nhận `sql`, cố định `mode="estimate"` và `use_invisible_indexes=false` tại backend. `server.py` đã đăng ký `explain_for_llm` dưới tên public `explain_query`; không đăng ký trực tiếp hàm đầy đủ. Hàm đầy đủ dành cho Validation Layer nội bộ.
 
 ### Tool 5 — `benchmark_query`
 
@@ -348,7 +349,7 @@ Parser (`llm/parsers.py`) kiểm tra bằng JSON Schema: `query_id` phải bằn
 
 Giới hạn: `measured_runs` 5–50, `timeout_ms` ≤ 60000.
 
-**Giao diện cấp cho LLM:** chỉ nhận `sql`; backend cố định `warmup_runs=1`, `measured_runs=5`, `timeout_ms=5000`, `use_invisible_indexes=false`, `compute_result_hash=false` và giới hạn số lần gọi. Validation Layer gọi hàm nội bộ với 3 warm-up + 20 lượt đo, hash đầy đủ và timeout theo cấu hình lab. Hàm `benchmark_for_llm` đã có nhưng `server.py` chưa đăng ký; không cấp trực tiếp các cờ nội bộ cho LLM.
+**Giao diện cấp cho LLM:** chỉ nhận `sql`; backend cố định `warmup_runs=1`, `measured_runs=5`, `timeout_ms=5000`, `use_invisible_indexes=false`, `compute_result_hash=false` và giới hạn số lần gọi. Validation Layer gọi hàm nội bộ với 3 warm-up + 20 lượt đo, hash đầy đủ và timeout theo cấu hình lab. `server.py` đã đăng ký `benchmark_for_llm` dưới tên public `benchmark_query`; không cấp trực tiếp các cờ nội bộ cho LLM.
 
 **Quy tắc triển khai và đo:**
 
@@ -357,7 +358,7 @@ Giới hạn: `measured_runs` 5–50, `timeout_ms` ≤ 60000.
 - `rows_examined` lấy từ chênh lệch các bộ đếm `Handler_read*` trước/sau từng lượt và trả về trung vị.
 - Hash được tính trong một lượt riêng, không tính vào P50/P95.
 - Query không có `ORDER BY` được chuẩn hóa và sắp xếp trên ổ đĩa trước khi hash.
-- Kết quả thiếu số lượt yêu cầu, timeout hoặc thiếu hash khi `compute_result_hash=true` phải trả `ok=false`, `MEASUREMENT_INVALID` (hoặc `TIMEOUT` nếu toàn bộ lượt timeout); không trả P95 thành công để caller dùng làm baseline. Giao diện LLM được cố định `compute_result_hash=false`, nên không bắt buộc có hash. Code Tool 5 đã xử lý trường hợp này; Validation Layer vẫn chưa triển khai.
+- Kết quả thiếu số lượt yêu cầu, timeout hoặc thiếu hash khi `compute_result_hash=true` phải trả `ok=false`, `MEASUREMENT_INVALID` (hoặc `TIMEOUT` nếu toàn bộ lượt timeout); không trả P95 thành công để caller dùng làm baseline. Giao diện LLM được cố định `compute_result_hash=false`, nên không bắt buộc có hash. Validation Layer hiện có code đánh giá report và đường đo nội bộ, còn chờ kiểm chứng end-to-end trên lab riêng.
 - `use_invisible_indexes` cũng được đặt OFF/ON rõ ràng theo session như Tool 4. `true` cho phép optimizer cân nhắc index INVISIBLE, không đảm bảo index được chọn; cần đối chiếu EXPLAIN. Chỉ dùng nội bộ validation/lab, không cấp quyền bật cho LLM.
 - `rows_examined` từ `Handler_read*` là số đo thay thế của hoạt động đọc, không phải số `ROWS_EXAMINED` chính xác từ Performance Schema; cần ghi rõ khi báo cáo.
 
@@ -455,12 +456,17 @@ Hải xây, backend gọi sau khi parser đã chấp nhận proposal. Đường 
     "row_count": 84,
     "runs": 20,
     "timed_out_runs": 0,
-    "key_used": "idx_orders_status_date"
+    "key_used": "idx_orders_status_date",
+    "raw_plan": {"query_block": {"table": {"table_name": "orders", "key": "idx_orders_status_date"}}}
   },
   "result_equivalent": true,
   "improvement_ratio": 0.986,
   "write_overhead": {
     "insert_throughput_change_pct": -6.5,
+    "before_rows_per_second": 63425.38,
+    "after_rows_per_second": 59296.73,
+    "sample_rows": 100000,
+    "preload_rows": 100000,
     "index_size_bytes": 310000000,
     "index_size_source": "table_index_length_delta",
     "index_size_estimated": true,
@@ -471,9 +477,9 @@ Hải xây, backend gọi sau khi parser đã chấp nhận proposal. Đường 
 }
 ```
 
-**Luồng kiểm chứng index:** dùng SQL gốc đã qua AST; ghi `INDEX_LENGTH` trước khi tạo một index INVISIBLE từ proposal có cấu trúc trên lab được phép thử; đo baseline với `use_invisible_indexes=off`, đo sau với `on`, đối chiếu EXPLAIN xem optimizer có chọn index mới. Mỗi bên có 3 warm-up + 20 lượt đo thành công, cùng cache warm và timeout; tính P95 theo nearest-rank. Hash toàn bộ kết quả và số dòng phải khớp. `rows_examined` của Tool 5 là proxy `Handler_read*`, phải ghi nguồn trong báo cáo, không gọi là số MySQL `ROWS_EXAMINED` chính xác. Query Cost lấy từ EXPLAIN JSON; dashboard lưu trước/sau từng query và tính tổng trên các query hợp lệ.
+**Luồng kiểm chứng index:** dùng SQL gốc đã qua AST; ghi `INDEX_LENGTH` trước khi tạo một index INVISIBLE từ proposal có cấu trúc trên lab được phép thử; đo baseline với `use_invisible_indexes=off`, đo sau với `on`, đối chiếu EXPLAIN xem optimizer có chọn index mới trên **đúng bảng proposal**, kể cả khi bảng đó nằm sau trong JOIN. Caller lưu report phải giữ `after.raw_plan` từ Tool 4: `key_used` đơn lẻ chỉ mô tả bảng đầu tiên và không đủ chứng minh. Nếu alias bảng trong SQL bị dùng lại cho bảng khác hoặc thiếu plan, validation trả `inconclusive`. Mỗi bên có 3 warm-up + 20 lượt đo thành công, cùng cache warm và timeout; tính P95 theo nearest-rank. Hash toàn bộ kết quả và số dòng phải khớp. `rows_examined` của Tool 5 là proxy `Handler_read*`, phải ghi nguồn trong báo cáo, không gọi là số MySQL `ROWS_EXAMINED` chính xác. Query Cost lấy từ EXPLAIN JSON; dashboard lưu trước/sau từng query và tính tổng trên các query hợp lệ.
 
-**Dung lượng và chi phí ghi:** đo `INDEX_LENGTH` của bảng trước/sau khi chỉ thêm một secondary index trên lab không có ghi đồng thời; đặt `information_schema_stats_expiry=0` trong session đo để tránh dùng cache metadata cũ. Chênh lệch là **ước lượng dung lượng index phát sinh**, kèm `index_size_source` và `index_size_estimated=true`, không phải kích thước chính xác từng index. Đo INSERT throughput trước/sau với cùng số dòng (`validation.write_overhead_rows` trong `config/settings.yaml`) trên bản sao dữ liệu thử riêng, không chèn hàng thử vào bộ ground truth 5M. Nếu chênh lệch size không xác định hoặc thiếu một trong hai số đo thì `evidence_complete=false`; không công bố đã hoàn thành yêu cầu trade-off. `information_schema.TABLES` là nguồn ước lượng; chỉ kết quả có nguồn/điều kiện đo rõ ràng mới đưa vào biểu đồ.
+**Dung lượng và chi phí ghi:** đo `INDEX_LENGTH` của bảng trước/sau khi chỉ thêm một secondary index trên lab không có ghi đồng thời; đặt `information_schema_stats_expiry=0` trong session đo để tránh dùng cache metadata cũ. Chênh lệch là **ước lượng dung lượng index phát sinh**, kèm `index_size_source` và `index_size_estimated=true`, không phải kích thước chính xác từng index. MySQL có thể giữ thống kê InnoDB cũ ngay cả khi session đặt expiry bằng 0: nếu chênh lệch bằng 0, report phải là `inconclusive`. Lượt thử lab có thể chạy `ANALYZE TABLE` bằng root **trước và sau** khi tạo index để làm mới thống kê; không cấp quyền `INSERT` cho `index_admin` chỉ để chạy `ANALYZE` trên DB chính. Đo INSERT throughput trước/sau với cùng số dòng (`validation.write_overhead_rows` trong `config/settings.yaml`) trên MySQL lab riêng **khác** DB đang giữ index thử, không chèn hàng thử vào bộ ground truth 5M. Báo cáo ghi thêm `before_rows_per_second`, `after_rows_per_second`, `sample_rows`, `preload_rows`; caller lưu report cần giữ các trường này vì Validation kiểm chúng trước khi cho `passed`. Lab hiện dùng hai bảng tạm `CREATE TABLE LIKE`, preload cùng N dòng CSV rồi đo INSERT cùng N dòng tiếp theo; bảng sau có index đề xuất INVISIBLE. `CREATE TABLE LIKE` không sao chép FOREIGN KEY, và mẫu đầu CSV không đại diện toàn bộ workload 5M: phải ghi rõ giới hạn trong report. Nếu chênh lệch size không xác định hoặc thiếu một trong hai số đo thì `evidence_complete=false`; không công bố đã hoàn thành yêu cầu trade-off. `information_schema.TABLES` là nguồn ước lượng; chỉ kết quả có nguồn/điều kiện đo rõ ràng mới đưa vào biểu đồ.
 
 **Trạng thái:** `passed` khi hash và số dòng tương đương, P95 giảm ≥20%, đủ 20/20 lượt mỗi bên, không timeout/lỗi và với index proposal có bằng chứng optimizer chọn index mới. `failed` khi đo hợp lệ nhưng sai kết quả hoặc không đạt ngưỡng; `inconclusive` khi thiếu lượt, thiếu số đo bắt buộc hoặc không chứng minh được index được dùng. Tool 6 chỉ nhận `passed` **và** `evidence_complete=true` trên SQL gốc. Fail/inconclusive/ngoại lệ → dọn index thử và ghi lý do; pass giữ INVISIBLE để chờ người duyệt, Reject hoặc hết hạn chờ duyệt thì dọn. Rewrite thuần chỉ đo SQL gốc và SQL viết lại, không tạo index và không đi qua Tool 6; phương án rewrite + index phải ghi `candidate_sql_kind="rewritten"` và chỉ hiển thị nếu chưa kiểm chứng index độc lập trên SQL gốc.
 

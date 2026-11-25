@@ -5,7 +5,7 @@
 # Mọi ngưỡng dùng trong thực nghiệm PHẢI lấy từ file này để báo cáo ghi lại được.
 
 llm:
-  model: "claude-sonnet-5-5"     # GHIM phiên bản; đổi model = phải chạy lại thực nghiệm
+  model: "openai/gpt-oss-120b"  # Groq; ghim model, đổi model = chạy lại thực nghiệm
   temperature: 0.0               # thấp để Consistency Rate có ý nghĩa
   max_tokens: 2000
   max_tool_calls_per_query: 8
