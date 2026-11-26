@@ -94,7 +94,7 @@ flowchart TD
 
 Các mốc dưới đây giữ theo thời điểm thực hiện; trạng thái mới nhất xem [PROGRESS.md](project-management/PROGRESS.md) ngày 25/11/2026.
 
-**Bàn giao 25/11/2026:** q01 đã đo đủ trên validation lab 5M qua nhánh FK opt-in, giữ index FK trước baseline và dọn trial sau report; đường Dashboard mặc định vẫn chặn trường hợp FK này. `security/approval.py` đã ký token HMAC gắn proposal/version/hash DDL, hạn 10 phút và chặn dùng lại bằng SQLite. `dashboard.backend.approval_precheck()` kiểm report đạt và index thử còn INVISIBLE, đúng marker/định nghĩa rồi trả lệnh ALTER chuẩn. **290 unit tests pass**; report chưa ghi danh tính DB nên chưa cấp token từ precheck, chưa gọi Tool 6 hoặc áp dụng index trên DB chính.
+**Bàn giao 26/11/2026:** q01 đã đo đủ trên validation lab 5M qua nhánh FK opt-in, giữ index FK trước baseline và dọn trial sau report; đường Dashboard mặc định vẫn chặn trường hợp FK này. `security/approval.py` đã ký token HMAC gắn proposal/version/hash DDL, hạn 10 phút và chặn dùng lại bằng SQLite. Report Validation mới ghi danh tính DB; backend so với DB hiện tại, kiểm index thử còn INVISIBLE/đúng marker rồi mới có thể cấp token cho DDL chuẩn. Đã thử đọc danh tính trên MySQL thật bằng `readonly_user`; `AuditLog` đã có SQLite riêng nhưng Tool 6 chưa gọi. **297 unit tests pass**; nút Approve và Tool 6 chưa nối, chưa áp dụng index trên DB chính.
 
 **Kiểm chứng ngày 21/11/2026:** mỗi phép đo chính thức có 3 warm-up + 20 lượt, hash/số dòng khớp và P95 giảm ít nhất 20%. Đã đo đối chứng thứ tự composite cho q07–q12; 125 unit tests pass. Đây là kết quả script lab, chưa phải luồng MCP–LLM–Dashboard hoàn chỉnh. Chưa đo đầy đủ dung lượng index/chi phí ghi hoặc metric LLM.
 

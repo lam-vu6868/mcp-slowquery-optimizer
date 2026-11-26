@@ -669,13 +669,21 @@ async def test_saved_validation_persists_report_without_accepting_new_sql(
     monkeypatch.setattr(
         "mcp_server.validation.write_overhead.measure_insert_overhead", fake_write,
     )
+    monkeypatch.setattr(
+        "mcp_server.validation.validator.current_db_identity",
+        lambda: {"server_uuid": "db-a", "schema": "shopdb",
+                 "host": "127.0.0.1", "port": 3307},
+        raising=False,
+    )
     result = await validate_saved_index(
         store, proposal_id, write_csv_dir=tmp_path,
         trial_factory=FakeTrial, explain=explain, benchmark=benchmark,
         allow_fk_trials=allow_fk_trials,
     )
     assert result["status"] == "passed"
+    assert result["db_identity"]["server_uuid"] == "db-a"
     assert store.get(proposal_id)["report"]["status"] == "passed"
+    assert store.get(proposal_id)["report"]["db_identity"] == result["db_identity"]
     assert store.get(proposal_id)["trial_state"] == "passed"
     assert events == ["snapshot", "create"]
 
@@ -847,6 +855,11 @@ async def test_saved_validation_cleans_passed_trial_when_report_save_fails(monke
 
     monkeypatch.setattr(
         "mcp_server.validation.validator.validate_index", fake_validate_index,
+    )
+    monkeypatch.setattr(
+        "mcp_server.validation.validator.current_db_identity",
+        lambda: {"server_uuid": "db-a", "schema": "shopdb",
+                 "host": "127.0.0.1", "port": 3307},
     )
     with pytest.raises(OSError, match="storage unavailable"):
         await validate_saved_index(

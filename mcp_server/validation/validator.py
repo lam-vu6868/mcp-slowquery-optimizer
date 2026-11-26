@@ -29,7 +29,7 @@ from sqlglot.errors import ParseError
 
 from mcp_server.tools.apply import ForeignKeyIndexRisk
 from mcp_server.utils.config import Config
-from mcp_server.utils.db import get_conn
+from mcp_server.utils.db import current_db_identity, get_conn
 from security.ast_whitelist import check as ast_check
 
 
@@ -309,6 +309,7 @@ async def validate_saved_index(
 
     trial = trial_factory(saved["proposal"], proposal_id=proposal_id)
     snapshot = trial.fk_support_snapshot()
+    db_identity = current_db_identity()
     store.begin_trial(proposal_id, fk_support_snapshot=snapshot)
     persisted_snapshot = None
     if allow_fk_trials:
@@ -325,6 +326,7 @@ async def validate_saved_index(
         measure_size=trial.size_delta, measure_write=measure_write,
         explain=explain, benchmark=benchmark,
     )
+    result["db_identity"] = db_identity
     try:
         return store.save_report(proposal_id, result)
     except Exception:

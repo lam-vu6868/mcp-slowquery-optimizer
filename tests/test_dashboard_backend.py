@@ -15,6 +15,7 @@ from types import ModuleType
 import pytest
 
 from dashboard import backend
+from security.approval import ApprovalTokens
 
 
 def test_initialize_backend_recovers_pending_before_returning_store(monkeypatch, tmp_path):
@@ -49,13 +50,17 @@ def _approval_saved(**changes):
         "report": {"proposal_id": "p_abc", "query_id": "q07",
                    "status": "passed", "evidence_complete": True,
                    "candidate_sql_kind": "original", "result_equivalent": True,
-                   "failure_reason": None},
+                   "failure_reason": None,
+                   "db_identity": {"server_uuid": "db-a", "schema": "shopdb",
+                                   "host": "127.0.0.1", "port": 3307}},
     }
     saved.update(changes)
     return saved
 
 
-def test_approval_precheck_returns_canonical_ddl_only_for_owned_trial():
+def test_approval_precheck_returns_canonical_ddl_only_for_owned_trial(monkeypatch):
+    monkeypatch.setattr(backend, "current_db_identity",
+                        lambda: _approval_saved()["report"]["db_identity"])
     class Trial:
         def __init__(self, proposal, *, proposal_id):
             assert proposal_id == "p_abc"
@@ -88,7 +93,9 @@ def test_approval_precheck_rejects_ineligible_saved_proposal(change):
         backend.approval_precheck(store, "p_abc", trial_factory=lambda *a, **k: None)
 
 
-def test_approval_precheck_rejects_missing_or_changed_trial():
+def test_approval_precheck_rejects_missing_or_changed_trial(monkeypatch):
+    monkeypatch.setattr(backend, "current_db_identity",
+                        lambda: _approval_saved()["report"]["db_identity"])
     saved = _approval_saved()
     store = type("Store", (), {"get": lambda self, proposal_id: saved})()
 
@@ -101,6 +108,56 @@ def test_approval_precheck_rejects_missing_or_changed_trial():
 
     with pytest.raises(ValueError):
         backend.approval_precheck(store, "p_abc", trial_factory=Trial)
+
+
+@pytest.mark.parametrize("identity", [None, {"server_uuid": "db-b", "schema": "shopdb",
+                                            "host": "127.0.0.1", "port": 3307}])
+def test_approval_precheck_rejects_missing_or_other_database(monkeypatch, identity):
+    monkeypatch.setattr(backend, "current_db_identity",
+                        lambda: _approval_saved()["report"]["db_identity"])
+    saved = _approval_saved()
+    saved["report"]["db_identity"] = identity
+    store = type("Store", (), {"get": lambda self, proposal_id: saved})()
+    with pytest.raises(ValueError, match="DB"):
+        backend.approval_precheck(store, "p_abc", trial_factory=lambda *a, **k: None)
+
+
+def test_issue_approval_token_binds_saved_proposal_and_ddl(monkeypatch, tmp_path):
+    saved = _approval_saved()
+    store = type("Store", (), {"get": lambda self, proposal_id: saved})()
+    ddl = "ALTER TABLE `orders` ALTER INDEX `idx_orders_status` VISIBLE"
+    monkeypatch.setattr(backend, "current_db_identity",
+                        lambda: saved["report"]["db_identity"])
+    monkeypatch.setattr(backend.Config, "APPROVAL_SECRET", "test-only-secret")
+
+    class Trial:
+        def __init__(self, proposal, *, proposal_id):
+            self.visible_ddl = ddl
+
+        def _index_state(self):
+            return "owned"
+
+    token_path = tmp_path / "tokens.sqlite3"
+    token = backend.issue_approval_token(
+        store, "p_abc", token_path=token_path, trial_factory=Trial,
+    )
+    tokens = ApprovalTokens(token_path, secret="test-only-secret")
+    assert not tokens.verify_token(token, "p_abc", 2, ddl)
+    assert not tokens.verify_token(token, "p_abc", 1, ddl + " ")
+    assert tokens.verify_token(token, "p_abc", 1, ddl)
+
+
+def test_issue_approval_token_refuses_report_from_other_db(monkeypatch, tmp_path):
+    saved = _approval_saved()
+    saved["report"]["db_identity"]["server_uuid"] = "other-db"
+    store = type("Store", (), {"get": lambda self, proposal_id: saved})()
+    monkeypatch.setattr(backend, "current_db_identity",
+                        lambda: _approval_saved()["report"]["db_identity"])
+    monkeypatch.setattr(backend.Config, "APPROVAL_SECRET", "test-only-secret")
+    token_path = tmp_path / "tokens.sqlite3"
+    with pytest.raises(ValueError, match="DB"):
+        backend.issue_approval_token(store, "p_abc", token_path=token_path)
+    assert not token_path.exists()
 
 
 def test_initialize_backend_refuses_failed_recovery(monkeypatch, tmp_path):

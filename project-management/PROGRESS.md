@@ -28,6 +28,27 @@
 
 ---
 
+## Audit log cho Tool 6 ngày 26/11/2026
+
+- `mcp_server/store/audit_log.py` đã có `AuditLog.append()` ghi thời gian UTC, proposal ID, hash DDL, kết quả, người duyệt, nguồn gọi và mã lý do vào SQLite riêng. API chỉ thêm bản ghi, không có cột token; lỗi ghi audit được ném ra để caller dừng trước DDL.
+- Test bằng SQLite tạm xác nhận bản ghi giữ nguyên sau khi mở lại và không có cột token. **297 unit tests pass**, Ruff pass. Tool 6 chưa gọi audit, chưa thực thi ALTER hoặc được đăng ký ở registry riêng; cần nối kiểm lại report/trial/DB, tiêu thụ token và ghi audit cho cả nhánh chấp nhận/từ chối bằng DB giả trước khi thử MySQL lab.
+
+---
+
+## Cấp token từ backend sau precheck ngày 26/11/2026
+
+- `dashboard.backend.issue_approval_token()` gọi `approval_precheck()` trước, rồi dùng `ApprovalTokens` với secret từ cấu hình để ký đúng `proposal_id`, version và DDL `ALTER ... VISIBLE` đã kiểm. Nonce được lưu trong SQLite riêng. Report sai DB hoặc index thử không hợp lệ không được cấp token; không nhận SQL tự do từ caller.
+- Test giả xác nhận token đúng phiên bản/DDL và từ chối report thuộc DB khác trước khi tạo kho token. **296 unit tests pass**, Ruff pass. Chưa có nút Approve, Tool 6, audit log hoặc thử MySQL thật. Bước tiếp theo là Tool 6 kiểm lại report/trial/DB, tiêu thụ token một lần và ghi audit trước khi nối Dashboard.
+
+---
+
+## Ràng buộc danh tính DB trong report ngày 26/11/2026
+
+- `validate_saved_index()` đọc `@@server_uuid`, `DATABASE()` qua `readonly_user` cùng host/port cấu hình trước khi bắt đầu trial, rồi lưu `db_identity` vào report. `approval_precheck()` đọc lại danh tính DB hiện tại và từ chối report thiếu trường hoặc không khớp trước khi kiểm index thử. Report cũ không tự được nâng cấp; phải validation lại để đủ điều kiện duyệt.
+- Test giả kiểm report lưu qua SQLite, DB đúng được phép qua precheck, thiếu/sai danh tính bị từ chối. **294 unit tests pass**, Ruff pass; chưa thử MySQL thật hoặc Dashboard. Chặng Validation, Tool 6 và Dashboard vẫn đang làm. Bước tiếp theo: kiểm truy vấn danh tính trên MySQL lab bằng quyền readonly, sau đó nối cấp token/Tool 6 với cùng ranh giới DB và audit.
+
+---
+
 ## Approval token độc lập ngày 25/11/2026
 
 - `security/approval.py` đã có lớp ký token HMAC gắn proposal ID, version và hash của đúng lệnh ALTER; nonce và hạn 10 phút được lưu trong SQLite riêng. Xác thực dùng `hmac.compare_digest`, tiêu thụ nonce bằng một lệnh UPDATE có điều kiện để chặn dùng lại, kể cả hai lượt đồng thời. Thiếu secret thì không khởi tạo được.
