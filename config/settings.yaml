@@ -25,6 +25,7 @@ validation:
 
 approval:
   token_ttl_seconds: 600
+  review_ttl_seconds: 86400   # 24 giờ từ lúc Validation pass
   single_use: true
 
 limits:

@@ -84,7 +84,7 @@ flowchart TD
 | Tool 5 `benchmark_query`               |     ✅ Done     |
 | Đo P95 bộ 30 query                     | ✅ Baseline 30/30 valid; đáp án 30/30 đạt P95/hash |
 | Tool 1–5 MCP                           | 🟡 Đã kiểm chứng 5/5 qua stdio/MySQL; chặng chưa đánh dấu Done |
-| Validation Layer                       | 🟡 q01/q05 đạt trên lab 5M; q01 runtime vẫn chặn FK, chưa kiểm đủ 30 query hoặc nối Tool 6 |
+| Validation Layer                       | 🟡 q01/q05 đạt trên lab 5M; Reject dọn trial có test giả, chưa thử Reject trên MySQL; q01 runtime vẫn chặn FK |
 | Tool 6 + approval token                | 🟡 Backend cục bộ gọi registry riêng với OS account trong test giả; chưa có nút Approve, thử DDL thật hoặc 20 injection |
 | 20 Prompt Injection                    | ⬜ Chưa bắt đầu |
 | Dashboard                              | 🟡 Backend có recovery và precheck; giao diện 4 tab chưa nối luồng validation/Approve |
@@ -94,7 +94,9 @@ flowchart TD
 
 Các mốc dưới đây giữ theo thời điểm thực hiện; trạng thái mới nhất xem [PROGRESS.md](project-management/PROGRESS.md) ngày 25/11/2026.
 
-**Bàn giao 26/11/2026:** q01 đã đo đủ trên validation lab 5M qua nhánh FK opt-in, giữ index FK trước baseline và dọn trial sau report; đường Dashboard mặc định vẫn chặn trường hợp FK này. Report Validation mới ghi danh tính DB; đã thử đọc danh tính trên MySQL thật bằng `readonly_user`. Backend cấp token HMAC sau precheck; lõi Tool 6 dùng chung kiểm report/DB/index, tiêu thụ token và ghi audit với DB giả. Registry Dashboard riêng chỉ có Tool 6, còn LLM chỉ thấy Tool 1–5. Dashboard cục bộ mặc định nghe `127.0.0.1`; backend lấy OS account làm người duyệt và gọi registry riêng trong test giả. **311 unit tests pass**; chưa có nút Approve hoặc thử DDL thật, chưa áp dụng index trên DB chính.
+**Bàn giao 26/11/2026:** q01 đã đo đủ trên validation lab 5M qua nhánh FK opt-in, giữ index FK trước baseline và dọn trial sau report; đường Dashboard mặc định vẫn chặn trường hợp FK này. Report Validation mới ghi danh tính DB; đã thử đọc danh tính trên MySQL thật bằng `readonly_user`. Backend cấp token HMAC sau precheck; lõi Tool 6 dùng chung kiểm report/DB/index, tiêu thụ token và ghi audit với DB giả. Registry Dashboard riêng chỉ có Tool 6, còn LLM chỉ thấy Tool 1–5. Dashboard cục bộ mặc định nghe `127.0.0.1`; backend lấy OS account làm người duyệt và gọi registry riêng trong test giả. Reject đã có đường dọn trial với test giả, kiểm DB trước khi DROP và recovery khi dọn lỗi. **314 unit tests pass**; chưa có nút Approve/Reject hoặc thử DDL thật từ Dashboard, chưa áp dụng index trên DB chính.
+
+**Bước tiếp 26/11/2026:** Trial `passed` được chờ duyệt 24 giờ từ lúc lưu report. Backend từ chối duyệt sau hạn và dọn trial quá hạn khi Dashboard khởi động; token một lần vẫn có hạn 10 phút từ lúc cấp. Bản ghi cũ thiếu hạn duyệt cần Validation lại. Đã kiểm bằng DB giả; chưa thử DROP thật cho nhánh quá hạn.
 
 **Kiểm chứng ngày 21/11/2026:** mỗi phép đo chính thức có 3 warm-up + 20 lượt, hash/số dòng khớp và P95 giảm ít nhất 20%. Đã đo đối chứng thứ tự composite cho q07–q12; 125 unit tests pass. Đây là kết quả script lab, chưa phải luồng MCP–LLM–Dashboard hoàn chỉnh. Chưa đo đầy đủ dung lượng index/chi phí ghi hoặc metric LLM.
 

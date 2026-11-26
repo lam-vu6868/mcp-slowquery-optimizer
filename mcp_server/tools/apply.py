@@ -28,6 +28,7 @@ TRẠNG THÁI : ĐANG LÀM — lõi Tool 6 có test DB giả; chưa đăng ký r
 
 import hashlib
 import re
+import time
 import uuid
 
 import pymysql
@@ -445,6 +446,9 @@ def check_approval(store, proposal_id: str, *, trial_factory=TrialIndex,
                    identity_reader=current_db_identity) -> str:
     """Kiểm report và trial ngay trên DB sẽ áp dụng, trả DDL chuẩn."""
     saved = store.get(proposal_id)
+    expires_at = saved.get("review_expires_at")
+    if type(expires_at) is not int or expires_at <= int(time.time()):
+        raise ValueError("trial đã hết hạn chờ duyệt; cần Validation lại")
     report = saved.get("report")
     if (saved.get("proposal_id") != proposal_id
             or saved.get("trial_state") != "passed"

@@ -19,7 +19,10 @@ from mcp_server.store.proposals import ProposalStore
 from mcp_server.tools.apply import OptimizationApplier, TrialIndex, check_approval
 from mcp_server.utils.config import Config
 from mcp_server.utils.db import current_db_identity
-from mcp_server.validation.rollback import recover_interrupted_trials
+from mcp_server.validation.rollback import (
+    expire_waiting_trials,
+    recover_interrupted_trials,
+)
 from mcp_server.validation.validator import validate_saved_index
 from security.approval import ApprovalTokens
 
@@ -36,6 +39,11 @@ def initialize_backend(store_path: Path = DEFAULT_STORE_PATH) -> ProposalStore:
               if result == "recovery_failed"]
     if failed:
         raise RuntimeError("Không khôi phục được trial: " + ", ".join(failed))
+    expired = expire_waiting_trials(store)
+    failed = [proposal_id for proposal_id, result in expired.items()
+              if result == "cleanup_failed"]
+    if failed:
+        raise RuntimeError("Không dọn được trial hết hạn: " + ", ".join(failed))
     return store
 
 

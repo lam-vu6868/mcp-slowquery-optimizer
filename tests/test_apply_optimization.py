@@ -1,6 +1,7 @@
 """Kiểm tra lõi Tool 6 bằng DB giả; không thực hiện DDL thật."""
 
 import sqlite3
+import time
 from contextlib import contextmanager
 
 import pytest
@@ -19,6 +20,7 @@ def _setup(tmp_path):
     saved = {
         "proposal_id": "p_abc", "query_id": "q07", "version": 1,
         "trial_state": "passed",
+        "review_expires_at": int(time.time()) + 86400,
         "proposal": {"type": "index", "table": "orders",
                      "index_name": "idx_orders_status",
                      "columns": [{"name": "status", "order": "ASC"}]},

@@ -1,6 +1,6 @@
 # 📊 TIẾN ĐỘ DỰ ÁN
 
-> **Cập nhật lần cuối:** 26/11/2026 — backend Dashboard cục bộ gọi registry Tool 6 bằng test giả; Vũ quản lý
+> **Cập nhật lần cuối:** 26/11/2026 — hạn chờ duyệt trial 24 giờ bằng test giả; Vũ quản lý
 > **Mốc đối chiếu hiện tại:** 26/11/2026; các bảng tuần bên dưới là lịch sử
 > **Tổng tiến độ:** Chưa tính lại từ mốc ~27% ngày 19/10
 >
@@ -25,6 +25,19 @@
 |  7  | Metrics + Baseline                                   |     ⬜      | Tường · Hải      |           03/11            |
 |  8  | Dashboard 4 tab                                      |     ⬜      | Tình             |           10/11            |
 |  9  | Báo cáo + Demo                                       |     ⬜      | Cả nhóm          |       17/11 · 01/12        |
+
+---
+
+## Hạn chờ duyệt trial ngày 26/11/2026
+
+- Report `passed` lưu `review_expires_at` = lúc lưu + 86.400 giây theo `approval.review_ttl_seconds`. Precheck chung của Dashboard và Tool 6 từ chối proposal quá hạn hoặc bản cũ thiếu hạn. Token một lần vẫn có hạn 600 giây tính từ lúc cấp.
+- Backend chạy recovery rồi dọn trial `passed` quá hạn khi Dashboard khởi động; dọn qua kiểm tra DB, marker và snapshot FK/index của Reject. Lỗi dọn làm backend dừng. Chưa có lịch nền dọn đúng giờ nếu Dashboard chạy liên tục; chưa thử DROP thật trên MySQL.
+- **319 unit tests pass**, Ruff và `git diff --check` pass; test expiry dùng DB/trial giả. Chặng Validation vẫn **Đang làm**.
+
+## Reject dọn index thử đã pass ngày 26/11/2026
+
+- `reject_saved_index()` kiểm report thuộc DB hiện tại, rồi chuyển proposal `passed → pending` trong SQLite trước khi gọi đường recovery dọn trial có marker và kiểm snapshot FK/index. Dọn thành công chuyển `cleaned`; lỗi để `pending` để lần khởi động sau thử recovery. Recovery gặp report mới thuộc DB khác sẽ giữ `pending` và không DROP; proposal đã dọn hoặc đã áp dụng không được Reject lặp. Chưa nối nút Reject trên Dashboard.
+- **314 unit tests pass**, Ruff pass. Test dùng trial giả, không chạy DROP INDEX thật. Contract chưa định thời gian chờ duyệt trước khi tự dọn; **chưa bật tự dọn theo thời gian**. Chặng Validation vẫn đang làm: cần thử Reject trên lab riêng, kiểm lại luồng report/trial hiện tại và các proposal còn lại trước khi đánh dấu Done.
 
 ---
 

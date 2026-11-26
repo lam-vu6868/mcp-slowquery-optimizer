@@ -12,14 +12,17 @@ LƯU Ý:
 
 THAM KHẢO  : docs/api-contract.md
 
-TRẠNG THÁI : ĐANG LÀM — lưu proposal/report/snapshot FK và trạng thái applied; Tool 6 chưa nối Dashboard.
+TRẠNG THÁI : ĐANG LÀM — lưu proposal/report/snapshot FK và trạng thái applied/pending cleanup.
 """
 
 import json
 import sqlite3
+import time
 import uuid
 from contextlib import closing
 from pathlib import Path
+
+import yaml
 
 from mcp_server.tools.apply import TrialIndex
 from mcp_server.validation.validator import assess_index_report
@@ -42,7 +45,8 @@ class ProposalStore:
                     report_json TEXT,
                     fk_support_snapshot_json TEXT,
                     version INTEGER NOT NULL DEFAULT 1,
-                    trial_state TEXT NOT NULL DEFAULT 'new'
+                    trial_state TEXT NOT NULL DEFAULT 'new',
+                    review_expires_at INTEGER
                 )
             """)
             columns = {row[1] for row in conn.execute("PRAGMA table_info(proposals)")}
@@ -52,6 +56,8 @@ class ProposalStore:
                 )
             if "fk_support_snapshot_json" not in columns:
                 conn.execute("ALTER TABLE proposals ADD COLUMN fk_support_snapshot_json TEXT")
+            if "review_expires_at" not in columns:
+                conn.execute("ALTER TABLE proposals ADD COLUMN review_expires_at INTEGER")
             conn.commit()
 
     def add(self, query_id: str, original_sql: str, proposal: dict) -> str:
@@ -84,6 +90,7 @@ class ProposalStore:
             "proposal_id": row["proposal_id"], "query_id": row["query_id"],
             "original_sql": row["original_sql"], "version": row["version"],
             "trial_state": row["trial_state"],
+            "review_expires_at": row["review_expires_at"],
             "fk_support_snapshot": (json.loads(row["fk_support_snapshot_json"])
                                     if row["fk_support_snapshot_json"] else None),
             "proposal": json.loads(row["proposal_json"]),
@@ -112,6 +119,14 @@ class ProposalStore:
                 "SELECT proposal_id FROM proposals WHERE trial_state='pending'"
             )]
 
+    def expired_passed(self, now: int) -> list[str]:
+        with closing(sqlite3.connect(self.path)) as conn:
+            return [row[0] for row in conn.execute(
+                "SELECT proposal_id FROM proposals WHERE trial_state='passed' "
+                "AND review_expires_at IS NOT NULL AND review_expires_at<=?",
+                (now,),
+            )]
+
     def save_report(self, proposal_id: str, report: dict) -> dict:
         saved = self.get(proposal_id)
         if (report.get("proposal_id") != proposal_id
@@ -133,12 +148,21 @@ class ProposalStore:
             checked["failure_reason"] = report["failure_reason"]
         state = ("pending" if checked["failure_reason"] == "cleanup_failed"
                  else "passed" if checked["status"] == "passed" else "cleaned")
+        review_expires_at = None
+        if state == "passed":
+            settings_path = Path(__file__).resolve().parents[2] / "config" / "settings.yaml"
+            with settings_path.open(encoding="utf-8") as file:
+                settings = yaml.safe_load(file)
+            ttl = settings.get("approval", {}).get("review_ttl_seconds")
+            if type(ttl) is not int or ttl <= 0:
+                raise ValueError("approval.review_ttl_seconds phải là số nguyên dương")
+            review_expires_at = int(time.time()) + ttl
         payload = json.dumps(checked, ensure_ascii=False, allow_nan=False)
         with closing(sqlite3.connect(self.path)) as conn:
             result = conn.execute(
-                "UPDATE proposals SET report_json=?, trial_state=? "
+                "UPDATE proposals SET report_json=?, trial_state=?, review_expires_at=? "
                 "WHERE proposal_id=? AND trial_state='pending' AND report_json IS NULL",
-                (payload, state, proposal_id),
+                (payload, state, review_expires_at, proposal_id),
             )
             if result.rowcount != 1:
                 raise ValueError("report đã được lưu hoặc proposal không tồn tại")
@@ -175,4 +199,16 @@ class ProposalStore:
             )
             if result.rowcount != 1:
                 raise ValueError("proposal không còn ở trạng thái chờ duyệt")
+            conn.commit()
+
+    def begin_cleanup(self, proposal_id: str) -> None:
+        """Lưu ý định dọn trial đã pass để recovery tiếp tục được sau khi ngắt."""
+        with closing(sqlite3.connect(self.path)) as conn:
+            result = conn.execute(
+                "UPDATE proposals SET trial_state='pending' "
+                "WHERE proposal_id=? AND trial_state='passed'",
+                (proposal_id,),
+            )
+            if result.rowcount != 1:
+                raise ValueError("proposal không còn chờ duyệt")
             conn.commit()
