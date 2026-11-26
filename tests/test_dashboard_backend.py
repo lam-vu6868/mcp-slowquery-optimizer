@@ -9,6 +9,7 @@ LƯU Ý      : Chỉ dùng store/trial giả, không kết nối MySQL hoặc ch
 
 import runpy
 import sys
+import time
 import tomllib
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -31,13 +32,19 @@ def test_initialize_backend_recovers_pending_before_returning_store(monkeypatch,
         events.append(("recover", value))
         return {"p_trial": "dropped"}
 
+    def expire(value):
+        events.append(("expire", value))
+        return {"p_old": "dropped"}
+
     monkeypatch.setattr(backend, "ProposalStore", make_store)
     monkeypatch.setattr(backend, "recover_interrupted_trials", recover)
+    monkeypatch.setattr(backend, "expire_waiting_trials", expire)
 
     assert backend.initialize_backend(tmp_path / "proposals.sqlite3") is store
     assert events == [
         ("open", tmp_path / "proposals.sqlite3"),
         ("recover", store),
+        ("expire", store),
     ]
 
 
@@ -45,6 +52,7 @@ def _approval_saved(**changes):
     saved = {
         "proposal_id": "p_abc", "query_id": "q07", "version": 1,
         "trial_state": "passed",
+        "review_expires_at": int(time.time()) + 86400,
         "proposal": {"type": "index", "table": "orders",
                      "index_name": "idx_orders_status",
                      "columns": [{"name": "status", "order": "ASC"}]},
@@ -121,6 +129,22 @@ def test_approval_precheck_rejects_missing_or_other_database(monkeypatch, identi
     store = type("Store", (), {"get": lambda self, proposal_id: saved})()
     with pytest.raises(ValueError, match="DB"):
         backend.approval_precheck(store, "p_abc", trial_factory=lambda *a, **k: None)
+
+
+def test_approval_precheck_rejects_expired_trial_before_token_or_db():
+    saved = _approval_saved(review_expires_at=1)
+    store = type("Store", (), {"get": lambda self, proposal_id: saved})()
+    with pytest.raises(ValueError, match="hết hạn"):
+        backend.approval_precheck(store, "p_abc",
+                                  trial_factory=lambda *a, **k: pytest.fail("no DB"))
+
+
+def test_approval_precheck_rejects_legacy_trial_without_deadline():
+    saved = _approval_saved(review_expires_at=None)
+    store = type("Store", (), {"get": lambda self, proposal_id: saved})()
+    with pytest.raises(ValueError, match="hết hạn"):
+        backend.approval_precheck(store, "p_abc",
+                                  trial_factory=lambda *a, **k: pytest.fail("no DB"))
 
 
 def test_issue_approval_token_binds_saved_proposal_and_ddl(monkeypatch, tmp_path):
@@ -243,6 +267,15 @@ def test_initialize_backend_refuses_failed_recovery(monkeypatch, tmp_path):
     )
 
     with pytest.raises(RuntimeError, match="p_trial"):
+        backend.initialize_backend(tmp_path / "proposals.sqlite3")
+
+
+def test_initialize_backend_refuses_failed_expiry_cleanup(monkeypatch, tmp_path):
+    monkeypatch.setattr(backend, "ProposalStore", lambda path: object())
+    monkeypatch.setattr(backend, "recover_interrupted_trials", lambda store: {})
+    monkeypatch.setattr(backend, "expire_waiting_trials",
+                        lambda store: {"p_old": "cleanup_failed"})
+    with pytest.raises(RuntimeError, match="p_old"):
         backend.initialize_backend(tmp_path / "proposals.sqlite3")
 
 

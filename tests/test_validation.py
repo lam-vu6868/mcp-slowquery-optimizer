@@ -13,6 +13,8 @@ TRẠNG THÁI : ĐANG LÀM — kiểm thử bước đánh giá bằng chứng b
 """
 
 import json
+import sqlite3
+import time
 from contextlib import contextmanager
 from copy import deepcopy
 
@@ -21,7 +23,11 @@ import pytest
 from mcp_server.store.proposals import ProposalStore
 from mcp_server.tools import apply as apply_module
 from mcp_server.tools.apply import ForeignKeyIndexRisk, TrialIndex
-from mcp_server.validation.rollback import recover_interrupted_trials
+from mcp_server.validation.rollback import (
+    expire_waiting_trials,
+    recover_interrupted_trials,
+    reject_saved_index,
+)
 from mcp_server.validation.validator import (
     assess_index_report,
     validate_index,
@@ -585,6 +591,167 @@ def test_proposal_store_keeps_original_and_report_immutable(tmp_path):
         store.save_report(proposal_id, report)
     with pytest.raises(ValueError, match="SQL"):
         store.add("q07", "DROP TABLE orders", proposal)
+
+
+def test_reject_saved_index_marks_pending_before_drop_and_cleans(tmp_path):
+    identity = {"server_uuid": "db-a", "schema": "shopdb",
+                "host": "127.0.0.1", "port": 3307}
+    store = ProposalStore(tmp_path / "proposals.sqlite3")
+    proposal_id = store.add("q07", "SELECT id FROM orders", {
+        "type": "index", "table": "orders", "index_name": "idx_orders_status",
+        "columns": [{"name": "status", "order": "ASC"}],
+    })
+    store.begin_trial(proposal_id, fk_support_snapshot={
+        "foreign_keys": [], "supporting_indexes": [],
+    })
+    store.save_report(proposal_id, {**_report(), "proposal_id": proposal_id,
+                                    "db_identity": identity})
+    events = []
+
+    class FakeTrial:
+        def __init__(self, proposal, *, proposal_id):
+            pass
+
+        def restore_fk_support(self, snapshot):
+            events.append("restore")
+
+        def recover_drop(self):
+            assert store.get(proposal_id)["trial_state"] == "pending"
+            events.append("drop")
+            return "dropped"
+
+        def fk_support_snapshot(self):
+            events.append("verify")
+            return store.get(proposal_id)["fk_support_snapshot"]
+
+    assert reject_saved_index(store, proposal_id, trial_factory=FakeTrial,
+                              identity_reader=lambda: identity) == "dropped"
+    assert events == ["restore", "drop", "verify"]
+    assert store.get(proposal_id)["trial_state"] == "cleaned"
+    with pytest.raises(ValueError):
+        reject_saved_index(store, proposal_id, trial_factory=FakeTrial,
+                           identity_reader=lambda: identity)
+
+
+def test_reject_failure_stays_pending_for_recovery(tmp_path):
+    identity = {"server_uuid": "db-a", "schema": "shopdb",
+                "host": "127.0.0.1", "port": 3307}
+    store = ProposalStore(tmp_path / "proposals.sqlite3")
+    proposal_id = store.add("q07", "SELECT id FROM orders", {
+        "type": "index", "table": "orders", "index_name": "idx_orders_status",
+        "columns": [{"name": "status", "order": "ASC"}],
+    })
+    store.begin_trial(proposal_id, fk_support_snapshot={
+        "foreign_keys": [], "supporting_indexes": [],
+    })
+    store.save_report(proposal_id, {**_report(), "proposal_id": proposal_id,
+                                    "db_identity": identity})
+    attempts = []
+
+    class FakeTrial:
+        def __init__(self, proposal, *, proposal_id):
+            pass
+
+        def recover_drop(self):
+            attempts.append("drop")
+            if len(attempts) == 1:
+                raise RuntimeError("DB unavailable")
+            return "dropped"
+
+        def restore_fk_support(self, snapshot):
+            pass
+
+        def fk_support_snapshot(self):
+            return store.get(proposal_id)["fk_support_snapshot"]
+
+    with pytest.raises(RuntimeError, match="DB unavailable"):
+        reject_saved_index(store, proposal_id, trial_factory=FakeTrial,
+                           identity_reader=lambda: identity)
+    assert store.get(proposal_id)["trial_state"] == "pending"
+    assert recover_interrupted_trials(
+        store, trial_factory=FakeTrial,
+        identity_reader=lambda: {**identity, "server_uuid": "db-b"},
+    ) == {proposal_id: "recovery_failed"}
+    assert attempts == ["drop"]
+    assert store.get(proposal_id)["trial_state"] == "pending"
+    assert recover_interrupted_trials(store, trial_factory=FakeTrial,
+                                      identity_reader=lambda: identity) == {
+        proposal_id: "dropped",
+    }
+    assert store.get(proposal_id)["trial_state"] == "cleaned"
+
+
+def test_reject_refuses_report_from_other_db_before_pending_or_ddl(tmp_path):
+    store = ProposalStore(tmp_path / "proposals.sqlite3")
+    proposal_id = store.add("q07", "SELECT id FROM orders", {
+        "type": "index", "table": "orders", "index_name": "idx_orders_status",
+        "columns": [{"name": "status", "order": "ASC"}],
+    })
+    store.begin_trial(proposal_id)
+    store.save_report(proposal_id, {**_report(), "proposal_id": proposal_id,
+                                    "db_identity": {"server_uuid": "db-a"}})
+    with pytest.raises(ValueError, match="DB"):
+        reject_saved_index(store, proposal_id,
+                           identity_reader=lambda: {"server_uuid": "db-b"},
+                           trial_factory=lambda *a, **k: pytest.fail("không được dọn"))
+    assert store.get(proposal_id)["trial_state"] == "passed"
+
+
+def test_passed_report_has_review_deadline_and_expiry_drops_only_old_trial(tmp_path):
+    store = ProposalStore(tmp_path / "proposals.sqlite3")
+    identity = {"server_uuid": "db-a", "schema": "shopdb",
+                "host": "127.0.0.1", "port": 3307}
+    proposal = {"type": "index", "table": "orders", "index_name": "idx_orders_status",
+                "columns": [{"name": "status", "order": "ASC"}]}
+    expired_id = store.add("q07", "SELECT id FROM orders", proposal)
+    waiting_id = store.add("q07", "SELECT id FROM orders", proposal)
+    for proposal_id in (expired_id, waiting_id):
+        store.begin_trial(proposal_id, fk_support_snapshot={
+            "foreign_keys": [], "supporting_indexes": [],
+        })
+        store.save_report(proposal_id, {**_report(), "proposal_id": proposal_id,
+                                        "db_identity": identity})
+    now = int(time.time())
+    assert now + 86390 <= store.get(waiting_id)["review_expires_at"] <= now + 86410
+    with sqlite3.connect(store.path) as conn:
+        conn.execute("UPDATE proposals SET review_expires_at=? WHERE proposal_id=?",
+                     (now - 1, expired_id))
+    events = []
+
+    class FakeTrial:
+        def __init__(self, proposal, *, proposal_id):
+            self.proposal_id = proposal_id
+
+        def restore_fk_support(self, snapshot):
+            pass
+
+        def recover_drop(self):
+            events.append(self.proposal_id)
+            return "dropped"
+
+        def fk_support_snapshot(self):
+            return {"foreign_keys": [], "supporting_indexes": []}
+
+    assert expire_waiting_trials(store, now=now, trial_factory=FakeTrial,
+                                 identity_reader=lambda: identity) == {
+        expired_id: "dropped",
+    }
+    assert events == [expired_id]
+    assert store.get(expired_id)["trial_state"] == "cleaned"
+    assert store.get(waiting_id)["trial_state"] == "passed"
+
+
+def test_store_migrates_legacy_trial_without_setting_deadline(tmp_path):
+    path = tmp_path / "legacy.sqlite3"
+    with sqlite3.connect(path) as conn:
+        conn.execute("CREATE TABLE proposals (proposal_id TEXT PRIMARY KEY, query_id TEXT, "
+                     "original_sql TEXT, proposal_json TEXT, report_json TEXT, "
+                     "version INTEGER DEFAULT 1)")
+    store = ProposalStore(path)
+    assert store.expired_passed(int(time.time()) + 86400) == []
+    with sqlite3.connect(path) as conn:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(proposals)")}
+    assert "review_expires_at" in columns
 
 
 def test_store_preserves_foreign_key_risk_reason(tmp_path):
