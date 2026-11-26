@@ -577,6 +577,10 @@ def test_proposal_store_keeps_original_and_report_immutable(tmp_path):
     store.begin_trial(proposal_id)
     store.save_report(proposal_id, report)
     assert store.get(proposal_id)["report"]["status"] == "passed"
+    store.mark_applied(proposal_id)
+    assert store.get(proposal_id)["trial_state"] == "applied"
+    with pytest.raises(ValueError):
+        store.mark_applied(proposal_id)
     with pytest.raises(ValueError, match="report"):
         store.save_report(proposal_id, report)
     with pytest.raises(ValueError, match="SQL"):

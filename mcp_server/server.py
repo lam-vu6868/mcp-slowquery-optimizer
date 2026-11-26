@@ -16,11 +16,11 @@ LƯU Ý:
     - Dữ liệu lấy từ DB (comment, SQL trong log) phải qua sanitize và gắn nhãn untrusted.
 
 CẦN LÀM:
-    [ ] Tách registry riêng cho Tool 6.
+    [x] Tách registry riêng cho Tool 6 trong dashboard_server.py.
 
 THAM KHẢO  : docs/api-contract.md, docs/architecture.md
 
-TRẠNG THÁI : ĐANG LÀM — Tool 1-5 đã đăng ký và host đã thử qua stdio; Tool 6 chưa tích hợp.
+TRẠNG THÁI : ĐANG LÀM — Tool 1-5 đã đăng ký và host đã thử qua stdio; registry Dashboard riêng chưa nối giao diện.
 """
 from mcp.server.mcpserver import MCPServer
 

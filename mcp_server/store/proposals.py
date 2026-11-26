@@ -12,7 +12,7 @@ LƯU Ý:
 
 THAM KHẢO  : docs/api-contract.md
 
-TRẠNG THÁI : ĐANG LÀM — lưu proposal/report và snapshot FK trong SQLite riêng; Tool 6 chưa nối.
+TRẠNG THÁI : ĐANG LÀM — lưu proposal/report/snapshot FK và trạng thái applied; Tool 6 chưa nối Dashboard.
 """
 
 import json
@@ -163,4 +163,16 @@ class ProposalStore:
                 "WHERE proposal_id=? AND trial_state='pending'",
                 (proposal_id,),
             )
+            conn.commit()
+
+    def mark_applied(self, proposal_id: str) -> None:
+        """Ghi nhận index đã VISIBLE sau khi Tool 6 xác minh DDL thành công."""
+        with closing(sqlite3.connect(self.path)) as conn:
+            result = conn.execute(
+                "UPDATE proposals SET trial_state='applied' "
+                "WHERE proposal_id=? AND trial_state='passed'",
+                (proposal_id,),
+            )
+            if result.rowcount != 1:
+                raise ValueError("proposal không còn ở trạng thái chờ duyệt")
             conn.commit()
