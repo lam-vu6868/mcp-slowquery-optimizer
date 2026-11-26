@@ -23,16 +23,17 @@ LƯU Ý:
 
 THAM KHẢO  : docs/api-contract.md (Tool 6), security/approval.py
 
-TRẠNG THÁI : ĐANG LÀM — đã có helper index thử nội bộ; Tool 6 chưa cài đặt.
+TRẠNG THÁI : ĐANG LÀM — lõi Tool 6 có test DB giả; chưa đăng ký riêng hoặc nối Dashboard.
 """
 
+import hashlib
 import re
 import uuid
 
 import pymysql
 
 from mcp_server.utils.config import Config
-from mcp_server.utils.db import get_admin_conn, get_conn
+from mcp_server.utils.db import current_db_identity, get_admin_conn, get_conn
 
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _INDEX_NAME = re.compile(r"^idx_[a-z0-9_]{1,50}$")
@@ -283,6 +284,25 @@ class TrialIndex:
             raise RuntimeError("index không thuộc trial này hoặc đã đổi định nghĩa")
         return "owned"
 
+    def is_visible(self) -> bool:
+        """Xác nhận index đã VISIBLE nhưng marker và định nghĩa vẫn thuộc proposal."""
+        with get_conn() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT COLUMN_NAME, COLLATION, INDEX_COMMENT, IS_VISIBLE "
+                "FROM information_schema.STATISTICS "
+                "WHERE TABLE_SCHEMA=%s AND TABLE_NAME=%s AND INDEX_NAME=%s "
+                "ORDER BY SEQ_IN_INDEX",
+                (Config.DB_NAME, self.table_name, self.index_name),
+            )
+            rows = cur.fetchall()
+        expected = [(name, "A" if order == "ASC" else "D")
+                    for name, order in self.column_parts]
+        return bool(rows) and ([(row["COLUMN_NAME"], row["COLLATION"]) for row in rows]
+                               == expected) and all(
+            row["INDEX_COMMENT"] == self.marker and row["IS_VISIBLE"] == "YES"
+            for row in rows
+        )
+
     def size_delta(self) -> dict:
         if not self._owned or self._index_state() != "owned":
             return {"index_size_bytes": None, "index_size_source": None}
@@ -419,3 +439,110 @@ class TrialIndex:
             cur.execute(self.drop_ddl)
         self._owned = False
         return "dropped"
+
+
+def check_approval(store, proposal_id: str, *, trial_factory=TrialIndex,
+                   identity_reader=current_db_identity) -> str:
+    """Kiểm report và trial ngay trên DB sẽ áp dụng, trả DDL chuẩn."""
+    saved = store.get(proposal_id)
+    report = saved.get("report")
+    if (saved.get("proposal_id") != proposal_id
+            or saved.get("trial_state") != "passed"
+            or saved.get("proposal", {}).get("type") != "index"
+            or not isinstance(report, dict)
+            or report.get("proposal_id") != proposal_id
+            or report.get("query_id") != saved.get("query_id")
+            or report.get("status") != "passed"
+            or report.get("evidence_complete") is not True
+            or report.get("candidate_sql_kind") != "original"
+            or report.get("result_equivalent") is not True
+            or report.get("failure_reason") is not None):
+        raise ValueError("proposal chưa đủ điều kiện phê duyệt")
+    if (not isinstance(report.get("db_identity"), dict)
+            or report["db_identity"] != identity_reader()):
+        raise ValueError("report không thuộc DB đang duyệt")
+    trial = trial_factory(saved["proposal"], proposal_id=proposal_id)
+    if trial._index_state() != "owned":
+        raise ValueError("index thử không còn hợp lệ để phê duyệt")
+    return trial.visible_ddl
+
+
+class OptimizationApplier:
+    """Lõi Tool 6 nội bộ; caller cấp store/token/audit và danh tính người duyệt."""
+
+    def __init__(self, store, tokens, audit, *, approver: str,
+                 trial_factory=TrialIndex, identity_reader=current_db_identity,
+                 admin_conn=get_admin_conn):
+        if not isinstance(approver, str) or not approver.strip():
+            raise ValueError("thiếu người duyệt")
+        self.store = store
+        self.tokens = tokens
+        self.audit = audit
+        self.approver = approver
+        self.trial_factory = trial_factory
+        self.identity_reader = identity_reader
+        self.admin_conn = admin_conn
+
+    def apply_optimization(self, proposal_id: str, approval_token: str) -> dict:
+        """Chỉ nhận ID và token; SQL áp dụng luôn dựng từ proposal đã lưu."""
+        self.audit.append(proposal_id=proposal_id, ddl_sha256=None,
+                          result="attempted", approver=self.approver,
+                          source="dashboard", reason=None)
+        ddl_hash = None
+        reason = "VALIDATION_FAILED"
+        try:
+            try:
+                saved = self.store.get(proposal_id)
+            except KeyError:
+                reason = "NOT_FOUND"
+                raise
+            ddl = check_approval(
+                self.store, proposal_id, trial_factory=self.trial_factory,
+                identity_reader=self.identity_reader,
+            )
+            write_overhead = saved["report"].get("write_overhead")
+            if (not isinstance(write_overhead, dict)
+                    or type(write_overhead.get("index_size_bytes")) is not int
+                    or write_overhead["index_size_bytes"] <= 0
+                    or write_overhead.get("index_size_source") not in {
+                        "innodb_index_stats_pages", "table_index_length_delta",
+                        "tablespace_allocated_growth_delta",
+                    }):
+                raise ValueError("report thiếu số đo index")
+            ddl_hash = hashlib.sha256(ddl.encode("utf-8")).hexdigest()
+            reason = "TOKEN_INVALID"
+            if not self.tokens.verify_token(
+                approval_token, proposal_id, saved["version"], ddl,
+            ):
+                raise ValueError("TOKEN_INVALID")
+            reason = "APPLY_FAILED"
+            with self.admin_conn() as conn, conn.cursor() as cur:
+                cur.execute("SET SESSION lock_wait_timeout = 5")
+                cur.execute(ddl)
+            reason = "APPLY_UNVERIFIED"
+            trial = self.trial_factory(saved["proposal"], proposal_id=proposal_id)
+            if not trial.is_visible():
+                raise RuntimeError("không xác minh được index VISIBLE sau ALTER")
+            reason = "STATE_UPDATE_FAILED"
+            self.store.mark_applied(proposal_id)
+            reason = "AUDIT_FAILED"
+            audit_id = self.audit.append(
+                proposal_id=proposal_id, ddl_sha256=ddl_hash,
+                result="applied", approver=self.approver,
+                source="dashboard", reason=None,
+            )
+            return {
+                "applied": True, "ddl": ddl, "index_visible": True,
+                "index_size_bytes": write_overhead["index_size_bytes"],
+                "index_size_source": write_overhead["index_size_source"],
+                "audit_id": f"a_{audit_id:06d}", "rollback_ddl": trial.drop_ddl,
+            }
+        except Exception:
+            self.audit.append(
+                proposal_id=proposal_id, ddl_sha256=ddl_hash,
+                result=("uncertain" if reason in {"APPLY_UNVERIFIED", "STATE_UPDATE_FAILED",
+                                                  "AUDIT_FAILED"}
+                        else "failed" if reason == "APPLY_FAILED" else "rejected"),
+                approver=self.approver, source="dashboard", reason=reason,
+            )
+            raise

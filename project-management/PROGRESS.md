@@ -1,7 +1,7 @@
 # 📊 TIẾN ĐỘ DỰ ÁN
 
-> **Cập nhật lần cuối:** 25/11/2026 — q01 lab 5M, approval token và precheck; Vũ quản lý
-> **Mốc đối chiếu hiện tại:** 25/11/2026; các bảng tuần bên dưới là lịch sử
+> **Cập nhật lần cuối:** 26/11/2026 — backend Dashboard cục bộ gọi registry Tool 6 bằng test giả; Vũ quản lý
+> **Mốc đối chiếu hiện tại:** 26/11/2026; các bảng tuần bên dưới là lịch sử
 > **Tổng tiến độ:** Chưa tính lại từ mốc ~27% ngày 19/10
 >
 > ⚠️ **File này chỉ ghi TRẠNG THÁI.** Deadline, người phụ trách và tiêu chí Done xem [ROADMAP.md](ROADMAP.md) (mục 4–5). Mục tiêu Precision/Recall/Consistency xem [ROADMAP.md](ROADMAP.md) mục 2.4.
@@ -25,6 +25,48 @@
 |  7  | Metrics + Baseline                                   |     ⬜      | Tường · Hải      |           03/11            |
 |  8  | Dashboard 4 tab                                      |     ⬜      | Tình             |           10/11            |
 |  9  | Báo cáo + Demo                                       |     ⬜      | Cả nhóm          |       17/11 · 01/12        |
+
+---
+
+## Backend Dashboard cục bộ gọi Tool 6 ngày 26/11/2026
+
+- Theo phạm vi một người dùng cục bộ, `.streamlit/config.toml` đặt `server.address="127.0.0.1"`; Streamlit đã đọc đúng giá trị này. `dashboard.backend.apply_from_dashboard()` lấy tên OS account của tiến trình Streamlit, cấp token sau precheck rồi gọi registry MCP Dashboard riêng. Kết quả Tool 6 trả về cho backend không chứa token; lỗi tool được che bằng thông báo chung. Giao diện chưa có nút Approve, nên đường này chưa được gọi từ trình duyệt.
+- **311 unit tests pass**, Ruff pass. Test dùng applier giả; chưa chạy DDL thật hoặc kiểm thao tác bấm trên Dashboard. Tên OS account chỉ nhận diện người vận hành tiến trình cục bộ, không phải cơ chế đăng nhập cho nhiều người; cấu hình loopback có thể bị người chạy ghi đè bằng tham số CLI. Bước tiếp theo: giao diện Tab 2 chỉ hiện Approve với proposal đủ điều kiện, gọi backend này sau cú bấm, rồi kiểm thử UI; DDL thật chỉ thử trên lab riêng sau khi có report/trial hợp lệ và kiểm marker.
+
+---
+
+## Registry MCP riêng cho Dashboard ngày 26/11/2026
+
+- `mcp_server/dashboard_server.py` tạo registry chỉ có `apply_optimization(proposal_id, approval_token)` và chuyển lời gọi tới `OptimizationApplier` mà backend cấp. `mcp_server/server.py` dành cho LLM vẫn chỉ đăng ký Tool 1–5. Registry Dashboard hiện là factory nội bộ, không có entry point chạy riêng; chưa được giao diện gọi hoặc gắn danh tính người duyệt đã xác thực.
+- Test giả kiểm đúng tên tool, đúng hai trường input và gọi được applier giả; **307 unit tests pass**, Ruff pass. Không khởi động Dashboard hoặc chạy DDL thật. Bước tiếp theo là xác định nguồn danh tính người duyệt đáng tin cậy trong Dashboard rồi mới nối nút Approve với registry này.
+
+---
+
+## Lõi Tool 6 với DB giả ngày 26/11/2026
+
+- `OptimizationApplier.apply_optimization(proposal_id, approval_token)` dùng chung `check_approval()` với backend để kiểm report, danh tính DB và index INVISIBLE trước khi tiêu thụ token. Sau đó chỉ chạy DDL `ALTER ... VISIBLE` do `TrialIndex` dựng bằng `index_admin`, xác minh marker/định nghĩa/index VISIBLE, chuyển proposal sang `applied` và ghi audit. Audit không ghi được trước DDL thì dừng; token sai, proposal thiếu hoặc DB sai đều bị từ chối và có bản ghi audit. Nếu lỗi sau khi ALTER được gọi mà chưa xác minh chắc trạng thái, audit ghi `uncertain` để cần đối chiếu thủ công.
+- **306 unit tests pass**, Ruff pass. Test dùng DB và trial giả, không chạy DDL thật. Lõi chưa có registry riêng cho backend Dashboard, chưa có người duyệt xác thực từ giao diện, chưa thử MySQL lab hoặc 20 payload injection; Tool 6 và Dashboard vẫn **Đang làm**. Bước tiếp theo: nối registry/đường gọi chỉ cho Dashboard với danh tính người duyệt tin cậy, rồi thử DDL trên lab riêng sau khi kiểm marker và bằng chứng.
+
+---
+
+## Audit log cho Tool 6 ngày 26/11/2026
+
+- `mcp_server/store/audit_log.py` đã có `AuditLog.append()` ghi thời gian UTC, proposal ID, hash DDL, kết quả, người duyệt, nguồn gọi và mã lý do vào SQLite riêng. API chỉ thêm bản ghi, không có cột token; lỗi ghi audit được ném ra để caller dừng trước DDL.
+- Test bằng SQLite tạm xác nhận bản ghi giữ nguyên sau khi mở lại và không có cột token. **297 unit tests pass**, Ruff pass. Tool 6 chưa gọi audit, chưa thực thi ALTER hoặc được đăng ký ở registry riêng; cần nối kiểm lại report/trial/DB, tiêu thụ token và ghi audit cho cả nhánh chấp nhận/từ chối bằng DB giả trước khi thử MySQL lab.
+
+---
+
+## Cấp token từ backend sau precheck ngày 26/11/2026
+
+- `dashboard.backend.issue_approval_token()` gọi `approval_precheck()` trước, rồi dùng `ApprovalTokens` với secret từ cấu hình để ký đúng `proposal_id`, version và DDL `ALTER ... VISIBLE` đã kiểm. Nonce được lưu trong SQLite riêng. Report sai DB hoặc index thử không hợp lệ không được cấp token; không nhận SQL tự do từ caller.
+- Test giả xác nhận token đúng phiên bản/DDL và từ chối report thuộc DB khác trước khi tạo kho token. **296 unit tests pass**, Ruff pass. Chưa có nút Approve, Tool 6, audit log hoặc thử MySQL thật. Bước tiếp theo là Tool 6 kiểm lại report/trial/DB, tiêu thụ token một lần và ghi audit trước khi nối Dashboard.
+
+---
+
+## Ràng buộc danh tính DB trong report ngày 26/11/2026
+
+- `validate_saved_index()` đọc `@@server_uuid`, `DATABASE()` qua `readonly_user` cùng host/port cấu hình trước khi bắt đầu trial, rồi lưu `db_identity` vào report. `approval_precheck()` đọc lại danh tính DB hiện tại và từ chối report thiếu trường hoặc không khớp trước khi kiểm index thử. Report cũ không tự được nâng cấp; phải validation lại để đủ điều kiện duyệt.
+- Test giả kiểm report lưu qua SQLite, DB đúng được phép qua precheck, thiếu/sai danh tính bị từ chối. **294 unit tests pass**, Ruff pass; chưa thử MySQL thật hoặc Dashboard. Chặng Validation, Tool 6 và Dashboard vẫn đang làm. Bước tiếp theo: kiểm truy vấn danh tính trên MySQL lab bằng quyền readonly, sau đó nối cấp token/Tool 6 với cùng ranh giới DB và audit.
 
 ---
 

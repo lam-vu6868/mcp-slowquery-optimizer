@@ -9,12 +9,14 @@ LƯU Ý      : Chỉ dùng store/trial giả, không kết nối MySQL hoặc ch
 
 import runpy
 import sys
+import tomllib
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
 from dashboard import backend
+from security.approval import ApprovalTokens
 
 
 def test_initialize_backend_recovers_pending_before_returning_store(monkeypatch, tmp_path):
@@ -49,13 +51,17 @@ def _approval_saved(**changes):
         "report": {"proposal_id": "p_abc", "query_id": "q07",
                    "status": "passed", "evidence_complete": True,
                    "candidate_sql_kind": "original", "result_equivalent": True,
-                   "failure_reason": None},
+                   "failure_reason": None,
+                   "db_identity": {"server_uuid": "db-a", "schema": "shopdb",
+                                   "host": "127.0.0.1", "port": 3307}},
     }
     saved.update(changes)
     return saved
 
 
-def test_approval_precheck_returns_canonical_ddl_only_for_owned_trial():
+def test_approval_precheck_returns_canonical_ddl_only_for_owned_trial(monkeypatch):
+    monkeypatch.setattr(backend, "current_db_identity",
+                        lambda: _approval_saved()["report"]["db_identity"])
     class Trial:
         def __init__(self, proposal, *, proposal_id):
             assert proposal_id == "p_abc"
@@ -88,7 +94,9 @@ def test_approval_precheck_rejects_ineligible_saved_proposal(change):
         backend.approval_precheck(store, "p_abc", trial_factory=lambda *a, **k: None)
 
 
-def test_approval_precheck_rejects_missing_or_changed_trial():
+def test_approval_precheck_rejects_missing_or_changed_trial(monkeypatch):
+    monkeypatch.setattr(backend, "current_db_identity",
+                        lambda: _approval_saved()["report"]["db_identity"])
     saved = _approval_saved()
     store = type("Store", (), {"get": lambda self, proposal_id: saved})()
 
@@ -101,6 +109,130 @@ def test_approval_precheck_rejects_missing_or_changed_trial():
 
     with pytest.raises(ValueError):
         backend.approval_precheck(store, "p_abc", trial_factory=Trial)
+
+
+@pytest.mark.parametrize("identity", [None, {"server_uuid": "db-b", "schema": "shopdb",
+                                            "host": "127.0.0.1", "port": 3307}])
+def test_approval_precheck_rejects_missing_or_other_database(monkeypatch, identity):
+    monkeypatch.setattr(backend, "current_db_identity",
+                        lambda: _approval_saved()["report"]["db_identity"])
+    saved = _approval_saved()
+    saved["report"]["db_identity"] = identity
+    store = type("Store", (), {"get": lambda self, proposal_id: saved})()
+    with pytest.raises(ValueError, match="DB"):
+        backend.approval_precheck(store, "p_abc", trial_factory=lambda *a, **k: None)
+
+
+def test_issue_approval_token_binds_saved_proposal_and_ddl(monkeypatch, tmp_path):
+    saved = _approval_saved()
+    store = type("Store", (), {"get": lambda self, proposal_id: saved})()
+    ddl = "ALTER TABLE `orders` ALTER INDEX `idx_orders_status` VISIBLE"
+    monkeypatch.setattr(backend, "current_db_identity",
+                        lambda: saved["report"]["db_identity"])
+    monkeypatch.setattr(backend.Config, "APPROVAL_SECRET", "test-only-secret")
+
+    class Trial:
+        def __init__(self, proposal, *, proposal_id):
+            self.visible_ddl = ddl
+
+        def _index_state(self):
+            return "owned"
+
+    token_path = tmp_path / "tokens.sqlite3"
+    token = backend.issue_approval_token(
+        store, "p_abc", token_path=token_path, trial_factory=Trial,
+    )
+    tokens = ApprovalTokens(token_path, secret="test-only-secret")
+    assert not tokens.verify_token(token, "p_abc", 2, ddl)
+    assert not tokens.verify_token(token, "p_abc", 1, ddl + " ")
+    assert tokens.verify_token(token, "p_abc", 1, ddl)
+
+
+def test_issue_approval_token_refuses_report_from_other_db(monkeypatch, tmp_path):
+    saved = _approval_saved()
+    saved["report"]["db_identity"]["server_uuid"] = "other-db"
+    store = type("Store", (), {"get": lambda self, proposal_id: saved})()
+    monkeypatch.setattr(backend, "current_db_identity",
+                        lambda: _approval_saved()["report"]["db_identity"])
+    monkeypatch.setattr(backend.Config, "APPROVAL_SECRET", "test-only-secret")
+    token_path = tmp_path / "tokens.sqlite3"
+    with pytest.raises(ValueError, match="DB"):
+        backend.issue_approval_token(store, "p_abc", token_path=token_path)
+    assert not token_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_local_dashboard_calls_private_tool6_with_os_account(monkeypatch, tmp_path):
+    events = []
+    store = object()
+    token_path = tmp_path / "tokens.sqlite3"
+    audit_path = tmp_path / "audit.sqlite3"
+    monkeypatch.setattr(backend.getpass, "getuser", lambda: "local-operator", raising=False)
+    monkeypatch.setattr(backend.Config, "APPROVAL_SECRET", "test-only-secret")
+    monkeypatch.setattr(backend, "issue_approval_token",
+                        lambda actual_store, proposal_id, *, token_path: (
+                            events.append(("issue", actual_store, proposal_id, token_path))
+                            or "test-token"))
+
+    class FakeApplier:
+        def __init__(self, actual_store, tokens, audit, *, approver):
+            assert actual_store is store
+            assert approver == "local-operator"
+            assert tokens.path == token_path
+            assert audit.path == audit_path
+
+        def apply_optimization(self, proposal_id, approval_token):
+            events.append(("apply", proposal_id, approval_token))
+            return {"applied": True, "audit_id": "a_000001"}
+
+    monkeypatch.setattr(backend, "OptimizationApplier", FakeApplier, raising=False)
+    result = await backend.apply_from_dashboard(
+        store, "p_abc", token_path=token_path, audit_path=audit_path,
+    )
+    assert result == {"applied": True, "audit_id": "a_000001"}
+    assert events == [("issue", store, "p_abc", token_path),
+                      ("apply", "p_abc", "test-token")]
+
+
+@pytest.mark.asyncio
+async def test_local_dashboard_refuses_missing_os_account(monkeypatch, tmp_path):
+    monkeypatch.setattr(backend.getpass, "getuser", lambda: "", raising=False)
+    monkeypatch.setattr(backend, "issue_approval_token",
+                        lambda *args, **kwargs: pytest.fail("token must not be issued"))
+    with pytest.raises(ValueError, match="tài khoản"):
+        await backend.apply_from_dashboard(object(), "p_abc",
+                                           token_path=tmp_path / "tokens.sqlite3",
+                                           audit_path=tmp_path / "audit.sqlite3")
+
+
+@pytest.mark.asyncio
+async def test_local_dashboard_hides_tool_error_and_token(monkeypatch, tmp_path):
+    monkeypatch.setattr(backend.getpass, "getuser", lambda: "local-operator")
+    monkeypatch.setattr(backend.Config, "APPROVAL_SECRET", "test-only-secret")
+    monkeypatch.setattr(backend, "issue_approval_token",
+                        lambda *args, **kwargs: "private-token")
+    monkeypatch.setattr(backend, "OptimizationApplier", lambda *args, **kwargs: object())
+
+    class FailingRegistry:
+        async def call_tool(self, name, arguments):
+            assert arguments["approval_token"] == "private-token"
+            return SimpleNamespace(is_error=True, content=[])
+
+    monkeypatch.setattr(backend, "make_dashboard_mcp",
+                        lambda applier: FailingRegistry())
+    with pytest.raises(RuntimeError, match="Tool 6") as exc:
+        await backend.apply_from_dashboard(
+            object(), "p_abc", token_path=tmp_path / "tokens.sqlite3",
+            audit_path=tmp_path / "audit.sqlite3",
+        )
+    assert "private-token" not in str(exc.value)
+
+
+def test_streamlit_dashboard_is_bound_to_loopback():
+    path = Path(backend.__file__).resolve().parents[1] / ".streamlit" / "config.toml"
+    with path.open("rb") as config_file:
+        settings = tomllib.load(config_file)
+    assert settings["server"]["address"] == "127.0.0.1"
 
 
 def test_initialize_backend_refuses_failed_recovery(monkeypatch, tmp_path):

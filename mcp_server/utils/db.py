@@ -13,8 +13,10 @@ LƯU Ý:
 
 THAM KHẢO: db/init.sql
 """
-import pymysql
 from contextlib import contextmanager
+
+import pymysql
+
 from mcp_server.utils.config import Config
 
 
@@ -58,3 +60,16 @@ def get_admin_conn():
         yield conn
     finally:
         conn.close()
+
+
+def current_db_identity() -> dict:
+    """Nhận diện đúng MySQL/schema và endpoint đang dùng để đo hoặc duyệt."""
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute("SELECT @@server_uuid AS server_uuid, DATABASE() AS schema_name")
+        row = cur.fetchone()
+    if not row or not row.get("server_uuid") or not row.get("schema_name"):
+        raise ValueError("không đọc được danh tính DB")
+    return {
+        "server_uuid": row["server_uuid"], "schema": row["schema_name"],
+        "host": Config.DB_HOST, "port": Config.DB_PORT,
+    }
