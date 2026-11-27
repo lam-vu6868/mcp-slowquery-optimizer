@@ -40,6 +40,7 @@ ALLOWED_TOOL_NAMES = frozenset({
     "get_slow_queries", "get_schema", "get_table_stats",
     "explain_query", "benchmark_query",
 })
+SCHEMA_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 DEFAULT_RUN_DIR = Path(__file__).resolve().parents[2] / "data" / "outputs" / "runs"
 
 
@@ -163,14 +164,27 @@ async def _run_agent_loop(
             tool_event["is_error"] = bool(result.is_error)
             if use.name == "get_schema" and not result.is_error:
                 payload = json.loads(content)
-                if payload.get("ok") is True and payload.get("meta", {}).get("truncated") is False:
-                    # Tool 2 có thể được gọi nhiều lần cho các bảng khác nhau.
-                    known_tables = {
-                        table["name"]: table for table in schema_data["tables"]
-                    } if schema_data else {}
-                    for table in payload["data"]["tables"]:
-                        known_tables[table["name"]] = table
-                    schema_data = {"tables": list(known_tables.values())}
+                if payload.get("ok") is True:
+                    tables = payload["data"]["tables"]
+                    safe_tables = [
+                        table for table in tables
+                        if isinstance(table, dict)
+                        and isinstance(table.get("name"), str)
+                        and SCHEMA_IDENTIFIER.fullmatch(table["name"])
+                    ]
+                    if len(safe_tables) != len(tables):
+                        payload["data"]["tables"] = safe_tables
+                        content = json.dumps(payload, ensure_ascii=False)
+                        tool_event["filtered_schema_tables"] = len(tables) - len(safe_tables)
+                        tool_event["forwarded_sha256"] = _sha256(content)
+                    if payload.get("meta", {}).get("truncated") is False:
+                        # Tool 2 có thể được gọi nhiều lần cho các bảng khác nhau.
+                        known_tables = {
+                            table["name"]: table for table in schema_data["tables"]
+                        } if schema_data else {}
+                        for table in safe_tables:
+                            known_tables[table["name"]] = table
+                        schema_data = {"tables": list(known_tables.values())}
 
             tool_result = {"type": "tool_result", "tool_use_id": use.id, "content": content}
             if result.is_error:
