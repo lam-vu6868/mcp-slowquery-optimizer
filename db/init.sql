@@ -26,6 +26,7 @@ CREATE USER 'index_admin'@'%' IDENTIFIED BY 'admin_pass';
 -- CHỈ cho phép thao tác INDEX — KHÔNG cho DROP TABLE, DELETE, UPDATE
 GRANT INDEX ON shopdb.* TO 'index_admin'@'%';
 GRANT SELECT ON shopdb.* TO 'index_admin'@'%';   -- Cần để kiểm tra trước khi tạo index
+GRANT SELECT ON mysql.innodb_index_stats TO 'index_admin'@'%';  -- Chỉ đọc số trang index thử
 GRANT ALTER ON shopdb.* TO 'index_admin'@'%';    -- Cho ALTER INDEX ... VISIBLE/INVISIBLE
 FLUSH PRIVILEGES;
 

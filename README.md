@@ -76,22 +76,35 @@ flowchart TD
 | Giai đoạn                              |   Trạng thái    |
 | -------------------------------------- | :-------------: |
 | Setup môi trường                       |     ✅ Done     |
-| Thiết kế contract v2 + architecture | 🟡 DRAFT, chờ nhóm review |
+| Thiết kế contract v2 + architecture | ✅ Contract v2 đã chốt ngày 25/11; triển khai vẫn theo từng chặng |
 | CSDL 5 bảng, tổng 5M dòng              |     ✅ Đã nạp và kiểm tra     |
 | 30 query + ground truth                | 🟡 30 đáp án đạt đo kiểm chứng; chờ Hải review/GVHD ký |
 | AST whitelist + 47 unit tests          |     ✅ Done     |
 | Tool 4 `explain_query`                 |     ✅ Done     |
 | Tool 5 `benchmark_query`               |     ✅ Done     |
 | Đo P95 bộ 30 query                     | ✅ Baseline 30/30 valid; đáp án 30/30 đạt P95/hash |
-| Tool 1–5 MCP                           | 🟡 Đã kiểm chứng 5/5 qua stdio/MySQL; contract v2 chờ review |
-| Validation Layer                       | ⬜ Chưa bắt đầu |
+| Tool 1–5 MCP                           | 🟡 Đã kiểm chứng 5/5 qua stdio/MySQL; chặng chưa đánh dấu Done |
+| Validation Layer                       | 🟡 q01/q05 đạt trên lab 5M; Validation → Reject đã thử qua Streamlit AppTest trên lab riêng; q01 runtime vẫn chặn FK |
+| Tool 6 + approval token                | 🟡 Approve qua Streamlit AppTest đã chạy trên lab riêng; chưa thử trình duyệt thật hoặc 20 injection |
 | 20 Prompt Injection                    | ⬜ Chưa bắt đầu |
-| Dashboard                              | ⬜ Chưa bắt đầu |
+| Dashboard                              | 🟡 Trang Đề xuất đã nối Validation/Approve/Reject; Reject đã thử trên trình duyệt với lab riêng, Approve qua AppTest; chưa nối tạo proposal từ UI |
 | Báo cáo + Demo                         | ⬜ Chưa bắt đầu |
 
 **Chú thích:** ✅ Done | 🟡 Đang làm | ⬜ Chưa làm | 🔴 Trễ hạn
 
-Các mốc dưới đây giữ theo thời điểm thực hiện; trạng thái mới nhất là mục kiểm tra lại ngày 24/11/2026.
+Các mốc dưới đây giữ theo thời điểm thực hiện; trạng thái mới nhất xem [PROGRESS.md](project-management/PROGRESS.md) ngày 25/11/2026.
+
+**Bàn giao 26/11/2026:** q01 đã đo đủ trên validation lab 5M qua nhánh FK opt-in, giữ index FK trước baseline và dọn trial sau report; đường Dashboard mặc định vẫn chặn trường hợp FK này. Report Validation mới ghi danh tính DB; đã thử đọc danh tính trên MySQL thật bằng `readonly_user`. Backend cấp token HMAC sau precheck; lõi Tool 6 dùng chung kiểm report/DB/index, tiêu thụ token và ghi audit với DB giả. Registry Dashboard riêng chỉ có Tool 6, còn LLM chỉ thấy Tool 1–5. Dashboard cục bộ mặc định nghe `127.0.0.1`; backend lấy OS account làm người duyệt và gọi registry riêng trong test giả. Reject đã có đường dọn trial với test giả, kiểm DB trước khi DROP và recovery khi dọn lỗi. **314 unit tests pass**; chưa có nút Approve/Reject hoặc thử DDL thật từ Dashboard, chưa áp dụng index trên DB chính.
+
+**Bước tiếp 26/11/2026:** Trial `passed` được chờ duyệt 24 giờ từ lúc lưu report. Backend từ chối duyệt sau hạn và dọn trial quá hạn khi Dashboard khởi động; token một lần vẫn có hạn 10 phút từ lúc cấp. Bản ghi cũ thiếu hạn duyệt cần Validation lại. Đã kiểm bằng DB giả; chưa thử DROP thật cho nhánh quá hạn.
+
+**Trang Đề xuất 26/11/2026:** Có danh sách tối đa 50 proposal mới nhất, hiển thị trạng thái Validation và nút Approve/Reject sau xác nhận. Rewrite chỉ hiển thị; proposal quá hạn không thể Approve. AppTest kiểm giao diện với backend giả; chưa chạy thao tác từ Dashboard trên MySQL thật.
+
+Nút **Chạy Validation** cho proposal mới yêu cầu nhập thư mục CSV và xác nhận. Backend chỉ chấp nhận `DB_HOST=127.0.0.1`, `DB_PORT=3309`, `DB_NAME=shopdb` với marker validation lab hợp lệ; write lab cổng 3308 phải sẵn sàng để đo INSERT. Đã thử Validation → Reject trên lab riêng qua Streamlit AppTest: report `passed`, index thử được dọn.
+
+**Thử Approve trên lab 26/11/2026:** Một proposal mẫu khác cũng `passed`; bấm Approve qua AppTest khiến Tool 6 đổi index thử sang VISIBLE, tiêu thụ token một lần và ghi audit `attempted`/`applied`. Sau khi kiểm, script lab dọn riêng index này và xác nhận số dòng không đổi. SQLite lab vẫn lưu trạng thái `applied` như bằng chứng lần áp dụng, dù index thử đã được dọn ngoài luồng sau thử. Chưa bấm từ trình duyệt hoặc áp dụng trên DB chính.
+
+**Thử trình duyệt trên lab 26/11/2026:** `DASHBOARD_STORE_PATH` cho phép trỏ Dashboard tới store SQLite riêng; token/audit cũng nằm cạnh store đó. Trên `127.0.0.1:8502`, Playwright đã bấm Validation → Reject của một proposal mẫu. Report `passed`, sau Reject trang hiển thị `cleaned` và DB không còn index thử. Đã sửa trang tự làm mới trạng thái sau thao tác; chưa bấm Approve từ trình duyệt. Bằng chứng trong `data/outputs/lab_only_browser_d614ad48.json` (gitignored).
 
 **Kiểm chứng ngày 21/11/2026:** mỗi phép đo chính thức có 3 warm-up + 20 lượt, hash/số dòng khớp và P95 giảm ít nhất 20%. Đã đo đối chứng thứ tự composite cho q07–q12; 125 unit tests pass. Đây là kết quả script lab, chưa phải luồng MCP–LLM–Dashboard hoàn chỉnh. Chưa đo đầy đủ dung lượng index/chi phí ghi hoặc metric LLM.
 
@@ -107,7 +120,7 @@ Các mốc dưới đây giữ theo thời điểm thực hiện; trạng thái 
 
 **Tool 1 ngày 24/11/2026:** nhánh `source="slow_log"` đã có code và test. Sau khi người dùng cấp `SELECT` riêng trên `mysql.slow_log`, gọi trực tiếp và qua MCP stdio đều `ok=true` với 1 bản ghi thật; nguồn mặc định `performance_schema` cũng `ok=true`. Xem [setup-guide](docs/setup-guide.md#4-cấu-hình-slow-log) cho cách cấp quyền trên lab khác; chưa đánh dấu chặng Tool 1–5 Done. Toàn bộ 211 unit tests pass.
 
-**Kiểm chứng Tool 1–5 ngày 24/11/2026:** qua MCP stdio và MySQL thật, registry chỉ có 5 tool, Tool 4–5 chỉ nhận `sql`, cả 5 trả `ok=true` với input đọc giới hạn. Tool 1 đã thử cả hai nguồn; Tool 5 đo 5 lượt trên một query PK ngắn. Đây là kiểm chứng kỹ thuật; contract v2 vẫn DRAFT chờ nhóm review, Tool 6/Validation/Dashboard chưa có luồng hoàn chỉnh.
+**Kiểm chứng Tool 1–5 ngày 24/11/2026:** qua MCP stdio và MySQL thật, registry chỉ có 5 tool, Tool 4–5 chỉ nhận `sql`, cả 5 trả `ok=true` với input đọc giới hạn. Tool 1 đã thử cả hai nguồn; Tool 5 đo 5 lượt trên một query PK ngắn. Đây là kiểm chứng kỹ thuật; contract v2 đã chốt về thiết kế ngày 25/11/2026, còn Tool 6/Validation/Dashboard chưa có luồng hoàn chỉnh.
 
 > 📖 Chi tiết: [project-management/PROGRESS.md](project-management/PROGRESS.md) · Lịch và deadline: [project-management/ROADMAP.md](project-management/ROADMAP.md)
 

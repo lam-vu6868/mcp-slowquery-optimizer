@@ -7,12 +7,13 @@
 
 ---
 
-## Làm rõ thiết kế đề xuất ngày 22/11/2026 — chờ nhóm review
+## Thiết kế v2 đề xuất ngày 22/11/2026 — chốt contract ngày 25/11/2026
 
-- [api-contract.md](../docs/api-contract.md) v2 là bản DRAFT cho giao diện 6 tool; [architecture.md](../docs/architecture.md) mô tả luồng. Các điểm dưới đây cần Hải, Tình và Tường review trước khi coi là quyết định đã chốt.
+- [api-contract.md](../docs/api-contract.md) v2 đã được chốt về thiết kế theo ủy quyền của người dùng thay nhóm review; [architecture.md](../docs/architecture.md) mô tả luồng. Việc chốt contract không thay thế kiểm chứng triển khai, review ground truth hoặc chữ ký GVHD.
 - Tool 1 hiện lấy digest từ `performance_schema`; mã `query_id` của digest khác ID `q01`–`q30` trong catalog thực nghiệm. LLM chỉ thấy wrapper giới hạn tham số của Tool 4–5 khi `server.py` đăng ký.
 - Validation Layer cần helper DDL nội bộ dùng `index_admin` để tạo/dọn index thử. Tool 6 vẫn là cửa áp dụng sau phê duyệt và chỉ nhận proposal ID cùng token. Token gắn với DDL `ALTER TABLE ... ALTER INDEX ... VISIBLE` thực sự áp dụng.
-- Dung lượng index phát sinh đo bằng chênh lệch `information_schema.TABLES.INDEX_LENGTH` trên cùng bảng, ghi rõ đó là ước lượng cấp bảng. Chi phí ghi đo trên bản sao lab riêng; `information_schema.STATISTICS` không cung cấp byte của từng index.
+- Mốc triển khai 26/11: lớp token HMAC một lần, report gắn danh tính DB và backend cấp token sau precheck đã có test giả; truy vấn danh tính đã thử bằng `readonly_user` trên MySQL thật. Lõi Tool 6 đã dùng chung precheck, tiêu thụ token, xác minh ALTER và ghi audit bằng DB giả; registry Dashboard riêng chỉ có Tool 6. Backend cục bộ lấy OS account và gọi registry riêng trong test giả, Streamlit mặc định nghe loopback. Chưa có nút Approve hoặc thử DDL thật. Bước tiếp theo là nối Tab 2 với backend, kiểm UI rồi thử trên lab riêng sau khi kiểm bằng chứng; trạng thái/kiểm thử xem [PROGRESS](PROGRESS.md).
+- Dung lượng index thử ưu tiên số trang `size` của đúng index trong `mysql.innodb_index_stats` nhân `@@innodb_page_size`, với quyền `SELECT` chỉ trên bảng stats cho `index_admin`. Nếu chưa có quyền/số liệu, dùng chênh lệch `information_schema.TABLES.INDEX_LENGTH`; khi số đó chưa cập nhật, dùng mức tăng `information_schema.INNODB_TABLESPACES.ALLOCATED_SIZE` của file riêng. Hai nguồn sau chỉ là ước lượng cấp bảng; nếu đều không tăng thì `inconclusive`. Chi phí ghi đo trên lab riêng; `information_schema.STATISTICS` không cung cấp byte của từng index.
 
 ---
 
@@ -20,6 +21,7 @@
 
 - Dataset hiện tại là `shopdb.multitable-v1`: 5 bảng, tổng **5.000.000 dòng** (customers 500.000; addresses 500.000; products 50.000; orders 1.500.000; order_items 2.450.000). Thay thiết kế `sales_data` một bảng để có JOIN và khóa ngoại thực tế; không cần tăng lên 10–12M dòng cho lab.
 - Đã có baseline 30/30 valid và 30 phương án đạt kiểm chứng P95/hash, bao gồm đối chứng thứ tự composite cho q07–q12. Bằng chứng và trạng thái hiện tại ở [PROGRESS](PROGRESS.md); đây là kiểm chứng script lab, chưa hoàn tất Validation Layer tích hợp.
+- Validation runtime/Dashboard vẫn chặn trước DDL các index thử có tiền tố trùng cột khóa ngoại tham chiếu: MySQL có thể tự bỏ index hỗ trợ FK. Nhánh opt-in chỉ trên validation lab 3309 có snapshot và recovery đã đo q01 đầy đủ trên 5M, khôi phục index FK trước baseline và dọn trial sau report. Chưa mở nhánh này cho DB chính/Tool 6; không hạ tiêu chí Validation hoặc dùng report lab đã dọn index để duyệt.
 - Ground truth vẫn cần Hải review và GVHD ký. Một số đáp án kết hợp index với rewrite/hint; khi đánh giá phải ghi rõ phần SQL bắt buộc, không quy toàn bộ mức cải thiện cho index riêng lẻ.
 - Giữ nguyên tiêu chí chất lượng, metric, deadline gốc và các mốc lịch sử bên dưới. Các mục import `sales_data` ở lịch tuần là công việc của bộ dữ liệu cũ, không phải hướng dẫn dùng hiện tại.
 
@@ -274,7 +276,7 @@ Ghi rõ trong báo cáo: `pt-query-digest` **không** đề xuất index nên kh
 
 **Done tuần 3 (mục tiêu):** Tool 1–5 gọi được, trả JSON đúng contract · 30 query đều > 0.5s · ground truth nháp xong.
 
-Kiểm chứng kỹ thuật Tool 1–5 qua MCP stdio/MySQL hoàn tất ngày 24/11/2026; phần nháp chương lý thuyết chưa xác nhận và contract v2 vẫn DRAFT chờ nhóm review, nên tuần 3 chưa đổi thành Done.
+Kiểm chứng kỹ thuật Tool 1–5 qua MCP stdio/MySQL hoàn tất ngày 24/11/2026; contract v2 đã chốt ngày 25/11/2026 nhưng phần nháp chương lý thuyết chưa xác nhận, nên tuần 3 chưa đổi thành Done.
 
 ### 🟡 Tuần 4 (14/10 → 20/10): LLM + Validation + ground truth ký
 

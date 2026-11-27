@@ -1,8 +1,8 @@
 # 🏗️ KIẾN TRÚC HỆ THỐNG — MCP Slow Query Optimizer
 
 > **Người giữ file:** Vũ · **Reviewer:** Cả nhóm
-> **Cập nhật:** 24/11/2026
-> **Trạng thái:** Thiết kế mục tiêu theo contract v2 (DRAFT, chờ nhóm review). Chưa xác nhận luồng end-to-end.
+> **Cập nhật:** 25/11/2026
+> **Trạng thái:** Thiết kế mục tiêu theo contract v2 đã chốt; chưa xác nhận luồng end-to-end.
 > **Thử nghiệm 24/11/2026:** q07 đã đi qua Groq → LLM host → MCP Tool 2 → MySQL và trả JSON hợp lệ trong một lượt. Các sơ đồ từ Validation đến Dashboard/Tool 6 bên dưới vẫn là thiết kế mục tiêu.
 >
 > File này mô tả **luồng và ranh giới giữa các thành phần**; [api-contract.md](api-contract.md) quy định input/output của 6 tool. Cần giữ cả hai file.
@@ -54,6 +54,16 @@ Xây dựng hệ thống **tự động tìm và đề xuất cách sửa các q
 Lab hiện tại có 5 bảng, tổng 5M dòng: customers 500.000, addresses 500.000, products 50.000, orders 1.500.000 và order_items 2.450.000. Các sơ đồ MCP/LLM/approval bên dưới là thiết kế, không phải tuyên bố mọi thành phần đã triển khai.
 
 Code hiện tại: Tool 1 mặc định đọc `performance_schema`; nhánh `source="slow_log"` đã đọc được bản ghi thật từ `mysql.slow_log` qua MCP stdio sau khi lab cấp quyền `SELECT` riêng. Tool 2 đọc schema, Tool 3 lấy thống kê/mẫu PK có giới hạn; Tool 4–5 có wrapper giới hạn tham số LLM. `server.py` đã đăng ký đúng 5 tool này qua stdio. `llm/agent.py` điều khiển vòng gọi tool; `llm/groq.py` chuyển request/response sang API Groq, dùng model `openai/gpt-oss-120b` trong `config/settings.yaml`. Lượt thử q07 đã gọi Tool 2 và trả 2 đề xuất index cùng 1 rewrite; đây chưa phải kiểm chứng hiệu năng hay độ ổn định. Validation Layer, Tool 6 và Dashboard chưa có luồng end-to-end.
+
+Validation đã đo q01/q05 trên lab 5M; q01 chỉ chạy qua nhánh FK opt-in của validation lab 3309, còn đường Dashboard mặc định vẫn chặn. Token HMAC một lần đã được cài trong `security/approval.py`; report Validation mới ghi danh tính DB từ kết nối readonly, và `dashboard.backend.approval_precheck()` so khớp với DB hiện tại trước khi xác minh index thử INVISIBLE cùng marker/định nghĩa và trả DDL áp dụng chuẩn. Backend đã có hàm cấp token sau precheck; lõi Tool 6 dùng chung kiểm tra, tiêu thụ token và ghi audit với DB giả. Backend Dashboard cục bộ đã gọi registry riêng với OS account trong test giả; Streamlit mặc định nghe loopback. Reject đã có đường dọn trial nội bộ với test giả; chưa có nút Approve/Reject hoặc thử DDL trên MySQL thật. Các sơ đồ áp dụng bên dưới tiếp tục mô tả đích đến, chưa phải luồng đã chạy.
+
+Trial pass có hạn chờ duyệt 24 giờ trong store. Kiểm tra chung chặn cấp token và Tool 6 sau hạn; lúc Dashboard khởi động, recovery chạy trước khi dọn trial quá hạn. Chưa có lịch nền dọn khi tiến trình chạy liên tục.
+
+Trang Đề xuất hiện đọc tối đa 50 proposal từ store cục bộ, hiển thị Validation và chỉ bật Approve/Reject sau xác nhận. Rewrite không có nút áp dụng; trial quá hạn không bật Approve. UI gọi backend đã có, còn backend kiểm lại report, DB và index trước DDL. Đã thử Validation → Reject và Validation → Approve trên hai proposal riêng qua Streamlit AppTest với lab 3308/3309; nhánh Approve tiêu thụ token, xác nhận index VISIBLE và ghi audit. Index lab đã dọn sau thử; chưa bấm Approve qua trình duyệt thật hoặc áp dụng trên DB chính.
+
+Kiểm thêm bằng Playwright trên trình duyệt thật đã chạy Validation → Reject với store lab chỉ định qua `DASHBOARD_STORE_PATH`; đường dẫn token/audit đi cùng thư mục store. Trang tự rerun để hiện trạng thái mới sau mỗi thao tác. Chưa bấm Approve từ trình duyệt hoặc nối tạo proposal từ UI.
+
+Nút chạy Validation cho proposal `new` cũng yêu cầu xác nhận và đường dẫn CSV. Backend chỉ cho gọi Validation khi cấu hình trỏ validation lab 3309 và marker đúng; DB chính 3307 bị từ chối trước khi có DDL. Write lab 3308 vẫn được kiểm marker bởi lớp đo INSERT.
 
 Luồng đã kiểm chứng offline: `ground_truth_candidates.py` → `scripts/verify_ground_truth.py` → EXPLAIN/benchmark/hash → `ground_truth.json` và bằng chứng trong `data/outputs/`. Có 30/30 phương án đạt đo kiểm chứng, còn chờ Hải review/GVHD ký. Script chỉ nhận ứng viên cố định trong repo, dùng readonly cho SELECT và index_admin cho index thử theo ủy quyền lab; không đăng ký MCP hoặc gọi đường apply của LLM. Index thử được dọn và cấu hình ban đầu được khôi phục sau batch. Kết quả script offline chưa chứng minh luồng Validation Layer + Dashboard đã hoạt động.
 
@@ -210,7 +220,7 @@ Bảng này là các tool `server.py` đã đăng ký cho LLM qua MCP. Dấu ✅
 
 | Tool | Cấp cho LLM? | Lý do |
 |---|:---:|---|
-| Tool 1 `get_slow_queries` | ✅ | Hiện đọc digest từ `performance_schema`; `mysql.slow_log` chưa triển khai |
+| Tool 1 `get_slow_queries` | ✅ | Đọc digest từ `performance_schema` hoặc từng bản ghi `mysql.slow_log` khi có quyền `SELECT` riêng |
 | Tool 2 `get_schema` | ✅ | Đọc cấu trúc bảng |
 | Tool 3 `get_table_stats` | ✅ | Đọc thống kê |
 | Tool 4 `explain_query` | ✅ | MCP đăng ký wrapper `explain_for_llm` với `mode=estimate`, không bật invisible index |
@@ -377,6 +387,12 @@ Bật optimizer_switch:    SET SESSION optimizer_switch='use_invisible_indexes=o
 
 Tool 4 và Tool 5 luôn đặt rõ OFF cho phép đo trước, ON cho phép đo sau, không kế thừa cờ global. Kiểm tra EXPLAIN để biết index thực sự được chọn. INVISIBLE vẫn là index thật: việc tạo index tốn thời gian, dung lượng và tài nguyên ghi; chỉ thử trên lab đã được cho phép.
 
+Đường Dashboard/runtime mặc định từ chối proposal có tiền tố cột trùng khóa ngoại tham chiếu và trả `inconclusive/foreign_key_support_risk`. MySQL có thể tự bỏ index hỗ trợ FK khi index mới thay thế được nó. Nhánh lab 3309 có cờ riêng và snapshot bền vững cho phép trường hợp đơn giản: tạo trial, khôi phục index FK gốc nếu bị bỏ **trước khi đo baseline**, rồi kiểm schema sau cleanup. q01 đã pass lượt đo lab 5M với timeout lab 60 giây; chưa mở nhánh này cho Dashboard/DB chính.
+
+Recovery kiểm tra marker trial và snapshot FK/index đã lưu. Nếu một index hỗ trợ FK đơn giản bị MySQL tự bỏ, helper tạo lại đúng định nghĩa trong snapshot, xác minh index gốc cùng trial, rồi dọn trial; sau đó đối chiếu schema FK/index với snapshot trước khi chuyển trạng thái. Thiếu snapshot, nhiều index thiếu, định nghĩa phức tạp hoặc metadata đổi thì để `pending` và dừng backend. Không dựng index từ tên FK. Đã thử đường này trên hai bảng nhỏ riêng trong validation lab 3309; guard trước CREATE của q01 vẫn giữ đến khi kiểm đủ các điểm ngắt và phép đo trên lab 5M.
+
+Backend hiện chụp tên/cột FK cùng định nghĩa các index đang hỗ trợ chúng qua `readonly_user`, rồi ghi snapshot và `trial_state=pending` trong **cùng giao dịch SQLite** trước `CREATE INDEX`. Nếu đọc metadata hoặc ghi SQLite lỗi, không gọi DDL. Snapshot là dữ liệu để recovery đối chiếu sau này; chức năng tự khôi phục index hỗ trợ FK chưa được bật, nên q01 vẫn bị chặn.
+
 ### 6.3. Luồng validation chi tiết
 
 ```mermaid
@@ -425,7 +441,7 @@ sequenceDiagram
 
 ### 6.4. Quy trình đo P95 chuẩn
 
-Để đo trade-off theo contract v2, ghi chênh lệch `information_schema.TABLES.INDEX_LENGTH` trước/sau trên cùng bảng; đây là ước lượng dung lượng index cấp bảng, không phải số byte chính xác của một index. Đo tác động ghi trên bản sao lab riêng. Thiếu lượt đo, hash, EXPLAIN xác nhận index được dùng hoặc metric bắt buộc thì báo `inconclusive`, không phát hành approval token.
+Để đo trade-off theo contract v2, ưu tiên số trang của đúng index thử trong `mysql.innodb_index_stats` nhân kích thước trang InnoDB (cần quyền `SELECT` riêng cho `index_admin`). Nếu nguồn này chưa được cấp quyền, dùng chênh lệch `information_schema.TABLES.INDEX_LENGTH` trước/sau; nếu số đó chưa cập nhật, dùng mức tăng dung lượng cấp phát của file bảng `INNODB_TABLESPACES.ALLOCATED_SIZE`. Hai nguồn dự phòng là ước lượng cấp bảng và có thể bằng 0 khi MySQL tái dùng chỗ trống; lúc đó báo `inconclusive`. Đo tác động ghi trên lab riêng. Thiếu lượt đo, hash, EXPLAIN xác nhận index được dùng hoặc metric bắt buộc thì không phát hành approval token.
 
 | Bước | Việc | Số lần |
 | :---: | ---- | :----: |
@@ -799,4 +815,4 @@ Các dấu chọn dưới đây ghi nhận quyết định thiết kế, không 
 
 ---
 
-**Cập nhật lần cuối:** 22/11/2026 — đồng bộ thiết kế mục tiêu với contract v2; chờ nhóm review
+**Cập nhật lần cuối:** 25/11/2026 — ghi trạng thái q01 lab, token một lần và precheck; Validation, Tool 6 và Dashboard vẫn cần tích hợp end-to-end

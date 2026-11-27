@@ -11,12 +11,12 @@ LƯU Ý:
     - Quy trình: tạo index INVISIBLE -> đo 'trước' (không bật cờ) -> đo 'sau' (SET SESSION optimizer_switch='use_invisible_indexes=on') -> so sánh -> ghi validation_report.
     - Pass khi: đủ lượt đo, hash tương đương, P95 giảm >= 20%, index được EXPLAIN dùng và không lỗi/timeout.
     - Fail hoặc inconclusive: gọi helper DDL nội bộ để dọn index thử; không phát approval token.
-    - Đo write overhead trên clone; ước lượng dung lượng index bằng chênh lệch TABLES.INDEX_LENGTH.
+    - Đo write overhead trên clone; ưu tiên stats của đúng index, rồi hai nguồn ước lượng cấp bảng.
     - Ngưỡng lấy từ config/settings.yaml.
 
 THAM KHẢO  : docs/api-contract.md (mục 4), project-management/ROADMAP.md (mục 2.3)
 
-TRẠNG THÁI : ĐANG LÀM — luồng index chính test bằng DB giả; chi phí ghi đã đo mẫu trên write lab thật.
+TRẠNG THÁI : ĐANG LÀM — q01/q05 đã thử trên lab 5M; nhánh FK chỉ bật ở lab 3309, Tool 6 chưa nối.
 """
 
 import json
@@ -27,6 +27,9 @@ import yaml
 from sqlglot import exp, parse_one
 from sqlglot.errors import ParseError
 
+from mcp_server.tools.apply import ForeignKeyIndexRisk
+from mcp_server.utils.config import Config
+from mcp_server.utils.db import current_db_identity, get_conn
 from security.ast_whitelist import check as ast_check
 
 
@@ -81,7 +84,10 @@ def _write_evidence_complete(item: object, required_rows: int) -> bool:
         and type(item.get("preload_rows")) is int
         and item["preload_rows"] == required_rows
         and _number(item.get("index_size_bytes"), positive=True)
-        and item.get("index_size_source") == "table_index_length_delta"
+        and item.get("index_size_source") in (
+            "innodb_index_stats_pages", "table_index_length_delta",
+            "tablespace_allocated_growth_delta",
+        )
         and item.get("index_size_estimated") is True
         and item.get("measurement_scope") == "isolated_lab"
     )
@@ -244,20 +250,23 @@ async def validate_index(
         write_measurement = measure_write()
         report["write_overhead"] = {
             **(write_measurement if isinstance(write_measurement, dict) else {}),
-            "index_size_bytes": size,
-            "index_size_source": "table_index_length_delta",
+            "index_size_bytes": size.get("index_size_bytes"),
+            "index_size_source": size.get("index_size_source"),
             "index_size_estimated": True,
         }
         result = assess_index_report(
             report, expected_index_name=index_name,
             expected_table=target_table, original_sql=original_sql,
         )
-    except Exception:  # noqa: BLE001 - always attempt cleanup after DB/tool failures
+    except Exception as exc:  # noqa: BLE001 - always attempt cleanup after DB/tool failures
         result = assess_index_report(
             report, expected_index_name=index_name,
             expected_table=target_table, original_sql=original_sql,
         )
-        result["failure_reason"] = "measurement_error"
+        result["failure_reason"] = (
+            "foreign_key_support_risk" if isinstance(exc, ForeignKeyIndexRisk)
+            else "measurement_error"
+        )
 
     if trial_started and result["status"] != "passed":
         try:
@@ -268,11 +277,25 @@ async def validate_index(
     return result
 
 
+def _require_fk_trial_lab() -> None:
+    """Chỉ bật nhánh FK thử nghiệm trên validation lab có marker riêng."""
+    if (Config.DB_HOST != "127.0.0.1" or Config.DB_PORT != 3309
+            or Config.DB_NAME != "shopdb"):
+        raise ValueError("FK trial chỉ được bật trên validation lab 3309")
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute("SELECT marker FROM mcp_validation_lab_identity LIMIT 1")
+        row = cur.fetchone()
+    if not row or row["marker"] != "mcp-validation-lab-v1":
+        raise ValueError("validation lab 3309 không có marker hợp lệ")
+
+
 async def validate_saved_index(
     store, proposal_id: str, *, measure_write=None, write_csv_dir=None,
-    trial_factory=None, explain=None, benchmark=None,
+    trial_factory=None, explain=None, benchmark=None, allow_fk_trials=False,
 ) -> dict:
     """Đường nội bộ: lấy SQL/proposal đã lưu, đo và lưu report đúng một lần."""
+    if allow_fk_trials:
+        _require_fk_trial_lab()
     if trial_factory is None:
         from mcp_server.tools.apply import TrialIndex as trial_factory
     saved = store.get(proposal_id)
@@ -285,16 +308,25 @@ async def validate_saved_index(
             return measure_insert_overhead(saved["proposal"], csv_dir=write_csv_dir)
 
     trial = trial_factory(saved["proposal"], proposal_id=proposal_id)
-    store.begin_trial(proposal_id)
+    snapshot = trial.fk_support_snapshot()
+    db_identity = current_db_identity()
+    store.begin_trial(proposal_id, fk_support_snapshot=snapshot)
+    persisted_snapshot = None
+    if allow_fk_trials:
+        persisted_snapshot = store.get(proposal_id)["fk_support_snapshot"]
+        if persisted_snapshot != snapshot:
+            raise ValueError("FK snapshot chưa được lưu trước trial")
     result = await validate_index(
         proposal_id=proposal_id, query_id=saved["query_id"],
         original_sql=saved["original_sql"],
         index_name=saved["proposal"]["index_name"],
         target_table=saved["proposal"]["table"],
-        create_trial=trial.create, drop_trial=trial.drop,
+        create_trial=lambda: trial.create(fk_snapshot=persisted_snapshot),
+        drop_trial=trial.drop,
         measure_size=trial.size_delta, measure_write=measure_write,
         explain=explain, benchmark=benchmark,
     )
+    result["db_identity"] = db_identity
     try:
         return store.save_report(proposal_id, result)
     except Exception:
