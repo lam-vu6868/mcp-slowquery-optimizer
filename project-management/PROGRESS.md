@@ -1,12 +1,72 @@
 # 📊 TIẾN ĐỘ DỰ ÁN
 
-> **Cập nhật lần cuối:** 27/11/2026 — chấm mẫu Metrics index q07 từ proposal Groq đã lưu; Vũ quản lý
+> **Cập nhật lần cuối:** 27/11/2026 — bàn giao điểm dừng theo yêu cầu người dùng; Vũ quản lý
 > **Mốc đối chiếu hiện tại:** 27/11/2026; các bảng tuần bên dưới là lịch sử
 > **Tổng tiến độ:** Chưa tính lại từ mốc ~27% ngày 19/10
 >
 > ⚠️ **File này chỉ ghi TRẠNG THÁI.** Deadline, người phụ trách và tiêu chí Done xem [ROADMAP.md](ROADMAP.md) (mục 4–5). Mục tiêu Precision/Recall/Consistency xem [ROADMAP.md](ROADMAP.md) mục 2.4.
 
 **Chú thích:** ✅ Done | 🟡 Đang làm | ⬜ Chưa làm | 🔴 Trễ hạn | ⏸️ Tạm dừng
+
+---
+
+## Điểm dừng để tiếp tục ở chat sau (27/11/2026)
+
+- **Chặng hiện tại:** thu proposal LLM đã đủ **30/30 query catalog, 85 proposal** qua Groq/MCP Tool 1–5 với DB chính quyền đọc. Manifest đối chiếu SQL catalog và run thành công ở `data/outputs/llm_catalog_20261127/manifest_30_query_summary.json` (gitignored). Chẩn đoán index chỉ là **9/37 khớp cấu trúc chính xác** trong 18 query nhóm 1/2/4; chưa có Precision/Recall, Consistency, FPR hay metric rewrite chính thức. Ground truth 30/30 đạt phép đo lab cũ nhưng vẫn chờ Hải review/GVHD ký.
+- **q14:** SQL rewrite của LLM cùng cây cú pháp với SQL đã đo trong ground truth; một index `orders(order_date, customer_id, total_amount)` cũng khớp. Bằng chứng lab cũ có 20 lượt mỗi phía, hash/số dòng khớp, P95 4605,85 → 668,61 ms. Đây chỉ là cặp rewrite + **một** index; index LLM phụ trên `addresses` chưa đo. Chi tiết không chứa SQL ở `data/outputs/llm_catalog_20261127/q14_existing_evidence_match.json`. `scripts.verify_ground_truth --check` đạt 30/30 evidence PASS; không chạy lại DDL.
+- **Giới hạn trước bước lab:** `validate_index()` hiện chỉ đo index trên SQL gốc, chưa đo rewrite + tập index LLM. Không dùng `verify_ground_truth.py` nhánh đo cho proposal LLM vì script nhận ứng viên cố định và có thể sửa ground truth. Docker kiểm gần nhất: DB chính 3307 chạy; validation lab 3309 `Exited (137)`, write lab 3308 cũng dừng. Chưa khởi động lab, chưa kiểm marker/snapshot mới, chưa tạo/drop index hoặc áp dụng trên DB chính.
+- **Working tree lúc bàn giao:** `project-management/PROGRESS.md` đang sửa; `scripts/collect_llm_proposals.py` và `tests/test_collect_llm_proposals.py` là file mới chưa commit; sau cập nhật này còn có `README.md` và `AGENTS.md` đang sửa. Giữ các file và bằng chứng ignored, không ghi đè/xóa. Lần chạy test code gần nhất: **350 passed**, Ruff pass cho hai file Python mới; sau các cập nhật Markdown chỉ cần `git diff --check` (xem kết quả lượt bàn giao). Chưa commit/push/merge.
+- **Bước nên làm khi quay lại:** đọc mục này, `README.md`, `ROADMAP.md`, contract và kiểm `git status`; sau đó thiết kế phép đo offline riêng cho rewrite cùng index LLM, test bằng giả lập trước. Chỉ mở lab 3309/3308 và chạy DDL thử khi đã kiểm marker, snapshot, cleanup và biết chính xác proposal nào sẽ đo. Không đánh dấu Metrics Done trước khi có kiểm chứng tương đương/rewrite và review ground truth.
+
+---
+
+## Đối chiếu q14 với bằng chứng lab hiện có ngày 27/11/2026
+
+- Kiểm code trước khi chạy lab: `validate_saved_index()`/`validate_index()` hiện chỉ đo một index trên **SQL gốc** (`candidate_sql_kind="original"`), không đo cặp rewrite + index. `scripts/verify_ground_truth.py` có đo rewrite nhưng chỉ nhận ứng viên ground truth cố định và có thể cập nhật `ground_truth.json`; không đưa proposal LLM vào script đó. Validation lab 3309 đang `Exited (137)`, DB chính 3307 vẫn chạy; chưa khởi động lab hoặc tạo/drop index.
+- Nhánh `python -m scripts.verify_ground_truth --check` chỉ đọc đạt **30/30 evidence PASS**. Riêng q14, SQL rewrite LLM và SQL sau tối ưu trong report có cùng cây cú pháp MySQL khi parse bằng SQLGlot; index LLM `orders(order_date, customer_id, total_amount)` khớp index đã đo. Report q14 có 20 lượt trước/sau, 0 timeout, hash và số dòng bằng nhau, P95 **4605,85 → 668,61 ms** (giảm **85,48%**). Bằng chứng đối chiếu không chứa SQL ở `data/outputs/llm_catalog_20261127/q14_existing_evidence_match.json` (gitignored).
+- Đây là bằng chứng lab **đã có** cho cặp rewrite + một index khớp, không phải Validation mới của toàn bộ output LLM: q14 còn một index LLM phụ trên `addresses` chưa đo. q16/q18/q27 có bộ index bắt buộc khớp nhưng rewrite LLM khác cây cú pháp SQL đã đo, nên không kế thừa P95/hash của ground truth. Ground truth vẫn chờ Hải review/GVHD ký; chưa chấm rewrite metric cuối hoặc cấp token/Approve.
+- Lượt này chỉ kiểm read-only và sửa PROGRESS, không sửa code. Bước tiếp theo là xác định phép đo riêng cho rewrite cùng tập index LLM trên validation lab, bắt đầu với phần q14 chưa được bao phủ; giữ guard lab/marker/snapshot và cleanup trước khi thử DDL.
+
+---
+
+## Phân loại proposal trước Validation lab ngày 27/11/2026
+
+- Đọc offline manifest 30 query, proposal đã lưu và ground truth; không kết nối MySQL trong bước phân loại. Với nhóm index 1/2/4: 18 query có 37 đề xuất index, 9 index khớp cấu trúc chính xác; 16 query còn ít nhất một index khác đáp án cần xét hiệu năng tương đương, không tự gán là sai.
+- Với nhóm rewrite 3/5: **12/12** query có đề xuất rewrite và ground truth của cả 12 đều đòi index đi kèm. Chỉ **q14, q16, q18, q27** có đủ bộ index bắt buộc khớp cấu trúc chính xác trong các proposal LLM; điều này chưa chứng minh SQL rewrite tương đương hoặc nhanh hơn. Báo cáo phân loại không chứa SQL ở `data/outputs/llm_catalog_20261127/validation_triage_20261127.json` (gitignored).
+- Chọn q14 làm ca lab đầu tiên khi môi trường sẵn sàng: LLM có index `orders(order_date, customer_id, total_amount)` trùng một index bắt buộc của ground truth và có một rewrite; một index LLM phụ trên `addresses` phải xét riêng. q27 có đúng một index + rewrite nhưng index bắt đầu bằng cột FK `order_items.order_id`, nên cần nhánh FK precheck riêng trên lab. Kiểm Docker read-only cho thấy DB chính 3307 đang chạy còn validation lab 3309 chưa chạy; chưa kiểm marker/snapshot, chưa tạo/drop index, chưa chấm Metrics chính thức. Ground truth vẫn chờ Hải review/GVHD ký.
+
+---
+
+## Hoàn tất thu proposal LLM cho 30 query ngày 27/11/2026
+
+- Chạy các batch tuần tự còn thiếu qua `scripts/collect_llm_proposals.py` trên DB chính bằng quyền đọc: q04/q10/q15/q21/q27; q05/q11/q16/q22/q28; q06/q12/q17/q24/q29; rồi q18/q30 và q23 riêng. q22 và q18 gặp Groq `400/tool_use_failed` ở lượt đầu, mỗi query thành công sau đúng một lần thử lại. q23 từng có kết quả baseline lớn nhưng lượt tạo proposal riêng thành công, không chạy Validation hoặc DDL.
+- Manifest `data/outputs/llm_catalog_20261127/manifest_30_query_summary.json` (gitignored) đối chiếu từng store với catalog: **30/30 query có proposal**, tổng **85 proposal**, không có SQL gốc lệch catalog, và mỗi ID có ít nhất một run metadata `success`. Các store thử q01/q07/q13/q25 từ trước vẫn giữ riêng; manifest chỉ tham chiếu đường dẫn, số lượng, loại proposal và trạng thái, không chứa SQL.
+- Chẩn đoán khớp index chính xác cho 18 query nhóm 1/2/4: **37 đề xuất index, 9 index khớp chính xác**, thuộc 7 query; 16 query còn ít nhất một phương án cần xét tương đương. Chi tiết không chứa SQL ở `data/outputs/llm_catalog_20261127/exact_index_diagnostic.json` (gitignored). Đây **không phải Precision/Recall cuối**: chưa đo P95 tương đương cho index khác đáp án, chưa kiểm hash/P95 cho rewrite, chưa tính Consistency/FPR và ground truth còn chờ Hải review/GVHD ký. Chưa tạo `comparison.csv`.
+- Lượt này chỉ tạo dữ liệu thử ignored và sửa PROGRESS; không sửa code, không chạy Validation, Approve hoặc DDL. Bước tiếp theo là phân loại các phương án cần kiểm chứng trên lab riêng và hoàn tất review ground truth trước khi chấm Metrics chính thức.
+
+---
+
+## Thu tiếp năm query catalog ngày 27/11/2026
+
+- Chạy `scripts/collect_llm_proposals.py` cho q03, q09, q14, q20, q26 trên DB chính bằng quyền đọc. q03/q09/q14/q26 thành công lần đầu, lưu lần lượt **1/2/3/3 proposal**. q20 gặp Groq `400/tool_use_failed` sau 2 tool call ở lần đầu, thành công khi thử lại đúng một lần và lưu **3 proposal**. Chạy lại cả batch trả `skipped` cho 5/5 query, không gọi API thêm.
+- Bộ chấm index hiện có ghi q03 **0/1**, q09 **0/2**, q20 **0/2** khớp chính xác; Precision/Recall của ba query này vẫn `null` vì chưa đo P95 để xét phương án tương đương. q14 và q26 là nhóm rewrite, chưa kiểm hash/P95. Tóm tắt không chứa SQL ở `data/outputs/llm_catalog_20261127/batch_q03_q09_q14_q20_q26_summary.json` (gitignored).
+- Đã xác nhận có proposal lưu cho **12/30 query catalog** tính cả các store thử trước đó. Chưa có bộ 30 query thống nhất, chưa tính Metrics tổng; ground truth vẫn chờ Hải review/GVHD ký. Không chạy Validation, Approve hoặc DDL. Lượt này chỉ thêm dữ liệu thử ignored và sửa PROGRESS; chưa sửa code, nên kiểm `git diff --check` thay vì chạy lại test.
+
+---
+
+## Thu proposal LLM theo batch nhỏ ngày 27/11/2026
+
+- Thêm `scripts/collect_llm_proposals.py` để chạy 1–5 query catalog mỗi lượt qua backend Dashboard đã kiểm AST và chỉ cấp Tool 1–5. Mỗi query lưu SQLite riêng trong `data/outputs/llm_catalog_20261127/`; query đã có proposal được bỏ qua khi chạy lại. Kết quả in ra chỉ gồm ID, trạng thái, số proposal hoặc loại lỗi; không in SQL hay nội dung lỗi. Test giả kiểm chạy tiếp sau lỗi, bỏ qua query đã lưu và từ chối ID lạ trước khi gọi backend.
+- Batch thật q02, q08, q19 trên DB chính với quyền đọc: lần lượt lưu **3, 4, 3 proposal**; chạy lại cho cả ba trả `skipped`, không gọi Groq. Chấm khớp index chính xác: q02 **0/2**, q08 **1/3**, q19 **0/2**. Các index chưa khớp cần đo P95 tương đương nên Precision còn `null`; Recall q08 là 1,0 trong phạm vi query đó, q02/q19 còn `null`. Proposal rewrite chưa được chấm hash/P95. Tính cả q01, q07, q13, q25 đã có trước, hiện có proposal cho **7/30 query catalog** ở các store thử riêng; đây chưa phải bộ kết quả thống nhất hay Metrics tổng.
+- Không chạy Validation, Approve hoặc DDL. Ground truth vẫn chờ Hải review/GVHD ký. **350 tests pass**, Ruff và `git diff --check` pass sau thay đổi. Bước tiếp theo: tiếp tục thu query còn lại theo batch nhỏ, rồi kiểm chứng những phương án khác ground truth và rewrite trước khi tính chỉ số toàn bộ.
+
+---
+
+## Thử LLM cho ba nhóm query ngày 27/11/2026
+
+- Dùng SQL trong `data/queries/queries.py` và đường `generate_proposals_from_dashboard()` để kiểm AST, gọi Groq qua MCP Tool 1–5 trên DB chính với quyền đọc, rồi lưu từng query vào SQLite riêng trong `data/outputs/` (gitignored). q01 lưu 1 index sau 2 lần gọi; lần đầu Groq trả `400/tool_use_failed` sau 1 tool call, lần thứ hai thành công. q13 và q25 mỗi query gọi 1 lần, mỗi lần lưu 2 index và 1 rewrite.
+- Bộ chấm hiện có cho q01 ghi **0/1 index khớp chính xác**; Precision và Recall đều `null` vì index khác ground truth còn cần đo P95 cùng điều kiện để xét tương đương. q13 và q25 thuộc nhóm rewrite nên chưa chấm hash/P95 hoặc điểm rewrite. Kết quả q07 trước đó vẫn là mẫu riêng, không cộng thành chỉ số 30 query. Ground truth chưa có chữ ký GVHD; chưa tạo `comparison.csv`.
+- Bằng chứng tóm tắt không chứa SQL ở `data/outputs/llm_metrics_pilot_20261127_summary.json`; proposal và run metadata ở cùng thư mục ignored. Không chạy Validation, Approve hoặc DDL. Bước tiếp theo: chuẩn hóa cách lưu/chạy lại từng query và thu kết quả 30 query; chỉ tính Metrics đầy đủ sau review ground truth và kiểm chứng tương đương/rewrite.
 
 ---
 
