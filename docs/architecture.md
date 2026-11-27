@@ -61,7 +61,13 @@ Trial pass có hạn chờ duyệt 24 giờ trong store. Kiểm tra chung chặn
 
 Trang Đề xuất hiện đọc tối đa 50 proposal từ store cục bộ, hiển thị Validation và chỉ bật Approve/Reject sau xác nhận. Rewrite không có nút áp dụng; trial quá hạn không bật Approve. UI gọi backend đã có, còn backend kiểm lại report, DB và index trước DDL. Đã thử Validation → Reject và Validation → Approve trên hai proposal riêng qua Streamlit AppTest với lab 3308/3309; nhánh Approve tiêu thụ token, xác nhận index VISIBLE và ghi audit. Index lab đã dọn sau thử; chưa bấm Approve qua trình duyệt thật hoặc áp dụng trên DB chính.
 
-Kiểm thêm bằng Playwright trên trình duyệt thật đã chạy Validation → Reject với store lab chỉ định qua `DASHBOARD_STORE_PATH`; đường dẫn token/audit đi cùng thư mục store. Trang tự rerun để hiện trạng thái mới sau mỗi thao tác. Chưa bấm Approve từ trình duyệt hoặc nối tạo proposal từ UI.
+Kiểm thêm bằng Playwright trên trình duyệt thật đã chạy Validation → Reject rồi Validation → Approve trên hai proposal lab riêng; đường dẫn token/audit đi cùng thư mục store. Trang tự rerun để hiện trạng thái mới sau mỗi thao tác. Index lab của lượt Approve đã được dọn sau kiểm chứng.
+
+Ngày 27/11, trang Đề xuất có form nhập `query_id` và SQL đọc để gọi Groq qua `dashboard.backend.generate_proposals_from_dashboard()`. Backend kiểm AST trước API, mở MCP stdio chỉ có Tool 1–5, rồi lưu danh sách proposal parser chấp nhận bằng một giao dịch SQLite. Rewrite chỉ hiển thị; tạo proposal không chạy DDL. Nút mới đã kiểm bằng Streamlit AppTest với LLM/MCP giả trước lượt thử trình duyệt thật mô tả bên dưới.
+
+Trang Slow Query cho chọn nguồn Tool 1, hiển thị top 10 và chuyển `query_id`/SQL qua session state sang form Đề xuất. SQL của DB vẫn là dữ liệu không tin cậy; chuyển trang không tự gọi LLM. Ngày 27/11 đã kiểm đường này trên trình duyệt với DB chính 3307 bằng quyền đọc: `performance_schema` hiện không có query đạt ngưỡng, `slow_log` có bản ghi và form nhận SQL đã chọn. Không gửi Groq hoặc chạy DDL; biểu đồ của tab này chưa có.
+
+Lượt riêng cùng ngày đã bấm nút tạo proposal với SQL catalog q07 trên Dashboard thật: Groq gọi `get_schema` qua MCP và trả 2 index + 1 rewrite hợp lệ, lưu trong store SQLite thử riêng. Tool 1–5 dùng `readonly_user` trên DB chính 3307; không chạy Validation, Tool 6 hoặc DDL. Lượt đầu bị sandbox chặn mạng, lượt chạy lại với quyền mạng thành công; chưa đo độ ổn định hoặc đủ 30 query.
 
 Nút chạy Validation cho proposal `new` cũng yêu cầu xác nhận và đường dẫn CSV. Backend chỉ cho gọi Validation khi cấu hình trỏ validation lab 3309 và marker đúng; DB chính 3307 bị từ chối trước khi có DDL. Write lab 3308 vẫn được kiểm marker bởi lớp đo INSERT.
 

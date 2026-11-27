@@ -13,5 +13,46 @@ LƯU Ý:
 
 THAM KHẢO  : docs/api-contract.md
 
-TRẠNG THÁI : KHUNG RỖNG — chưa cài đặt. Xóa dòng này khi bắt đầu code.
+TRẠNG THÁI : ĐANG LÀM — đọc Tool 1, hiển thị top query và chuyển SQL sang trang Đề xuất.
 """
+
+import asyncio
+
+import streamlit as st
+
+from dashboard.backend import load_slow_queries
+
+st.title("Slow Query")
+source = st.selectbox("Nguồn dữ liệu", ["performance_schema", "slow_log"])
+st.caption("performance_schema là thống kê tích lũy; slow_log cần quyền đọc riêng.")
+
+if st.button("Tải slow query"):
+    try:
+        st.session_state["slow_query_rows"] = asyncio.run(load_slow_queries(source))
+        st.session_state["slow_query_source"] = source
+    except Exception:  # noqa: BLE001 - không hiển thị SQL hoặc lỗi DB nội bộ
+        st.error("Không đọc được slow query. Kiểm tra kết nối và quyền của nguồn đã chọn.")
+
+rows = (st.session_state.get("slow_query_rows", [])
+        if st.session_state.get("slow_query_source") == source else [])
+if not rows:
+    st.info("Chưa có slow query đạt ngưỡng hoặc chưa tải dữ liệu.")
+    st.stop()
+
+st.dataframe([{
+    "Mã query": row["query_id"],
+    "Số lần chạy": row.get("exec_count"),
+    "Trung bình (ms)": row.get("avg_latency_ms"),
+    "P95 (ms)": row.get("p95_latency_ms"),
+    "Dòng đọc trung bình": row.get("rows_examined_avg"),
+} for row in rows], hide_index=True)
+
+selected = st.selectbox(
+    "Chọn slow query", range(len(rows)),
+    format_func=lambda index: rows[index]["query_id"],
+)
+st.code(rows[selected]["sql_text"], language="sql")
+if st.button("Phân tích query này"):
+    st.session_state["analysis_query_id"] = rows[selected]["query_id"]
+    st.session_state["analysis_sql"] = rows[selected]["sql_text"]
+    st.switch_page("pages/2_proposals.py")

@@ -1,12 +1,99 @@
 # 📊 TIẾN ĐỘ DỰ ÁN
 
-> **Cập nhật lần cuối:** 27/11/2026 — Validation → Approve qua trình duyệt trên lab riêng; Vũ quản lý
+> **Cập nhật lần cuối:** 27/11/2026 — 20 kịch bản injection ở ranh giới code và sửa EXPLAIN ANALYZE; Vũ quản lý
 > **Mốc đối chiếu hiện tại:** 27/11/2026; các bảng tuần bên dưới là lịch sử
 > **Tổng tiến độ:** Chưa tính lại từ mốc ~27% ngày 19/10
 >
 > ⚠️ **File này chỉ ghi TRẠNG THÁI.** Deadline, người phụ trách và tiêu chí Done xem [ROADMAP.md](ROADMAP.md) (mục 4–5). Mục tiêu Precision/Recall/Consistency xem [ROADMAP.md](ROADMAP.md) mục 2.4.
 
 **Chú thích:** ✅ Done | 🟡 Đang làm | ⬜ Chưa làm | 🔴 Trễ hạn | ⏸️ Tạm dừng
+
+---
+
+## Kiểm 20 kịch bản injection ở ranh giới code ngày 27/11/2026
+
+- Hoàn thiện `security/injection_tests/payloads.py` (4 nhóm × 5) và runner `python -m security.injection_tests.run_tests`. **20/20 ca bị chặn tại lớp đã thử**: comment SQL/schema, guard identifier, AST whitelist, parser và registry/token. Log từng ca tại `security/logs/injection_results.log` (gitignored); report có giới hạn ở `security/injection_report.md`. D05 dùng Tool 6 với DB giả và token giả, audit ghi `attempted` rồi `rejected/TOKEN_INVALID`; không có DDL thật.
+- Ca C05 phát hiện `security/ast_whitelist.py` chấp nhận `EXPLAIN ANALYZE SELECT ...` do bỏ từ `ANALYZE` trước khi parse. Đã sửa tối thiểu và thêm hai test tái hiện; `EXPLAIN` đọc thông thường vẫn được chấp nhận. **342 tests pass**, Ruff pass cho các file Python đã sửa.
+- Đây là kiểm ranh giới bằng dữ liệu giả, chưa gọi Groq hoặc tiêm vào slow log/schema MySQL thật; chưa đo LLM có làm theo chỉ thị hay không. Vì vậy mốc 20 injection vẫn **Đang làm**, không ghi `Done` hay tuyên bố an toàn tuyệt đối. DB chính không bị DDL/ghi.
+
+---
+
+## Rà soát workload và điều kiện DB chính ngày 27/11/2026
+
+- Đọc `performance_schema.events_statements_summary_by_digest` trên DB chính 3307 bằng `readonly_user`, không xuất SQL: không có digest của SQL catalog q07; các digest `SELECT` hiện lưu tổng cộng chỉ 11 lượt. Nguồn này không đủ để ước lượng tần suất q07 hay tỷ lệ đọc/ghi. Slow log chỉ gồm query chậm, nên cũng không đại diện các INSERT/UPDATE nhanh. Chưa chọn một tỷ lệ tải trộn tùy ý để gọi là workload thực tế.
+- Đường Dashboard hiện chỉ cho Validation trên lab 3309 có marker; report q07 lab đã Reject/`cleaned` và không thể dùng để cấp token trên DB chính. DB chính có 1.500.000 dòng `orders` nhưng chưa có phép đo tải trộn hay quy trình Validation riêng đã kiểm chứng trên môi trường này. Bước tiếp theo là lấy tần suất workload từ người vận hành hoặc xác định rõ một kịch bản giả định cho báo cáo, rồi mới thiết kế phép đo trộn; không mở guard DB chính bằng cách tái sử dụng report lab.
+
+---
+
+## Đo bổ sung UPDATE cho ứng viên Groq q07 ngày 27/11/2026
+
+- Chỉ bật write lab 3308, kiểm marker và bảng `orders` gốc có 0 dòng. Một script lab riêng đọc 100.000 dòng từ CSV, nạp hai bảng TEMPORARY cùng dữ liệu, tạo index q07 INVISIBLE chỉ trên bảng sau, rồi cập nhật `total_amount = total_amount + 0.01` theo PK theo 100 lô, mỗi lô 1.000 dòng; thứ tự chạy trước/sau được luân phiên. Không kết nối DB chính hoặc validation lab, không thêm UPDATE vào ngưỡng `passed` hiện tại.
+- Một lượt đo: **183.835,90 → 96.067,51 dòng/giây** (giảm **47,74%**); thời gian cộng dồn **0,544 → 1,041 giây** cho 100.000 UPDATE. Đây là phép đo ngắn cho **một kiểu UPDATE tác động cột có trong index**, trên bảng tạm không có FK; chưa đo lặp, phân bố update khác hoặc tải đọc/ghi đồng thời. Không suy rộng thành mức giảm throughput của DB chính.
+- Sau khi kết nối đóng, bảng tạm biến mất; kiểm độc lập bảng `orders` gốc vẫn 0 dòng, không có index thử hoặc bảng probe tồn tại. Bằng chứng ở `data/outputs/lab_only_groq_q07_update_c4a53357.json` (gitignored). Quyết định review vẫn giữ ứng viên q07 để nghiên cứu, **chưa Approve trên DB chính**; phép đo này tăng lý do cần cân nhắc tác động ghi. Report Validation và Dashboard hiện chỉ chứa số INSERT, chưa tích hợp số UPDATE một lượt này.
+
+---
+
+## Review kỹ thuật ứng viên Groq q07 ngày 27/11/2026
+
+- **Kết luận:** giữ index `orders(status, order_date, customer_id, total_amount)` làm ứng viên có ích cho q07; **chưa Approve trên DB chính**. Đây là đối chiếu kỹ thuật do Codex thực hiện theo yêu cầu người dùng, không giả nhận chữ ký Hải/Tình/GVHD.
+- Bằng chứng đọc trên validation lab: 3 warm-up + 20 lượt mỗi phía, P95 **2261,62 → 1137,69 ms** (giảm **49,70%**), P50 **2009,34 → 959,09 ms**, số dòng xét **1.971.386 → 628.511**, hash và số dòng kết quả khớp, 0 timeout, EXPLAIN chọn index thử. `query_cost` ước tính lại tăng **161.315,24 → 212.609,65**; không dùng riêng cost này để phủ nhận phép đo thời gian thực tế.
+- Bằng chứng ghi ban đầu: INSERT trên 100.000 dòng mẫu **58.795,88 → 46.018,45 dòng/giây** (giảm **21,73%**), dung lượng index ước tính **73.072.640 byte**. Phép đo ghi dùng hai bảng TEMPORARY trên write lab, không sao chép FK. UPDATE được đo bổ sung một lượt ở mục trên; vẫn chưa có tải đọc/ghi đồng thời hoặc tần suất q07 so với ghi trên workload thật. Vì vậy chưa kết luận lợi ích ròng cho DB chính.
+- Kiểm đọc metadata DB chính 3307: `orders` có 1.500.000 dòng và chỉ có `PRIMARY(order_id)`, `fk_orders_customer(customer_id)`; chưa có index q07 cùng tiền tố. Report `passed` thuộc lab 3309 đã Reject và dọn trial; theo contract không dùng report đó để cấp token/Approve trên DB chính. Đường `validate_from_dashboard()` hiện chỉ mở cho lab 3309. Trước khi cân nhắc áp dụng DB chính cần có tải đại diện hơn, quyết định về trade-off và quy trình Validation riêng phù hợp môi trường chính.
+
+---
+
+## Hiển thị trade-off trên trang Đề xuất ngày 27/11/2026
+
+- Trang Đề xuất đọc report đã lưu từ `ProposalStore` và hiển thị P95 trước/sau, thay đổi thông lượng INSERT, dung lượng index thử ước tính, cỡ mẫu, kết quả tương đương và trạng thái bằng chứng. Report thiếu phép đo không được hiển thị thành số 0; trang ghi rõ chưa đo UPDATE hoặc tải đồng thời.
+- Test Streamlit AppTest xác nhận người duyệt thấy các số của report q07 mẫu. **339 unit tests pass**, Ruff và `git diff --check` pass. Chưa mở lại Dashboard trên trình duyệt với report lab thật; không chạy thêm DDL/benchmark hoặc Approve trên DB chính. Review kỹ thuật ứng viên q07 được ghi ở mục trên.
+
+---
+
+## Đối chiếu ứng viên Groq q07 với ground truth ngày 27/11/2026
+
+- Cả hai index Groq đề xuất (`orders(status, order_date, customer_id, total_amount)` và `addresses(customer_id, city)`) khớp chính xác bảng, cột và thứ tự với **hai thành phần** của đáp án q07 trong `ground_truth.json`. Rewrite Groq khác SQL ground truth và không có `FORCE INDEX`; chưa đo rewrite hoặc index trên `addresses`.
+- Report Validation vừa có chỉ đo **một index trên `orders` với SQL gốc**. Ground truth q07 đo **hai index và SQL có hint**, lại dùng baseline ở lượt khác; vì vậy không so P95 1137,69 ms với 843,73 ms như hai phương án cùng điều kiện. Ground truth còn chờ Hải review/GVHD ký.
+- Ứng viên `orders` đạt ngưỡng đọc/hash của Validation nhưng mẫu INSERT lab giảm thông lượng 21,73%; UPDATE đã đo thêm một lượt riêng trên lab, chưa có tải ghi/đọc đồng thời theo mục 2.3 ROADMAP. **Quyết định hiện tại:** giữ ứng viên theo review kỹ thuật ở mục trên, chưa đưa tới Approve trên DB chính.
+
+---
+
+## Kiểm chứng proposal Groq q07 trên validation lab ngày 27/11/2026
+
+- Lấy đúng proposal index `orders(status, order_date, customer_id, total_amount)` đã được Groq tạo và lưu từ Dashboard, sao chép sang SQLite store lab riêng. Trước DDL, kiểm marker, số dòng, schema, index hiện có và snapshot FK: lab 3309 có 1.500.000 dòng `orders`, lab ghi 3308 có 0 dòng; index thử chưa tồn tại.
+- Gọi `validate_from_dashboard()` trên lab 3309 với SQL q07 gốc. Report `passed`, đủ 20 lượt mỗi phía, không timeout; P95 **2261,62 → 1137,69 ms** (giảm **49,70%**), hash/số dòng kết quả tương đương và EXPLAIN dùng đúng index. Chi phí ghi trên lab: thông lượng INSERT giảm **21,73%** với mẫu 100.000 dòng; kích thước index ước tính **73.072.640 byte** từ `innodb_index_stats`.
+- Gọi Reject để dọn trial sau khi ghi report. Store lab chuyển `cleaned`, index thử vắng mặt, snapshot FK khớp và số dòng hai lab không đổi. Bằng chứng tóm tắt ở `data/outputs/lab_only_groq_q07_validation_56d87020.json`, report đầy đủ trong SQLite cùng hậu tố (gitignored). DB chính 3307 không bị DDL; proposal gốc vẫn `new`. Đây là một ứng viên q07 đạt ngưỡng lab, chưa phải quyết định áp dụng trên DB chính hoặc kết quả cho cả 30 query.
+
+---
+
+## Tạo proposal bằng Groq từ trình duyệt ngày 27/11/2026
+
+- Dashboard loopback cổng 8502 dùng store SQLite thử riêng, trỏ `127.0.0.1:3307/shopdb` cho Tool 1–5 bằng `readonly_user`. Nhập query catalog `q07` và bấm **Phân tích và lưu đề xuất** trên trình duyệt sau khi xác nhận gửi SQL cho LLM. Không dùng SQL từ slow log cho lượt này.
+- Lần đầu tiến trình bị sandbox chặn mạng và run ghi `APIConnectionError`, 0 proposal. Khởi động lại đúng Dashboard thử với quyền mạng, bấm lại một lần: Groq trả JSON hợp lệ; LLM host gọi `get_schema` qua MCP; parser chấp nhận 3 proposal. Trang báo **Đã lưu 3 đề xuất**; store có 2 index và 1 rewrite, tất cả `trial_state=new`.
+- Không bấm Validation/Approve, không chạy DDL hoặc ghi MySQL. Đã đóng trình duyệt/Dashboard; DB chính 3307 vẫn kết nối được. Bằng chứng tóm tắt không chứa SQL/key/token ở `data/outputs/groq_ui_main_read_20261127.json`; proposal store và run metadata cũng nằm trong `data/outputs/` (gitignored). Đây là một lượt q07 thành công, chưa phải metric ổn định hoặc kiểm đủ 30 query; chặng LLM/Dashboard vẫn **Đang làm**.
+
+---
+
+## Kiểm đọc Slow Query trên DB chính ngày 27/11/2026
+
+- Tool 1 gọi bằng `readonly_user` trên `127.0.0.1:3307/shopdb`: nguồn `performance_schema` trả `ok=true` nhưng 0 query đạt ngưỡng hiện tại; nguồn `mysql.slow_log` trả `ok=true`, 10 query và `truncated=true`. Không in SQL log trong phép kiểm.
+- Dashboard loopback cổng 8502 dùng store SQLite thử riêng. Trên trình duyệt, chọn `slow_log` rồi bấm **Tải slow query**: bảng kết quả, SQL dạng code và nút chuyển trang xuất hiện, không có lỗi Streamlit. Bấm **Phân tích query này** chuyển sang trang Đề xuất; `query_id` và SQL được điền sẵn, nút gửi LLM vẫn khóa khi chưa xác nhận.
+- Store thử riêng có 0 proposal; không gửi Groq, không chạy Validation/Tool 6 hoặc DDL. Đã đóng trình duyệt và Dashboard, giữ DB chính chạy. Bằng chứng tóm tắt không chứa SQL ở `data/outputs/main_read_smoke_20261127.json` (gitignored). Chưa thử tạo proposal bằng Groq từ nút mới trên DB chính.
+
+---
+
+## Chọn Slow Query để phân tích trên Dashboard ngày 27/11/2026
+
+- Trang Slow Query gọi Tool 1 khi người dùng bấm tải, chọn nguồn `performance_schema` hoặc `slow_log`, đọc tối đa 10 bản ghi bằng `readonly_user`. Backend chỉ nhận hàng có `query_id`, `sql_text` và `untrusted=true`; trang hiển thị SQL bằng `st.code`, cùng bảng latency, số lần chạy và số dòng đọc.
+- Nút **Phân tích query này** chuyển mã query và SQL đã chọn qua session state sang form Đề xuất. Nút này chưa gọi LLM; người dùng vẫn phải xác nhận gửi SQL ở trang sau, nơi backend kiểm AST trước API. Query sample từ `performance_schema` có thể cần thay placeholder bằng giá trị cụ thể trước khi Validation chạy.
+- Test AppTest dùng Tool 1 giả để kiểm chuyển trang/prefill; **338 unit tests pass**, Ruff và `git diff --check` pass. Chưa kiểm đường chọn query trên trình duyệt với MySQL thật. Trang Slow Query vẫn **Đang làm**: chưa có biểu đồ và chưa đo giao diện với dữ liệu thật.
+
+---
+
+## Nối tạo proposal từ trang Đề xuất ngày 27/11/2026
+
+- Trang Đề xuất nhận `query_id` và SQL đọc do người vận hành nhập, yêu cầu xác nhận trước khi gửi tới LLM. Backend kiểm SQL bằng AST whitelist và giới hạn prompt trước khi tạo Groq client; mở MCP stdio chỉ với Tool 1–5, gọi `analyze_query()` đã có parser và retry. Lỗi API/parser không đưa proposal lỗi vào store hoặc hiển thị SQL/bí mật trong thông báo giao diện.
+- `ProposalStore.add_many()` lưu cả danh sách trong một giao dịch SQLite sau khi kiểm cấu trúc index hoặc SQL rewrite; một đề xuất không hợp lệ không để lại nhóm lưu dở. Rewrite chỉ hiển thị, không có nút Validation/Approve. LLM không được gọi Tool 6; việc tạo proposal không chạy DDL.
+- **335 unit tests pass**, Ruff và `git diff --check` pass. Giao diện đã kiểm bằng Streamlit AppTest với LLM/MCP giả; chưa gọi Groq hoặc MySQL thật từ nút mới và chưa đo metric LLM trên 30 query. Chặng Dashboard/LLM vẫn **Đang làm**.
 
 ---
 
