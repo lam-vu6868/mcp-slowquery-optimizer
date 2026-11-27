@@ -7,7 +7,9 @@ PHỤ TRÁCH  : Tình    |    REVIEW: Vũ + Hải
 LƯU Ý      : Chỉ dùng store/trial giả, không kết nối MySQL hoặc chạy DDL thật.
 """
 
+import os
 import runpy
+import subprocess
 import sys
 import time
 import tomllib
@@ -18,6 +20,24 @@ import pytest
 
 from dashboard import backend
 from security.approval import ApprovalTokens
+
+
+def test_dashboard_store_env_keeps_lab_token_and_audit_separate(tmp_path):
+    lab_store = tmp_path / "lab_proposals.sqlite3"
+    command = (
+        "from dashboard.backend import DEFAULT_STORE_PATH, DEFAULT_TOKEN_PATH, "
+        "DEFAULT_AUDIT_PATH; print(DEFAULT_STORE_PATH, DEFAULT_TOKEN_PATH, "
+        "DEFAULT_AUDIT_PATH, sep='\\n')"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", command], cwd=Path(__file__).resolve().parents[1],
+        env={**os.environ, "DASHBOARD_STORE_PATH": str(lab_store)},
+        capture_output=True, text=True, check=True,
+    )
+    assert result.stdout.splitlines() == [
+        str(lab_store), str(tmp_path / "approval_tokens.sqlite3"),
+        str(tmp_path / "audit.sqlite3"),
+    ]
 
 
 def test_initialize_backend_recovers_pending_before_returning_store(monkeypatch, tmp_path):
@@ -279,11 +299,21 @@ def test_initialize_backend_refuses_failed_expiry_cleanup(monkeypatch, tmp_path)
         backend.initialize_backend(tmp_path / "proposals.sqlite3")
 
 
+def test_reject_from_dashboard_calls_guarded_cleanup(monkeypatch):
+    events = []
+    store = object()
+    monkeypatch.setattr(backend, "reject_saved_index",
+                        lambda actual, proposal_id: events.append((actual, proposal_id)) or "dropped")
+    assert backend.reject_from_dashboard(store, "p_abc") == "dropped"
+    assert events == [(store, "p_abc")]
+
+
 def test_dashboard_starts_recovery_before_rendering(monkeypatch):
     events = []
     store = object()
     fake_streamlit = ModuleType("streamlit")
     fake_streamlit.cache_resource = lambda function: function
+    fake_streamlit.session_state = {}
     fake_streamlit.error = lambda message: events.append(("error", message))
     fake_streamlit.stop = lambda: events.append(("stop",))
     monkeypatch.setitem(sys.modules, "streamlit", fake_streamlit)
@@ -347,3 +377,179 @@ async def test_validation_uses_the_store_recovered_at_startup(monkeypatch, tmp_p
         ("recover", store_path),
         ("validate", store_path, "p_trial", csv_dir),
     ]
+
+
+@pytest.mark.asyncio
+async def test_dashboard_validation_refuses_main_db_before_any_ddl(monkeypatch, tmp_path):
+    monkeypatch.setattr(backend.Config, "DB_HOST", "127.0.0.1")
+    monkeypatch.setattr(backend.Config, "DB_PORT", 3307)
+    monkeypatch.setattr(backend.Config, "DB_NAME", "shopdb")
+    store = type("Store", (), {"get": lambda self, proposal_id: pytest.fail("no store")})()
+    with pytest.raises(ValueError, match="lab 3309"):
+        await backend.validate_from_dashboard(
+            store, "p_abc", write_csv_dir=tmp_path,
+        )
+
+
+@pytest.mark.asyncio
+async def test_dashboard_validation_checks_csv_and_lab_marker_before_call(
+    monkeypatch, tmp_path,
+):
+    from contextlib import contextmanager
+
+    monkeypatch.setattr(backend.Config, "DB_HOST", "127.0.0.1")
+    monkeypatch.setattr(backend.Config, "DB_PORT", 3309)
+    monkeypatch.setattr(backend.Config, "DB_NAME", "shopdb")
+    events = []
+    marker = {"value": "wrong-lab"}
+    saved = _approval_saved(trial_state="new")
+    store = type("Store", (), {"get": lambda self, proposal_id: saved})()
+
+    class Conn:
+        def cursor(self):
+            return self
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def execute(self, sql):
+            events.append(("marker_query", sql))
+
+        def fetchone(self):
+            return {"marker": marker["value"]}
+
+    @contextmanager
+    def fake_conn():
+        yield Conn()
+
+    async def fake_validate(actual, proposal_id, *, write_csv_dir):
+        events.append(("validate", actual, proposal_id, write_csv_dir))
+        return {"status": "passed"}
+
+    monkeypatch.setattr(backend, "get_conn", fake_conn, raising=False)
+    monkeypatch.setattr(backend, "validate_proposal", fake_validate)
+    with pytest.raises(ValueError, match="CSV"):
+        await backend.validate_from_dashboard(store, "p_abc", write_csv_dir=tmp_path)
+    assert events == []
+
+    (tmp_path / "orders.csv").write_text("id\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="marker"):
+        await backend.validate_from_dashboard(
+            store, "p_abc", write_csv_dir=tmp_path,
+        )
+    assert not any(item[0] == "validate" for item in events)
+
+    marker["value"] = "mcp-validation-lab-v1"
+    assert await backend.validate_from_dashboard(
+        store, "p_abc", write_csv_dir=tmp_path,
+    ) == {"status": "passed"}
+    assert events[-1] == ("validate", store, "p_abc", tmp_path)
+
+
+def test_proposals_page_requires_confirmation_before_actions(monkeypatch):
+    from streamlit.testing.v1 import AppTest
+
+    saved = _approval_saved()
+    saved["original_sql"] = "SELECT id FROM orders"
+    store = type("Store", (), {"recent_proposals": lambda self: [saved]})()
+    events = []
+
+    async def fake_apply(actual, proposal_id):
+        events.append(("approve", actual, proposal_id))
+
+    monkeypatch.setattr(backend, "apply_from_dashboard", fake_apply)
+    monkeypatch.setattr(backend, "reject_from_dashboard",
+                        lambda actual, proposal_id: events.append(
+                            ("reject", actual, proposal_id)))
+    page = Path(backend.__file__).parent / "pages" / "2_proposals.py"
+    at = AppTest.from_file(str(page))
+    at.session_state["proposal_store"] = store
+    at.run()
+    assert not at.exception
+    assert len(at.button) == 2
+    assert at.button[0].disabled and at.button[1].disabled
+    assert events == []
+
+    at.checkbox[0].set_value(True).run()
+    assert not at.button[0].disabled and not at.button[1].disabled
+    at.button[0].click().run()
+    assert events == [("approve", store, "p_abc")]
+
+    at.button[1].click().run()
+    assert events[-1] == ("reject", store, "p_abc")
+
+
+@pytest.mark.parametrize("changes,button_count", [
+    ({"proposal": {"type": "rewrite"}}, 0),
+    ({"review_expires_at": 1}, 2),
+])
+def test_proposals_page_keeps_approve_unavailable_for_rewrite_or_expired(
+    changes, button_count,
+):
+    from streamlit.testing.v1 import AppTest
+
+    saved = _approval_saved(**changes)
+    saved["original_sql"] = "SELECT id FROM orders"
+    store = type("Store", (), {"recent_proposals": lambda self: [saved]})()
+    at = AppTest.from_file(str(Path(backend.__file__).parent / "pages" / "2_proposals.py"))
+    at.session_state["proposal_store"] = store
+    at.run()
+    assert not at.exception
+    assert len(at.button) == button_count
+    if button_count:
+        at.checkbox[0].set_value(True).run()
+        assert at.button[0].disabled
+
+
+def test_proposals_page_runs_validation_only_after_confirmation(monkeypatch):
+    from streamlit.testing.v1 import AppTest
+
+    saved = _approval_saved(trial_state="new", report=None, review_expires_at=None)
+    saved["original_sql"] = "SELECT id FROM orders"
+    store = type("Store", (), {"recent_proposals": lambda self: [saved]})()
+    events = []
+
+    async def fake_validate(actual, proposal_id, *, write_csv_dir):
+        events.append((actual, proposal_id, write_csv_dir))
+        return {"status": "passed"}
+
+    monkeypatch.setattr(backend, "validate_from_dashboard", fake_validate)
+    at = AppTest.from_file(str(Path(backend.__file__).parent / "pages" / "2_proposals.py"))
+    at.session_state["proposal_store"] = store
+    at.run()
+    assert not at.exception
+    assert at.button[0].disabled
+    assert events == []
+
+    at.text_input[0].set_value("C:/lab/data").run()
+    assert at.button[0].disabled
+    at.checkbox[0].set_value(True).run()
+    assert not at.button[0].disabled
+    at.button[0].click().run()
+    assert events == [(store, "p_abc", Path("C:/lab/data"))]
+
+
+def test_proposals_page_refreshes_state_after_reject(monkeypatch):
+    from streamlit.testing.v1 import AppTest
+
+    saved = _approval_saved()
+    saved["original_sql"] = "SELECT id FROM orders"
+    store = type("Store", (), {"recent_proposals": lambda self: [saved]})()
+
+    def fake_reject(actual, proposal_id):
+        assert actual is store and proposal_id == "p_abc"
+        saved["trial_state"] = "cleaned"
+        return "dropped"
+
+    monkeypatch.setattr(backend, "reject_from_dashboard", fake_reject)
+    at = AppTest.from_file(str(Path(backend.__file__).parent / "pages" / "2_proposals.py"))
+    at.session_state["proposal_store"] = store
+    at.run()
+    at.checkbox[0].set_value(True).run()
+    at.button[1].click().run()
+    assert not at.exception
+    assert len(at.button) == 0
+    assert at.success[0].value == "Đã dọn index thử."

@@ -1,12 +1,21 @@
 # 📊 TIẾN ĐỘ DỰ ÁN
 
-> **Cập nhật lần cuối:** 26/11/2026 — hạn chờ duyệt trial 24 giờ bằng test giả; Vũ quản lý
-> **Mốc đối chiếu hiện tại:** 26/11/2026; các bảng tuần bên dưới là lịch sử
+> **Cập nhật lần cuối:** 27/11/2026 — Validation → Approve qua trình duyệt trên lab riêng; Vũ quản lý
+> **Mốc đối chiếu hiện tại:** 27/11/2026; các bảng tuần bên dưới là lịch sử
 > **Tổng tiến độ:** Chưa tính lại từ mốc ~27% ngày 19/10
 >
 > ⚠️ **File này chỉ ghi TRẠNG THÁI.** Deadline, người phụ trách và tiêu chí Done xem [ROADMAP.md](ROADMAP.md) (mục 4–5). Mục tiêu Precision/Recall/Consistency xem [ROADMAP.md](ROADMAP.md) mục 2.4.
 
 **Chú thích:** ✅ Done | 🟡 Đang làm | ⬜ Chưa làm | 🔴 Trễ hạn | ⏸️ Tạm dừng
+
+---
+
+## Kiểm Validation → Approve trên trình duyệt với lab riêng ngày 27/11/2026
+
+- Chỉ bật lại hai container lab cũ ở `127.0.0.1:3308/3309`; kiểm marker và số dòng trước thao tác: validation lab có 1.500.000 dòng `orders`, write lab có 0 dòng. Dashboard chạy loopback `127.0.0.1:8502`, trỏ DB 3309 và store SQLite riêng. DB chính 3307 không được dùng trong lượt thử.
+- Tạo proposal mẫu mới cho `orders(status, order_date)` trong store lab. Trên trình duyệt, nhập thư mục CSV, xác nhận và bấm **Chạy Validation**. Report `passed`, `evidence_complete=true`, P95 **817,24 → 70,55 ms**; trial giữ INVISIBLE trước khi duyệt.
+- Xác nhận rồi bấm **Approve** trên trình duyệt. Trang hiển thị `applied`; kiểm độc lập thấy index thử VISIBLE, đúng 1 token đã tiêu thụ và audit ghi `attempted` rồi `applied`. Sau đó dọn đúng index VISIBLE của lượt lab; index vắng mặt, snapshot FK khớp và số dòng hai lab không đổi. Store lab vẫn giữ `applied` làm bằng chứng lịch sử, không dùng làm store runtime.
+- Bằng chứng ở `data/outputs/lab_only_browser_approve_29d5228a.json` và SQLite cùng hậu tố (gitignored). Chưa áp dụng trên DB chính; chưa nối tạo proposal từ UI hoặc kiểm 20 payload injection. Validation Layer, Tool 6 và Dashboard vẫn **Đang làm**.
 
 ---
 
@@ -27,6 +36,39 @@
 |  9  | Báo cáo + Demo                                       |     ⬜      | Cả nhóm          |       17/11 · 01/12        |
 
 ---
+
+## Kiểm Dashboard trên trình duyệt với lab riêng ngày 26/11/2026
+
+- Thêm `DASHBOARD_STORE_PATH` để tiến trình Streamlit dùng SQLite proposal/token/audit tách khỏi store mặc định. Chạy Dashboard loopback `127.0.0.1:8502` với `DB_HOST=127.0.0.1`, `DB_PORT=3309`, store lab mới và write lab 3308; không dùng DB chính 3307 hoặc store runtime mặc định.
+- Playwright mở trang Đề xuất: nút Validation bị khóa trước khi nhập CSV/xác nhận; sau xác nhận bấm Validation, report `passed` với P95 **776,32 → 68,42 ms**. Sau tải lại, nút Approve/Reject chỉ xuất hiện với trial `passed`; bấm Reject, trang báo đã dọn. Kiểm độc lập: store `cleaned`, index thử vắng mặt, validation lab `orders` vẫn 1.500.000 dòng, write lab vẫn 0 dòng. Bằng chứng `data/outputs/lab_only_browser_d614ad48.json` và SQLite cùng hậu tố (gitignored).
+- Phát hiện trang giữ trạng thái/nút cũ ngay sau thao tác; đã sửa tự rerun và giữ thông báo thành công. Test AppTest mới xác nhận Reject chuyển trang sang trạng thái `cleaned` ngay sau cú bấm. Đây là sửa sau lượt Playwright đầu; chưa lặp lại DDL chỉ để chụp lại cùng trạng thái.
+- Đã đóng trình duyệt, dừng Streamlit cổng 8502 và hai container lab; volume/bằng chứng giữ nguyên. DB chính vẫn healthy. Chưa bấm Approve từ trình duyệt, chưa nối tạo proposal từ UI hoặc kiểm 20 payload injection.
+- **329 tests pass**, Ruff và `git diff --check` pass. Snapshot/log tạm của Playwright đã dọn khỏi working tree; report/SQLite lab trong `data/outputs/` vẫn giữ.
+
+## Kiểm Validation → Approve/Tool 6 trên lab riêng ngày 26/11/2026
+
+- Khởi động lại đúng hai lab cổng 3308/3309 với volume cũ, giữ marker/dữ liệu; dùng store, token SQLite và audit SQLite riêng trong `data/outputs/`. Proposal mẫu `orders(status, order_date)` mới, không đụng FK q01; DB chính 3307 không được kết nối.
+- Bấm **Chạy Validation** rồi **Approve** bằng Streamlit AppTest. Report `passed`, 20 lượt mỗi phía, P95 **507,31 → 68,74 ms**. Tool 6 xác nhận index VISIBLE, store chuyển `applied`, một token đã tiêu thụ, audit ghi `attempted` rồi `applied`. Bằng chứng ở `data/outputs/lab_only_dashboard_approve_c961bc89.json` cùng SQLite proposal/token/audit theo hậu tố (gitignored); không lưu token vào report.
+- Sau khi thử, script kiểm `db_identity`, marker lab, định nghĩa index và rủi ro FK rồi dọn **đúng index VISIBLE của lượt lab**. Kiểm độc lập: index vắng mặt trong metadata, snapshot FK khớp, validation lab `orders` vẫn 1.500.000 dòng, write lab vẫn 0 dòng. Store lab giữ `applied` để ghi nhận đã áp dụng trước khi cleanup ngoài luồng; không dùng store này cho Dashboard runtime. Đã dừng hai container lab, giữ volume/bằng chứng; DB chính vẫn chạy.
+- Đây là kiểm qua Streamlit AppTest, **chưa bấm bằng trình duyệt thật** và chưa chạy trên DB chính. Chưa có luồng tạo proposal từ UI hoặc 20 payload injection. Tool 6 và Dashboard vẫn **Đang làm**.
+
+## Kiểm Validation → Reject trên lab riêng ngày 26/11/2026
+
+- Khởi động lại hai container/volume lab riêng ở `127.0.0.1:3308/3309`, xác nhận healthy, marker đúng; validation lab có 1.500.000 dòng `orders`, write lab `orders` có 0 dòng và không có index thử cũ trên `orders`. DB chính 3307 không được kết nối trong lượt này.
+- Dùng store SQLite lab mới và proposal mẫu `orders(status, order_date)` để bấm **Chạy Validation** bằng Streamlit AppTest. Report `passed`, đủ 20 lượt mỗi phía, P95 **626,05 → 103,68 ms**; dung lượng index thử 46.759.936 byte từ `innodb_index_stats_pages`. Sau đó bấm **Reject**; store chuyển `cleaned`. Kiểm độc lập bằng `readonly_user`: index thử vắng mặt, validation lab vẫn 1.500.000 dòng `orders`, write lab vẫn 0 dòng. Bằng chứng ở `data/outputs/lab_only_dashboard_ui_7ab607bd.json` và SQLite cùng hậu tố (gitignored).
+- Đây là thử qua máy chạy script Streamlit AppTest, **chưa bấm bằng trình duyệt thật**, chưa thử Approve/Tool 6 trên lab. Chưa áp dụng index trên DB chính. Validation Layer và Dashboard vẫn **Đang làm**.
+- Sau khi kiểm chứng, đã dừng đúng hai container lab 3308/3309; volume và bằng chứng giữ nguyên. DB chính `mcp_mysql_db` cổng 3307 vẫn healthy.
+
+## Nút Validation trên Dashboard ngày 26/11/2026
+
+- Trang Đề xuất cho proposal index `new` nhập thư mục CSV, xác nhận rồi gọi `validate_from_dashboard()`. Backend kiểm CSV, cấu hình đúng `127.0.0.1:3309/shopdb` và marker `mcp-validation-lab-v1` trước khi gọi Validation có DDL; DB chính 3307 bị từ chối. Đo INSERT vẫn dùng write lab 3308 qua guard riêng có sẵn.
+- Tại thời điểm viết code, Docker chỉ có DB chính 3307 chạy; sau đó đã khởi động lại hai lab và kiểm Validation → Reject như mục trên. Proposal vẫn chưa có đường tạo từ UI.
+- **327 tests pass**, Ruff và `git diff --check` pass. Validation Layer và Dashboard vẫn **Đang làm**.
+
+## Trang Đề xuất Dashboard ngày 26/11/2026
+
+- `ProposalStore.recent_proposals()` đọc tối đa 50 proposal mới nhất. Trang Đề xuất hiển thị SQL gốc dạng code, trạng thái trial/report và hạn duyệt; rewrite chỉ hiển thị. Approve/Reject bị khóa đến khi người dùng xác nhận. Approve gọi `apply_from_dashboard()` (token một lần + Tool 6 riêng); Reject gọi đường cleanup có kiểm DB/marker/snapshot. Backend kiểm lại mọi điều kiện khi thực hiện, không tin điều kiện hiển thị của UI.
+- **324 tests pass**, gồm Streamlit AppTest cho thao tác và trạng thái bị khóa; Ruff và `git diff --check` pass. Chưa nối nút tạo proposal/Validation trên UI, chưa chạy DDL thật từ Dashboard. Các tab khác vẫn là khung.
 
 ## Hạn chờ duyệt trial ngày 26/11/2026
 

@@ -59,6 +59,12 @@ Validation đã đo q01/q05 trên lab 5M; q01 chỉ chạy qua nhánh FK opt-in 
 
 Trial pass có hạn chờ duyệt 24 giờ trong store. Kiểm tra chung chặn cấp token và Tool 6 sau hạn; lúc Dashboard khởi động, recovery chạy trước khi dọn trial quá hạn. Chưa có lịch nền dọn khi tiến trình chạy liên tục.
 
+Trang Đề xuất hiện đọc tối đa 50 proposal từ store cục bộ, hiển thị Validation và chỉ bật Approve/Reject sau xác nhận. Rewrite không có nút áp dụng; trial quá hạn không bật Approve. UI gọi backend đã có, còn backend kiểm lại report, DB và index trước DDL. Đã thử Validation → Reject và Validation → Approve trên hai proposal riêng qua Streamlit AppTest với lab 3308/3309; nhánh Approve tiêu thụ token, xác nhận index VISIBLE và ghi audit. Index lab đã dọn sau thử; chưa bấm Approve qua trình duyệt thật hoặc áp dụng trên DB chính.
+
+Kiểm thêm bằng Playwright trên trình duyệt thật đã chạy Validation → Reject với store lab chỉ định qua `DASHBOARD_STORE_PATH`; đường dẫn token/audit đi cùng thư mục store. Trang tự rerun để hiện trạng thái mới sau mỗi thao tác. Chưa bấm Approve từ trình duyệt hoặc nối tạo proposal từ UI.
+
+Nút chạy Validation cho proposal `new` cũng yêu cầu xác nhận và đường dẫn CSV. Backend chỉ cho gọi Validation khi cấu hình trỏ validation lab 3309 và marker đúng; DB chính 3307 bị từ chối trước khi có DDL. Write lab 3308 vẫn được kiểm marker bởi lớp đo INSERT.
+
 Luồng đã kiểm chứng offline: `ground_truth_candidates.py` → `scripts/verify_ground_truth.py` → EXPLAIN/benchmark/hash → `ground_truth.json` và bằng chứng trong `data/outputs/`. Có 30/30 phương án đạt đo kiểm chứng, còn chờ Hải review/GVHD ký. Script chỉ nhận ứng viên cố định trong repo, dùng readonly cho SELECT và index_admin cho index thử theo ủy quyền lab; không đăng ký MCP hoặc gọi đường apply của LLM. Index thử được dọn và cấu hình ban đầu được khôi phục sau batch. Kết quả script offline chưa chứng minh luồng Validation Layer + Dashboard đã hoạt động.
 
 | # | Thành phần | Vai trò | Người phụ trách |

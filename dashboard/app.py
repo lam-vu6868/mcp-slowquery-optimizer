@@ -32,6 +32,7 @@ def _startup_backend():
 
 try:
     proposal_store = _startup_backend()
+    st.session_state["proposal_store"] = proposal_store
 except Exception:  # noqa: BLE001 - không cho Dashboard nhận việc khi recovery lỗi
     st.error("Không khôi phục được index thử. Kiểm tra trial pending trước khi tiếp tục.")
     st.stop()

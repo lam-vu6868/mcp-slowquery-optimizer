@@ -754,6 +754,16 @@ def test_store_migrates_legacy_trial_without_setting_deadline(tmp_path):
     assert "review_expires_at" in columns
 
 
+def test_store_lists_recent_proposals_for_dashboard(tmp_path):
+    store = ProposalStore(tmp_path / "proposals.sqlite3")
+    proposal = {"type": "index", "table": "orders", "index_name": "idx_orders_status",
+                "columns": [{"name": "status", "order": "ASC"}]}
+    first = store.add("q01", "SELECT id FROM orders", proposal)
+    second = store.add("q02", "SELECT id FROM orders", proposal)
+    assert [item["proposal_id"] for item in store.recent_proposals(limit=1)] == [second]
+    assert [item["proposal_id"] for item in store.recent_proposals()] == [second, first]
+
+
 def test_store_preserves_foreign_key_risk_reason(tmp_path):
     store = ProposalStore(tmp_path / "proposals.sqlite3")
     proposal_id = store.add("q01", "SELECT order_id FROM order_items", {
