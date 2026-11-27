@@ -14,10 +14,11 @@ LƯU Ý:
 
 THAM KHẢO  : docs/api-contract.md (Tool 6, mục 4), security/approval.py
 
-TRẠNG THÁI : ĐANG LÀM — hiển thị proposal, chạy Validation trên lab, Approve/Reject; chưa nối tạo proposal từ UI.
+TRẠNG THÁI : ĐANG LÀM — tạo proposal từ LLM, Validation trên lab, Approve/Reject.
 """
 
 import asyncio
+import math
 import time
 from pathlib import Path
 
@@ -25,6 +26,7 @@ import streamlit as st
 
 from dashboard.backend import (
     apply_from_dashboard,
+    generate_proposals_from_dashboard,
     initialize_backend,
     reject_from_dashboard,
     validate_from_dashboard,
@@ -45,6 +47,32 @@ notice = st.session_state.pop("proposal_notice", None)
 if notice:
     st.success(notice)
 
+st.subheader("Tạo đề xuất từ LLM")
+selected_query_id = st.session_state.pop("analysis_query_id", None)
+selected_sql = st.session_state.pop("analysis_sql", None)
+if selected_query_id is not None and selected_sql is not None:
+    st.session_state["proposal_query_id"] = selected_query_id
+    st.session_state["proposal_sql"] = selected_sql
+query_id_input = st.text_input("Mã query", key="proposal_query_id")
+sql_input = st.text_area("SQL cần phân tích", height=140, key="proposal_sql")
+st.caption("LLM có thể gọi EXPLAIN/benchmark đọc. SQL từ performance_schema có thể cần thay dấu ? bằng giá trị cụ thể.")
+confirmed_generation = st.checkbox("Tôi xác nhận gửi SQL tới LLM")
+if st.button("Phân tích và lưu đề xuất", disabled=not (
+    query_id_input.strip() and sql_input.strip() and confirmed_generation
+)):
+    try:
+        created = asyncio.run(generate_proposals_from_dashboard(
+            store, query_id_input.strip(), sql_input,
+        ))
+    except Exception:  # noqa: BLE001 - không hiển thị SQL hoặc nội dung lỗi API
+        st.error("Không tạo được đề xuất. Kiểm tra SQL, cấu hình LLM/MCP và log lần chạy.")
+    else:
+        if created:
+            st.session_state["proposal_notice"] = f"Đã lưu {len(created)} đề xuất."
+            st.rerun()
+        else:
+            st.info("LLM không đưa ra đề xuất cho query này.")
+
 if not proposals:
     st.info("Chưa có đề xuất trong store cục bộ.")
     st.stop()
@@ -64,6 +92,31 @@ if proposal["type"] == "index":
     st.write("Index:", f"{proposal['table']}.{proposal['index_name']}")
 st.write("Validation:", report.get("status", "chưa chạy"))
 st.code(saved["original_sql"], language="sql")
+
+if report:
+    st.subheader("Số liệu Validation")
+    before = report.get("before") or {}
+    after = report.get("after") or {}
+    write = report.get("write_overhead") or {}
+    p95_before = before.get("p95_ms")
+    p95_after = after.get("p95_ms")
+    if all(type(value) in (int, float) and math.isfinite(value)
+           for value in (p95_before, p95_after)):
+        before_col, after_col = st.columns(2)
+        before_col.metric("P95 trước", f"{p95_before:.2f} ms")
+        after_col.metric("P95 sau", f"{p95_after:.2f} ms")
+    throughput = write.get("insert_throughput_change_pct")
+    size_bytes = write.get("index_size_bytes")
+    if type(throughput) in (int, float) and math.isfinite(throughput):
+        st.metric("Thay đổi thông lượng INSERT", f"{throughput:+.2f}%")
+    if type(size_bytes) in (int, float) and math.isfinite(size_bytes):
+        st.metric("Dung lượng index thử (ước tính)", f"{size_bytes / 1048576:.2f} MiB")
+    sample_rows = write.get("sample_rows")
+    if type(sample_rows) is int:
+        st.caption(f"Mẫu INSERT: {sample_rows:,} dòng trên write lab; report này chưa gồm UPDATE hoặc tải đồng thời.")
+    if type(report.get("result_equivalent")) is bool:
+        st.text("Kết quả tương đương: " + ("có" if report["result_equivalent"] else "không"))
+    st.text("Bằng chứng đầy đủ: " + ("có" if report.get("evidence_complete") is True else "chưa"))
 
 if proposal["type"] != "index":
     st.info("Đề xuất viết lại SQL chỉ để xem; không áp dụng tự động.")

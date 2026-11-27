@@ -85,14 +85,14 @@ flowchart TD
 | Đo P95 bộ 30 query                     | ✅ Baseline 30/30 valid; đáp án 30/30 đạt P95/hash |
 | Tool 1–5 MCP                           | 🟡 Đã kiểm chứng 5/5 qua stdio/MySQL; chặng chưa đánh dấu Done |
 | Validation Layer                       | 🟡 q01/q05 đạt trên lab 5M; Validation → Reject đã thử qua Streamlit AppTest trên lab riêng; q01 runtime vẫn chặn FK |
-| Tool 6 + approval token                | 🟡 Approve qua Streamlit AppTest đã chạy trên lab riêng; chưa thử trình duyệt thật hoặc 20 injection |
-| 20 Prompt Injection                    | ⬜ Chưa bắt đầu |
-| Dashboard                              | 🟡 Trang Đề xuất đã nối Validation/Approve/Reject; Reject đã thử trên trình duyệt với lab riêng, Approve qua AppTest; chưa nối tạo proposal từ UI |
+| Tool 6 + approval token                | 🟡 Approve đã thử trên trình duyệt với lab riêng; chưa chạy 20 injection hoặc áp dụng trên DB chính |
+| 20 Prompt Injection                    | 🟡 20/20 ca ranh giới code bị chặn; chưa thử LLM/MySQL end-to-end |
+| Dashboard                              | 🟡 Trang Slow Query đã đọc DB chính; Groq/MCP lưu 3 đề xuất q07, một index đã qua Validation trên lab riêng rồi được dọn; trang duyệt đã hiển thị P95/chi phí ghi/dung lượng từ report |
 | Báo cáo + Demo                         | ⬜ Chưa bắt đầu |
 
 **Chú thích:** ✅ Done | 🟡 Đang làm | ⬜ Chưa làm | 🔴 Trễ hạn
 
-Các mốc dưới đây giữ theo thời điểm thực hiện; trạng thái mới nhất xem [PROGRESS.md](project-management/PROGRESS.md) ngày 25/11/2026.
+Các mốc dưới đây giữ theo thời điểm thực hiện; trạng thái mới nhất xem [PROGRESS.md](project-management/PROGRESS.md) ngày 27/11/2026.
 
 **Bàn giao 26/11/2026:** q01 đã đo đủ trên validation lab 5M qua nhánh FK opt-in, giữ index FK trước baseline và dọn trial sau report; đường Dashboard mặc định vẫn chặn trường hợp FK này. Report Validation mới ghi danh tính DB; đã thử đọc danh tính trên MySQL thật bằng `readonly_user`. Backend cấp token HMAC sau precheck; lõi Tool 6 dùng chung kiểm report/DB/index, tiêu thụ token và ghi audit với DB giả. Registry Dashboard riêng chỉ có Tool 6, còn LLM chỉ thấy Tool 1–5. Dashboard cục bộ mặc định nghe `127.0.0.1`; backend lấy OS account làm người duyệt và gọi registry riêng trong test giả. Reject đã có đường dọn trial với test giả, kiểm DB trước khi DROP và recovery khi dọn lỗi. **314 unit tests pass**; chưa có nút Approve/Reject hoặc thử DDL thật từ Dashboard, chưa áp dụng index trên DB chính.
 

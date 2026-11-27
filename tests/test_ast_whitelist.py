@@ -22,8 +22,8 @@ CHỨC NĂNG: Test AST whitelist.
 PHỤ TRÁCH: Tình    |    REVIEW: Vũ
 """
 import pytest
-from security.ast_whitelist import check
 
+from security.ast_whitelist import check
 
 # ============================================================
 # NHÓM 1: SQL ĐƯỢC PHÉP
@@ -105,6 +105,15 @@ class TestMultiStatement:
         assert "Multi-statement" in reason
 
 
+@pytest.mark.parametrize("sql", [
+    "EXPLAIN ANALYZE SELECT * FROM orders",
+    "EXPLAIN FORMAT=JSON ANALYZE SELECT * FROM orders",
+])
+def test_explain_analyze_is_rejected(sql):
+    ok, _ = check(sql)
+    assert ok is False
+
+
 # ============================================================
 # NHÓM 3: LỆNH DDL/DML NGUY HIỂM
 # ============================================================
@@ -113,7 +122,7 @@ class TestDangerousStatements:
     """Nhóm test DDL/DML phải BỊ CHẶN"""
 
     def test_drop_table(self):
-        ok, reason = check("DROP TABLE sales_data")
+        ok, _ = check("DROP TABLE sales_data")
         assert ok is False
 
     def test_drop_database(self):
@@ -197,7 +206,7 @@ class TestForbiddenFunctions:
         assert "SLEEP" in reason.upper()
 
     def test_benchmark(self):
-        ok, reason = check("SELECT BENCHMARK(1000000, MD5('x'))")
+        ok, _ = check("SELECT BENCHMARK(1000000, MD5('x'))")
         assert ok is False
 
     def test_load_file(self):
@@ -303,4 +312,4 @@ class TestParseError:
 
 if __name__ == "__main__":
     import subprocess
-    subprocess.run(["pytest", __file__, "-v", "--tb=short"])
+    subprocess.run(["pytest", __file__, "-v", "--tb=short"], check=False)

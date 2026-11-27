@@ -9,15 +9,24 @@ LƯU Ý      : Store runtime nằm ngoài Git; không dùng store của lab đã
 THAM KHẢO  : docs/api-contract.md (Validation Layer), mcp_server/validation/rollback.py
 """
 
+import asyncio
 import getpass
 import json
 import os
+import sys
 from pathlib import Path
 
+from mcp import ClientSession
+from mcp.client.stdio import StdioServerParameters, stdio_client
+
 from mcp_server.dashboard_server import make_dashboard_mcp
+from mcp_server.llm.agent import analyze_query
+from mcp_server.llm.groq import create_groq_client
+from mcp_server.llm.prompts import build_analysis_prompt
 from mcp_server.store.audit_log import AuditLog
 from mcp_server.store.proposals import ProposalStore
 from mcp_server.tools.apply import OptimizationApplier, TrialIndex, check_approval
+from mcp_server.tools.slow_queries import get_slow_queries
 from mcp_server.utils.config import Config
 from mcp_server.utils.db import current_db_identity, get_conn
 from mcp_server.validation.rollback import (
@@ -27,6 +36,7 @@ from mcp_server.validation.rollback import (
 )
 from mcp_server.validation.validator import validate_saved_index
 from security.approval import ApprovalTokens
+from security.ast_whitelist import check as ast_check
 
 DEFAULT_STORE_PATH = Path(os.getenv("DASHBOARD_STORE_PATH") or (
     Path(__file__).resolve().parents[1] / "data" / "outputs" / "proposals.sqlite3"
@@ -49,6 +59,59 @@ def initialize_backend(store_path: Path = DEFAULT_STORE_PATH) -> ProposalStore:
     if failed:
         raise RuntimeError("Không dọn được trial hết hạn: " + ", ".join(failed))
     return store
+
+
+async def load_slow_queries(source: str) -> list[dict]:
+    """Đọc tối đa 10 query từ Tool 1 và giữ nhãn dữ liệu không tin cậy."""
+    if source not in ("performance_schema", "slow_log"):
+        raise ValueError("nguồn slow query không hợp lệ")
+    payload = json.loads(await get_slow_queries(limit=10, source=source))
+    data = payload.get("data") if isinstance(payload, dict) else None
+    rows = (data.get("queries") if payload.get("ok") is True
+            and isinstance(data, dict) else None)
+    if not isinstance(rows, list) or len(rows) > 10 or any(
+        not isinstance(row, dict)
+        or not isinstance(row.get("query_id"), str)
+        or not isinstance(row.get("sql_text"), str)
+        or row.get("untrusted") is not True
+        for row in rows
+    ):
+        raise ValueError("Tool 1 không trả danh sách slow query hợp lệ")
+    return rows
+
+
+async def generate_proposals_from_dashboard(
+    store: ProposalStore, query_id: str, sql: str,
+) -> list[str]:
+    """Kiểm SQL, gọi LLM với Tool 1–5 rồi lưu đề xuất đã qua parser."""
+    if not isinstance(query_id, str) or not 1 <= len(query_id.strip()) <= 128:
+        raise ValueError("query_id không hợp lệ")
+    if not isinstance(sql, str) or not ast_check(sql)[0]:
+        raise ValueError("SQL không qua AST whitelist")
+    build_analysis_prompt(query_id, sql)  # kiểm giới hạn SQL trước khi gọi API
+
+    llm_client = create_groq_client()
+    params = StdioServerParameters(
+        command=sys.executable, args=["-m", "mcp_server.server"],
+        cwd=str(Path(__file__).resolve().parents[1]),
+    )
+    try:
+        async with (
+            asyncio.timeout(180),
+            stdio_client(params) as (read_stream, write_stream),
+            ClientSession(read_stream, write_stream) as session,
+        ):
+            await session.initialize()
+            result = await analyze_query(
+                query_id, sql, llm_client=llm_client, mcp_client=session,
+            )
+    finally:
+        await llm_client.close()
+
+    if (result.get("query_id") != query_id
+            or not isinstance(result.get("proposals"), list)):
+        raise ValueError("LLM không trả đề xuất hợp lệ")
+    return store.add_many(query_id, sql, result["proposals"])
 
 
 async def validate_proposal(
