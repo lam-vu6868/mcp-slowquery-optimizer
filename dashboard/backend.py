@@ -11,6 +11,7 @@ THAM KHẢO  : docs/api-contract.md (Validation Layer), mcp_server/validation/ro
 
 import getpass
 import json
+import os
 from pathlib import Path
 
 from mcp_server.dashboard_server import make_dashboard_mcp
@@ -18,15 +19,18 @@ from mcp_server.store.audit_log import AuditLog
 from mcp_server.store.proposals import ProposalStore
 from mcp_server.tools.apply import OptimizationApplier, TrialIndex, check_approval
 from mcp_server.utils.config import Config
-from mcp_server.utils.db import current_db_identity
+from mcp_server.utils.db import current_db_identity, get_conn
 from mcp_server.validation.rollback import (
     expire_waiting_trials,
     recover_interrupted_trials,
+    reject_saved_index,
 )
 from mcp_server.validation.validator import validate_saved_index
 from security.approval import ApprovalTokens
 
-DEFAULT_STORE_PATH = Path(__file__).resolve().parents[1] / "data" / "outputs" / "proposals.sqlite3"
+DEFAULT_STORE_PATH = Path(os.getenv("DASHBOARD_STORE_PATH") or (
+    Path(__file__).resolve().parents[1] / "data" / "outputs" / "proposals.sqlite3"
+))
 DEFAULT_TOKEN_PATH = DEFAULT_STORE_PATH.with_name("approval_tokens.sqlite3")
 DEFAULT_AUDIT_PATH = DEFAULT_STORE_PATH.with_name("audit.sqlite3")
 
@@ -52,6 +56,32 @@ async def validate_proposal(
 ) -> dict:
     """Dùng store đã qua recovery để lưu trạng thái trial và report."""
     return await validate_saved_index(store, proposal_id, write_csv_dir=write_csv_dir)
+
+
+async def validate_from_dashboard(
+    store: ProposalStore, proposal_id: str, *, write_csv_dir: Path,
+) -> dict:
+    """Chỉ mở đường Validation từ UI trên validation lab riêng đã kiểm marker."""
+    if (Config.DB_HOST != "127.0.0.1" or Config.DB_PORT != 3309
+            or Config.DB_NAME != "shopdb"):
+        raise ValueError("Dashboard chỉ chạy Validation trên lab 3309")
+    saved = store.get(proposal_id)
+    if saved["trial_state"] != "new" or saved["proposal"].get("type") != "index":
+        raise ValueError("proposal không ở trạng thái chờ Validation")
+    write_csv_dir = Path(write_csv_dir)
+    if not (write_csv_dir / f"{saved['proposal']['table']}.csv").is_file():
+        raise ValueError("thiếu CSV của bảng đề xuất")
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute("SELECT marker FROM mcp_validation_lab_identity LIMIT 1")
+        row = cur.fetchone()
+    if not row or row.get("marker") != "mcp-validation-lab-v1":
+        raise ValueError("DB không có marker validation lab hợp lệ")
+    return await validate_proposal(store, proposal_id, write_csv_dir=write_csv_dir)
+
+
+def reject_from_dashboard(store: ProposalStore, proposal_id: str) -> str:
+    """Dọn trial đã pass qua guard DB/marker/snapshot của Validation."""
+    return reject_saved_index(store, proposal_id)
 
 
 def approval_precheck(store: ProposalStore, proposal_id: str, *,

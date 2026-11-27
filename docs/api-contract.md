@@ -494,6 +494,10 @@ Hải xây, backend gọi sau khi parser đã chấp nhận proposal. Đường 
 
 **Thời hạn chờ duyệt (code 26/11):** Store lưu `review_expires_at` cho report `passed` bằng thời điểm lưu cộng `approval.review_ttl_seconds` (86.400 giây). Precheck chung của Dashboard và Tool 6 từ chối khi hết hạn. Backend dọn trial quá hạn lúc khởi động sau recovery bằng cùng kiểm tra DB, marker và snapshot FK của Reject; lỗi dọn khiến backend dừng. Proposal cũ không có hạn không được duyệt hoặc tự DROP theo thời gian. Hạn này tách khỏi token một lần 10 phút, chỉ bắt đầu lúc cấp token. Chưa có lịch nền dọn đúng thời điểm khi Dashboard chạy liên tục.
 
+**Kiểm chứng Dashboard 26/11:** Trang Đề xuất đã gọi Validation trên lab 3309 sau khi kiểm CSV và marker; cả Reject và Approve đã thử qua Streamlit AppTest với MySQL lab thật trên hai proposal riêng. Nhánh Approve dùng token một lần, Tool 6 xác nhận index VISIBLE và ghi audit; index thử đã được dọn sau kiểm chứng trên lab. Chưa bấm Approve từ trình duyệt, chưa áp dụng trên DB chính hoặc nối tạo proposal từ UI.
+
+**Kiểm chứng trình duyệt 26/11:** `DASHBOARD_STORE_PATH` chọn store cục bộ khi khởi động và giữ token/audit cùng thư mục; mặc định vẫn là `data/outputs/proposals.sqlite3`. Playwright đã bấm Validation → Reject trên lab riêng và kiểm index vắng mặt sau cleanup. Chưa bấm Approve qua trình duyệt.
+
 ## 5. Đối chiếu đề bài và tiêu chí nghiệm thu
 
 | Yêu cầu đề bài | Bằng chứng cần có trước khi đánh dấu Done |

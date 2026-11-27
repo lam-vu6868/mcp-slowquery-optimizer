@@ -127,6 +127,16 @@ class ProposalStore:
                 (now,),
             )]
 
+    def recent_proposals(self, limit: int = 50) -> list[dict]:
+        """Đọc tối đa 50 đề xuất mới nhất cho Dashboard cục bộ."""
+        if type(limit) is not int or not 1 <= limit <= 50:
+            raise ValueError("limit phải từ 1 đến 50")
+        with closing(sqlite3.connect(self.path)) as conn:
+            ids = [row[0] for row in conn.execute(
+                "SELECT proposal_id FROM proposals ORDER BY rowid DESC LIMIT ?", (limit,),
+            )]
+        return [self.get(proposal_id) for proposal_id in ids]
+
     def save_report(self, proposal_id: str, report: dict) -> dict:
         saved = self.get(proposal_id)
         if (report.get("proposal_id") != proposal_id
