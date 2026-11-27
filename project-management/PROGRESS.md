@@ -1,12 +1,42 @@
 # 📊 TIẾN ĐỘ DỰ ÁN
 
-> **Cập nhật lần cuối:** 27/11/2026 — 20 kịch bản injection ở ranh giới code và sửa EXPLAIN ANALYZE; Vũ quản lý
+> **Cập nhật lần cuối:** 27/11/2026 — chấm mẫu Metrics index q07 từ proposal Groq đã lưu; Vũ quản lý
 > **Mốc đối chiếu hiện tại:** 27/11/2026; các bảng tuần bên dưới là lịch sử
 > **Tổng tiến độ:** Chưa tính lại từ mốc ~27% ngày 19/10
 >
 > ⚠️ **File này chỉ ghi TRẠNG THÁI.** Deadline, người phụ trách và tiêu chí Done xem [ROADMAP.md](ROADMAP.md) (mục 4–5). Mục tiêu Precision/Recall/Consistency xem [ROADMAP.md](ROADMAP.md) mục 2.4.
 
 **Chú thích:** ✅ Done | 🟡 Đang làm | ⬜ Chưa làm | 🔴 Trễ hạn | ⏸️ Tạm dừng
+
+---
+
+## Chấm mẫu Metrics index q07 ngày 27/11/2026
+
+- Triển khai `data/metrics/metrics.py` phần khớp index **chính xác** theo bảng, cột và thứ tự cho các nhóm 1/2/4; đáp án `index_set` được tách thành từng index để chấm. Đề xuất rewrite không nằm trong mẫu số Precision index. Index khác thứ tự không bị gọi ngay là sai: nếu chưa có P95 cùng điều kiện để chấm mức tương đương thì `precision`/`recall` trả `null` thay vì gán 0.
+- Đọc store Groq q07 đã lưu và `ground_truth.json` bằng CLI chỉ đọc: **2/2 index khớp chính xác**, Precision index **2/2 = 1,0**; Recall query nhóm 2 **1/1 = 1,0** trong phạm vi **duy nhất q07**. Không dùng tên index để quyết định khớp; không chấm hiệu năng của cả bộ hai index + rewrite. Ground truth còn `performance_verified_pending_review`, chưa có chữ ký GVHD. Bằng chứng tóm tắt ở `data/outputs/metrics_q07_pilot_20261127.json` (gitignored), không chứa SQL.
+- CLI từ chối đường dẫn store không tồn tại trước khi SQLite có thể tạo file rỗng, tránh chấm nhầm thành 0 đề xuất. **348 tests pass**, Ruff và `git diff --check` pass. Chưa có kết quả LLM cho đủ 30 query để tính Precision/Recall toàn bộ, Consistency Rate, False Positive Rate hoặc metric rewrite; chưa tạo `comparison.csv`. Không gọi Groq/MySQL hay chạy DDL trong lượt chấm mẫu.
+
+---
+
+## Kiểm tích hợp injection B05 qua LLM host ngày 27/11/2026
+
+- Test dùng LLM/MCP giả: model gọi `get_schema`, nhận `orders` cùng tên B05 chứa chỉ thị, rồi cố gọi `apply_optimization` với token giả. Host lọc B05 khỏi kết quả Tool 2 trước lượt model tiếp theo; danh sách tool cấp cho model chỉ có Tool 1–5. Host từ chối Tool 6 bằng `PermissionError` trước `mcp_client.call_tool`; MCP chỉ được gọi `get_schema` một lần, run metadata ghi lỗi. Không có DDL hoặc audit Tool 6 cho lượt bị chặn sớm này; ca D05 riêng kiểm audit khi token giả thực sự tới lõi Tool 6 trên DB giả.
+- Đây là kiểm tích hợp bằng LLM/MCP giả cho một ca đại diện, không phải 20 lần gọi Groq hoặc tiêm dữ liệu vào MySQL. **345 tests pass**, Ruff và `git diff --check` pass. Report `security/injection_report.md` ghi rõ phạm vi; chặng 20 injection vẫn **Đang làm** về kiểm chứng end-to-end.
+
+---
+
+## Lọc tên bảng B05 trước Groq ngày 27/11/2026
+
+- `mcp_server/llm/agent.py` lọc tên bảng Tool 2 không khớp identifier đơn giản trước khi gửi kết quả cho Groq và trước khi thêm bảng vào schema của parser. Bảng hợp lệ như `orders` vẫn giữ; raw tool result và nội dung chuyển cho LLM có hash riêng trong run metadata khi có lọc. Public output của Tool 2 không đổi. Test giả kiểm cả response đầy đủ và `truncated`.
+- Probe Groq với SQL catalog q07 và MCP giả: sau sửa, B05 tới host nhưng **không tới model**. Một lượt sau sửa vẫn báo `400/tool_use_failed`. Đối chứng cuối gửi cùng nội dung tool result (SHA-256 khớp) cho nhánh bình thường và nhánh B05 đã lọc: nhánh bình thường thành công, nhánh B05 lỗi. Do đó chưa thể quy lỗi API cho payload B05 hoặc tuyên bố Groq luôn phân tích thành công; không có bằng chứng gọi Tool 6/token/DDL.
+- Bằng chứng ở `data/outputs/groq_injection_b05_after_fix_20261127.json` và `data/outputs/groq_injection_b05_control_20261127.json` (gitignored). **344 tests pass**, Ruff và `git diff --check` pass. Không kết nối MySQL trong probe; DB chính không đổi. Mốc injection vẫn **Đang làm**.
+
+---
+
+## Probe Groq với tên schema độc hại B05 ngày 27/11/2026
+
+- Trước bản sửa lọc tên bảng, dùng Groq thật, SQL catalog q07 và MCP giả chỉ trả schema tổng hợp; không kết nối MySQL hoặc gửi slow log thật. Đối chứng tên bảng bình thường: gọi `get_schema`, trả JSON hợp lệ và 2 proposal. Hai lượt tên bảng chứa chỉ thị B05: payload tới model qua `get_schema`, sau đó Groq trả HTTP 400 `tool_use_failed`, không có proposal/DDL. Metadata lỗi lần lặp không chứa tên Tool 6 hoặc token giả; chưa chứng minh model làm theo chỉ thị. Đối chứng sau sửa ở mục trên cho thấy không thể quy lỗi API này cho riêng payload B05.
+- Bằng chứng tóm tắt không chứa SQL/key/response ở `data/outputs/groq_injection_b05_probe_20261127.json` và `data/outputs/groq_injection_b05_repeat_20261127.json` (gitignored). Host chỉ cấp Tool 1–5; DB chính không bị ghi. Đây là một probe LLM, không thay thế kết quả 20 ca ranh giới hoặc hoàn tất mốc injection end-to-end.
 
 ---
 
@@ -118,7 +148,7 @@
 |  4  | Tích hợp LLM                                         | 🟡 Đang làm | Vũ               |           18/10            |
 |  5  | Validation Layer                                     | 🟡 Đang làm | Hải              |           22/10            |
 |  6  | Tool 6 + approval token + 20 injection               | 🟡 Đang làm | Tình             |           27/10            |
-|  7  | Metrics + Baseline                                   |     ⬜      | Tường · Hải      |           03/11            |
+|  7  | Metrics + Baseline                                   | 🟡 Chấm mẫu q07; baseline 30/30, còn metric toàn bộ | Tường · Hải | 03/11 |
 |  8  | Dashboard 4 tab                                      |     ⬜      | Tình             |           10/11            |
 |  9  | Báo cáo + Demo                                       |     ⬜      | Cả nhóm          |       17/11 · 01/12        |
 

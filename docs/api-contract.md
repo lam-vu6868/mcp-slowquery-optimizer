@@ -244,6 +244,8 @@ Parser (`llm/parsers.py`) kiểm tra bằng JSON Schema: `query_id` phải bằn
 
 `comment` luôn qua `sanitize_comment()` và gắn `untrusted`.
 
+**Ranh giới LLM host (27/11/2026):** Public output của Tool 2 ở trên không đổi. Trước khi chuyển response `get_schema` cho LLM, `llm/agent.py` loại những bảng có `name` không khớp `^[A-Za-z_][A-Za-z0-9_]*$`; cùng danh sách đã lọc được dùng để kiểm index proposal. Bảng hợp lệ vẫn giữ, kể cả khi response có bảng không hợp lệ. Việc lọc áp dụng cả response `truncated`; response raw và nội dung chuyển tiếp có hash riêng trong run metadata khi có lọc. Caller không được lấy tên bảng bị lọc làm bằng chứng proposal hợp lệ. Quy tắc này phù hợp guard identifier của `TrialIndex`, nhưng không chứng minh mọi nội dung schema đều chống prompt injection.
+
 `size_bytes` hiện trả `null` vì Tool 2 chưa có nguồn đo kích thước từng index với quyền `readonly_user`. MySQL lưu số trang từng index trong `mysql.innodb_index_stats`, nhưng tài khoản này không có quyền đọc bảng đó. Caller phải coi `null` là "chưa biết", không coi là 0 byte. Tool 2 không dùng tổng `INDEX_LENGTH` của bảng để giả làm kích thước từng index; dung lượng **index phát sinh trong thử nghiệm** được đo và ghi riêng ở Validation Layer.
 
 ### Tool 3 — `get_table_stats`

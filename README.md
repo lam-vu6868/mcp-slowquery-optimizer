@@ -83,10 +83,11 @@ flowchart TD
 | Tool 4 `explain_query`                 |     ✅ Done     |
 | Tool 5 `benchmark_query`               |     ✅ Done     |
 | Đo P95 bộ 30 query                     | ✅ Baseline 30/30 valid; đáp án 30/30 đạt P95/hash |
+| Metrics đề xuất LLM                    | 🟡 Chấm mẫu index q07: Precision 2/2, Recall 1/1; chưa chấm toàn bộ 30 query |
 | Tool 1–5 MCP                           | 🟡 Đã kiểm chứng 5/5 qua stdio/MySQL; chặng chưa đánh dấu Done |
 | Validation Layer                       | 🟡 q01/q05 đạt trên lab 5M; Validation → Reject đã thử qua Streamlit AppTest trên lab riêng; q01 runtime vẫn chặn FK |
 | Tool 6 + approval token                | 🟡 Approve đã thử trên trình duyệt với lab riêng; chưa chạy 20 injection hoặc áp dụng trên DB chính |
-| 20 Prompt Injection                    | 🟡 20/20 ca ranh giới code bị chặn; chưa thử LLM/MySQL end-to-end |
+| 20 Prompt Injection                    | 🟡 20/20 ca ranh giới code bị chặn; tên bảng B05 đã lọc trước Groq, chưa kiểm đủ end-to-end |
 | Dashboard                              | 🟡 Trang Slow Query đã đọc DB chính; Groq/MCP lưu 3 đề xuất q07, một index đã qua Validation trên lab riêng rồi được dọn; trang duyệt đã hiển thị P95/chi phí ghi/dung lượng từ report |
 | Báo cáo + Demo                         | ⬜ Chưa bắt đầu |
 
