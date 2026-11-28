@@ -1,12 +1,23 @@
 # 📊 TIẾN ĐỘ DỰ ÁN
 
-> **Cập nhật lần cuối:** 27/11/2026 — bàn giao điểm dừng theo yêu cầu người dùng; Vũ quản lý
-> **Mốc đối chiếu hiện tại:** 27/11/2026; các bảng tuần bên dưới là lịch sử
-> **Tổng tiến độ:** Chưa tính lại từ mốc ~27% ngày 19/10
+> **Cập nhật lần cuối:** 28/11/2026 — hoàn thiện Dashboard 7 trang, chế độ thử siêu nhanh, Consistency Rate 5 lần mẫu và báo cáo/slide; Vũ quản lý
+> **Mốc đối chiếu hiện tại:** 28/11/2026; các bảng tuần bên dưới là lịch sử
+> **Tổng tiến độ:** Hoàn tất lõi hệ thống, kiểm thử bảo mật 20/20, thực nghiệm Rewrite 12/12 + 2 baseline + Dashboard 7 trang + bản thảo báo cáo/slide
 >
 > ⚠️ **File này chỉ ghi TRẠNG THÁI.** Deadline, người phụ trách và tiêu chí Done xem [ROADMAP.md](ROADMAP.md) (mục 4–5). Mục tiêu Precision/Recall/Consistency xem [ROADMAP.md](ROADMAP.md) mục 2.4.
 
 **Chú thích:** ✅ Done | 🟡 Đang làm | ⬜ Chưa làm | 🔴 Trễ hạn | ⏸️ Tạm dừng
+
+---
+
+## Hoàn thiện Dashboard 7 trang, đo Consistency Rate 5 lần và ổn định demo ngày 28/11/2026
+
+- **Dọn DB chính `3307`:** xóa index dư duy nhất `idx_gt_q01_cover` trên `order_items` (khôi phục đúng 100% index gốc theo [db/schema.sql](../db/schema.sql)).
+- **Cải tiến Prompt v3 & Groq retry:** bổ sung nguyên tắc tránh đề xuất `rewrite` thừa khi query đã lọc/JOIN trực tiếp trong [mcp_server/llm/prompts.py](../mcp_server/llm/prompts.py); thêm tự động chờ retry theo số giây của lỗi 429 TPM (nhưng dừng ngay nếu hết quota ngày TPD) ngay trong [mcp_server/llm/groq.py](../mcp_server/llm/groq.py).
+- **Chế độ Thử siêu nhanh (1 lượt) & lọc slow log:** thêm `mode="fast"` (1 lượt trước + 1 lượt sau + SHA-256 hash + tiến độ chi tiết từng bước) trong [scripts/lab_demo_runner.py](../scripts/lab_demo_runner.py) và [dashboard/pages/3_chay_thu_de_xuat.py](../dashboard/pages/3_chay_thu_de_xuat.py) (đã chạy thử thật `q01` trên lab `3309`: `19.18s → 1.50s`, giảm **92,16%**, tổng thời gian 63s); sửa [dashboard/detection.py](../dashboard/detection.py) lọc `WHERE db = 'shopdb'` (loại `stackexchange_lab`) và gom nhóm fingerprint cho nhánh `slow_log`.
+- **Tách Trang 7 (`7_danh_gia_llm.py`) & đo Consistency Rate 5 lần:** rút gọn [dashboard/pages/4_so_sanh.py](../dashboard/pages/4_so_sanh.py) còn 2 tab chạy live; thêm [dashboard/pages/7_danh_gia_llm.py](../dashboard/pages/7_danh_gia_llm.py) hiển thị tiếng Việt **Precision, Recall, False Positive Rate, Consistency Rate** + nút đo live 5 lần + bảng/biểu đồ tổng kết 30 query; thêm `compute_false_positive_rate()` và `compute_consistency_rate()` trong [data/metrics/metrics.py](../data/metrics/metrics.py).
+- **Thực nghiệm Consistency Rate (5 lần lặp qua Groq + MCP Tool 1–5):** `q01` đạt **60,0%** (3/5), `q14` đạt **80,0%** (4/5), trung bình **70,0%** (lưu tại `data/outputs/consistency_5runs.json`, gitignored).
+- **Cập nhật tài liệu bảo vệ:** đồng bộ [reports/SLIDE_VA_KICH_BAN_DEMO.md](../reports/SLIDE_VA_KICH_BAN_DEMO.md) và [reports/BAO_CAO_DO_AN.md](../reports/BAO_CAO_DO_AN.md) theo Dashboard 7 trang, 2 baseline, Consistency Rate và **393 unit tests passed** (Ruff pass).
 
 ---
 

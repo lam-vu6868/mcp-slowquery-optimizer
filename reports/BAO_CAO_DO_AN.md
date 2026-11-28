@@ -2,7 +2,7 @@
 ## Tối ưu Slow Query và Chỉ mục Cơ sở dữ liệu bằng LLM thông qua kiến trúc MCP (Model Context Protocol)
 
 > **Hệ thống:** MCP Slow Query Optimizer  
-> **Môi trường thực nghiệm:** MySQL 8.0 (`shopdb.multitable-v1`, 5 bảng, tổng 5.000.000 dòng), Python 3.11+, MCP SDK 2.x (stdio), LLM Groq (`openai/gpt-oss-120b`, `temperature=0.0`), Dashboard Streamlit 4 tab.  
+> **Môi trường thực nghiệm:** MySQL 8.0 (`shopdb.multitable-v1`, 5 bảng, tổng 5.000.000 dòng), Python 3.11+, MCP SDK 2.x (stdio), LLM Groq (`openai/gpt-oss-120b`, `temperature=0.0`), Dashboard Streamlit 7 trang.  
 > **Nguyên tắc báo cáo:** Mọi con số dưới đây đều lấy trực tiếp từ bằng chứng đo thật trên lab (`data/outputs/`, `data/metrics/comparison.csv`, `security/injection_report.md`) và nêu trung thực giới hạn thực nghiệm.
 
 ---
@@ -121,6 +121,10 @@ Sử dụng `scripts/measure_llm_rewrite.py` (`--timeout-ms 60000`, 3 warm-up + 
 
 *Lưu ý theo ROADMAP mục 2.5:* Baseline thứ 2 là **`pt-query-digest`** dùng cho khâu **phát hiện/xếp hạng query chậm** (so sánh Top-10 và thời gian phân tích với Tool 1 trên Tab 4 So sánh), không đề xuất index nên không nằm trong bảng Precision/Recall này. `greedy` đạt 0% khớp chính xác vì không tự mở rộng sang covering index 3–4 cột (gồm cột `SELECT`) và không hỗ trợ rewrite SQL.
 
+- **Chỉ số đánh giá LLM bổ sung (Trang 7 Dashboard):**
+  - **False Positive Rate (theo mức khớp cấu trúc chính xác):** `28 / 37 = 75,68%` (nhiều đề xuất phụ khác đáp án chuẩn nhưng chưa đo P95 tương đương).
+  - **Consistency Rate (chạy lặp 5 lần cùng 1 prompt qua Groq + MCP Tool 1–5):** đo thực nghiệm mẫu trên `q01` (nhóm Index: `3/5 = 60,0%`) và `q14` (nhóm Rewrite: `4/5 = 80,0%`), trung bình **70,0%** (`data/outputs/consistency_5runs.json`).
+
 ### 4.4. Phân tích Case Study `q07` & Trade-off Đọc/Ghi
 - **Hiệu năng đọc trên lab `3309`:** Index LLM đề xuất `orders(status, order_date, customer_id, total_amount)` giảm P95 từ **2.261,62 → 1.137,69 ms (-49,70%)**, giảm `rows_examined` từ **1.971.386 → 628.511**, hash khớp, 0 timeout.
 - **Chi phí ghi trên Write Lab `3308` (100.000 dòng mẫu):**
@@ -132,14 +136,14 @@ Sử dụng `scripts/measure_llm_rewrite.py` (`--timeout-ms 60000`, 3 warm-up + 
 ### 4.5. Kết quả kiểm thử Bảo mật & Prompt Injection (`security/injection_report.md`)
 - Chạy tự động 20 kịch bản (4 nhóm A/B/C/D × 5) bằng `python -m security.injection_tests.run_tests`: **20/20 ca bị chặn tại ranh giới code đã thử** (9 ca ở lớp lọc comment/prompt, 1 ca B05 ở bộ lọc tên bảng trước Groq + `TrialIndex` guard, 5 ca AST whitelist — đã phát hiện và vá lỗi `EXPLAIN ANALYZE` ở ca C05, 4 ca parser JSON, 1 ca D05 bị chặn ở registry LLM không có Tool 6 và audit ghi `attempted`/`rejected/TOKEN_INVALID`).
 - Kiểm thử luồng UI trên lab riêng (`3309`/`3308`): đã xác nhận thành công cả luồng **Validation → Reject (cleanup)** và **Validation → Approve (Tool 6 đổi `VISIBLE`, tiêu thụ 1 token, ghi audit)**, sau đó dọn sạch lab.
-- Tổng bộ kiểm thử tự động hiện tại: **379 unit tests pass**, Ruff pass.
+- Tổng bộ kiểm thử tự động hiện tại: **393 unit tests pass**, Ruff pass.
 
 ---
 
 ## Chương 5. Giới hạn Thực nghiệm và Hướng phát triển
 
 ### 5.1. Giới hạn nêu trung thực
-1. **Nhóm Index 1/2/4:** Mới chấm mức **khớp cấu trúc chính xác**; chưa đo P95 tương đương cho các index khác đáp án nên chưa có Precision/Recall cuối (bao gồm mức tương đương ≤10%), chưa đo đủ Consistency Rate (5 lần lặp) và False Positive Rate toàn bộ.
+1. **Nhóm Index 1/2/4 & Consistency Rate:** Nhóm Index 1/2/4 mới chấm mức **khớp cấu trúc chính xác** (chưa đo P95 tương đương cho các index khác đáp án nên chưa có Precision/Recall cuối bao gồm mức tương đương ≤10%); Consistency Rate (5 lần lặp) đã đo thực nghiệm mẫu trên `q01` và `q14`, chưa chạy đủ 30/30 × 5 lượt do giới hạn tốc độ gói Groq Free Tier.
 2. **Kiểm thử Prompt Injection:** 20/20 là kết quả kiểm ranh giới code bằng dữ liệu giả (chỉ ca B05 có probe với Groq thật + MCP giả); chưa tiêm payload thật vào `mysql.slow_log`/schema MySQL để kiểm end-to-end.
 3. **Môi trường chính:** Chưa áp dụng index thật trên DB chính `3307` do chưa có workload đọc/ghi đồng thời đại diện.
 

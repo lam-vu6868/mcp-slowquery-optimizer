@@ -16,12 +16,28 @@ THAM KHẢO  : mcp_server/llm/agent.py, docs/api-contract.md (mục 2.3)
 TRẠNG THÁI : ĐANG LÀM — q07 đã thử qua Groq + MCP/MySQL; chưa đo độ ổn định.
 """
 
+import asyncio
 import json
 import os
+import re
 from types import SimpleNamespace
 
 from dotenv import load_dotenv
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, RateLimitError
+
+_RETRY_AFTER_RE = re.compile(r"try again in\s+(\d+(?:\.\d+)?)s", re.IGNORECASE)
+
+
+def _tpm_retry_delay(exc: RateLimitError) -> float | None:
+    """Trả số giây cần chờ nếu là giới hạn theo phút (TPM/RPM); trả None nếu hết quota ngày."""
+    msg = str(exc)
+    lower = msg.lower()
+    if "per day" in lower or "tpd" in lower or "rpd" in lower:
+        return None
+    match = _RETRY_AFTER_RE.search(msg)
+    if match:
+        return min(float(match.group(1)) + 1.5, 65.0)
+    return 15.0
 
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
@@ -97,14 +113,23 @@ class GroqLLMClient:
             if self._use_max_tokens
             else {"max_completion_tokens": max_tokens}
         )
-        response = await self._api.chat.completions.create(
-            model=self._model_override or model,
-            temperature=temperature,
-            messages=_to_groq_messages(system, messages),
-            tools=groq_tools,
-            **token_arg,
-        )
-        if not response.choices:
+        response = None
+        for attempt in range(5):
+            try:
+                response = await self._api.chat.completions.create(
+                    model=self._model_override or model,
+                    temperature=temperature,
+                    messages=_to_groq_messages(system, messages),
+                    tools=groq_tools,
+                    **token_arg,
+                )
+                break
+            except RateLimitError as exc:
+                delay = _tpm_retry_delay(exc)
+                if delay is None or attempt == 4:
+                    raise
+                await asyncio.sleep(delay)
+        if response is None or not response.choices:
             raise RuntimeError("Groq không trả lựa chọn nào")
         choice = response.choices[0]
         blocks = []
