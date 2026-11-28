@@ -1,38 +1,44 @@
 """
-dashboard/pages/2_proposals.py
-------------------------------
+dashboard/pages/6_duyet_va_ap_dung.py
+-------------------------------------
 
 CHỨC NĂNG :
-    TAB 2 — Đề xuất của LLM + trạng thái Validation + nút Approve / Reject.
+    TRANG 6 — Duyệt & áp dụng (Human-in-the-loop): chạy Validation chính thức
+    (INVISIBLE INDEX trên lab 3309 + đo chi phí ghi trên write lab 3308), xem trade-off,
+    sau đó bấm Approve (sinh approval token 1 lần gọi Tool 6) hoặc Reject (xóa index thử).
 
-PHỤ TRÁCH  : Tình    |    REVIEW: Tường
+PHỤ TRÁCH  : Tình    |    REVIEW: Vũ + Hải
 
 LƯU Ý:
-    - Nút Approve -> server sinh approval token (dùng 1 lần, hết hạn 10 phút) -> backend gọi Tool 6.
-    - Đề xuất loại 'rewrite' chỉ HIỂN THỊ, KHÔNG có nút Apply.
-    - Chỉ cho Approve khi validation_report.status == 'passed'.
-
-THAM KHẢO  : docs/api-contract.md (Tool 6, mục 4), security/approval.py
-
-TRẠNG THÁI : ĐANG LÀM — tạo proposal từ LLM, Validation trên lab, Approve/Reject.
+    - Đề xuất 'rewrite' chỉ hiển thị, KHÔNG có nút Apply.
+    - Chỉ cho Approve khi validation_report.status == 'passed' và còn hạn 24h.
+    - Ô "Thư mục CSV cho write lab" điền sẵn D:\\labt2\\data trong mục Nâng cao.
 """
 
 import asyncio
 import math
+import sys
 import time
 from pathlib import Path
 
 import streamlit as st
 
+_ROOT = str(Path(__file__).resolve().parents[2])
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+
 from dashboard.backend import (
     apply_from_dashboard,
-    generate_proposals_from_dashboard,
     initialize_backend,
     reject_from_dashboard,
     validate_from_dashboard,
 )
+from dashboard.lab_jobs import lab_port_open
+from dashboard.lab_session import lab_session
 
-st.title("Đề xuất tối ưu")
+DEFAULT_CSV_DIR = r"D:\labt2\data"
+
+st.title("6. Duyệt & áp dụng (Human-in-the-loop)")
 
 try:
     if "proposal_store" not in st.session_state:
@@ -47,34 +53,8 @@ notice = st.session_state.pop("proposal_notice", None)
 if notice:
     st.success(notice)
 
-st.subheader("Tạo đề xuất từ LLM")
-selected_query_id = st.session_state.pop("analysis_query_id", None)
-selected_sql = st.session_state.pop("analysis_sql", None)
-if selected_query_id is not None and selected_sql is not None:
-    st.session_state["proposal_query_id"] = selected_query_id
-    st.session_state["proposal_sql"] = selected_sql
-query_id_input = st.text_input("Mã query", key="proposal_query_id")
-sql_input = st.text_area("SQL cần phân tích", height=140, key="proposal_sql")
-st.caption("LLM có thể gọi EXPLAIN/benchmark đọc. SQL từ performance_schema có thể cần thay dấu ? bằng giá trị cụ thể.")
-confirmed_generation = st.checkbox("Tôi xác nhận gửi SQL tới LLM")
-if st.button("Phân tích và lưu đề xuất", disabled=not (
-    query_id_input.strip() and sql_input.strip() and confirmed_generation
-)):
-    try:
-        created = asyncio.run(generate_proposals_from_dashboard(
-            store, query_id_input.strip(), sql_input,
-        ))
-    except Exception:  # noqa: BLE001 - không hiển thị SQL hoặc nội dung lỗi API
-        st.error("Không tạo được đề xuất. Kiểm tra SQL, cấu hình LLM/MCP và log lần chạy.")
-    else:
-        if created:
-            st.session_state["proposal_notice"] = f"Đã lưu {len(created)} đề xuất."
-            st.rerun()
-        else:
-            st.info("LLM không đưa ra đề xuất cho query này.")
-
 if not proposals:
-    st.info("Chưa có đề xuất trong store cục bộ.")
+    st.info("Chưa có đề xuất trong store cục bộ. Hãy tạo đề xuất ở bước 2 (LLM đề xuất).")
     st.stop()
 
 by_id = {item["proposal_id"]: item for item in proposals}
@@ -123,17 +103,24 @@ if proposal["type"] != "index":
     st.stop()
 
 if saved["trial_state"] == "new":
-    st.warning("Validation sẽ tạo index thử INVISIBLE trên validation lab 3309.")
-    st.caption("Cần Dashboard trỏ DB tới 127.0.0.1:3309 và write lab chạy ở cổng 3308.")
-    csv_dir = st.text_input("Thư mục CSV cho write lab", key=f"csv_dir_{proposal_id}")
+    st.warning("Validation chính thức sẽ tạo index INVISIBLE trên lab 3309 và đo chi phí ghi trên write lab 3308.")
+    if not lab_port_open(3309) or not lab_port_open(3308):
+        st.caption("Cần bật cả 2 container lab: `docker start mcp_validation_lab_db mcp_write_lab_db`.")
+    with st.expander("Nâng cao (Thư mục CSV cho write lab)", expanded=False):
+        csv_dir = st.text_input(
+            "Thư mục CSV cho write lab",
+            value=DEFAULT_CSV_DIR,
+            key=f"csv_dir_{proposal_id}",
+        )
     confirmed = st.checkbox("Tôi xác nhận chạy Validation trên lab", key=f"validate_{proposal_id}")
     if st.button("Chạy Validation", disabled=not (confirmed and csv_dir.strip())):
         try:
-            result = asyncio.run(validate_from_dashboard(
-                store, proposal_id, write_csv_dir=Path(csv_dir),
-            ))
+            with lab_session():
+                result = asyncio.run(validate_from_dashboard(
+                    store, proposal_id, write_csv_dir=Path(csv_dir),
+                ))
         except Exception:  # noqa: BLE001 - không hiển thị SQL/chi tiết DB nội bộ
-            st.error("Validation không chạy được. Kiểm tra lab 3309, write lab 3308 và CSV.")
+            st.error("Validation không chạy được. Kiểm tra lab 3309, write lab 3308 và thư mục CSV.")
         else:
             st.session_state["proposal_notice"] = f"Validation: {result['status']}"
             st.rerun()
@@ -152,7 +139,8 @@ if can_act:
     approve_col, reject_col = st.columns(2)
     if approve_col.button("Approve", disabled=not (confirmed and can_approve)):
         try:
-            asyncio.run(apply_from_dashboard(store, proposal_id))
+            with lab_session():
+                asyncio.run(apply_from_dashboard(store, proposal_id))
         except Exception:  # noqa: BLE001 - backend giữ chi tiết trong audit
             st.error("Không áp dụng được đề xuất. Kiểm tra audit và trạng thái index.")
         else:
@@ -160,7 +148,8 @@ if can_act:
             st.rerun()
     if reject_col.button("Reject", disabled=not confirmed):
         try:
-            reject_from_dashboard(store, proposal_id)
+            with lab_session():
+                reject_from_dashboard(store, proposal_id)
         except Exception:  # noqa: BLE001 - không báo đã dọn khi DDL lỗi
             st.error("Không dọn được index thử. Kiểm tra trial pending.")
         else:

@@ -32,15 +32,17 @@ _STAT_RE = re.compile(
 _STRING_LIT_RE = re.compile(r"'[^']*'|\"[^\"]*\"")
 _NUMBER_LIT_RE = re.compile(r"\b\d+(?:\.\d+)?\b")
 _WS_RE = re.compile(r"\s+")
+_SPACE_AROUND_OPS_RE = re.compile(r"\s*([(),=<>+\-*/])\s*")
 
 
 def fingerprint_sql(sql: str) -> str:
     """Chuẩn hóa SQL thành fingerprint (thay hằng số bằng ?) để gom nhóm."""
     cleaned = re.sub(r"/\*.*?\*/", " ", sql, flags=re.DOTALL)
+    cleaned = cleaned.replace("`", "")
     cleaned = _STRING_LIT_RE.sub("?", cleaned)
     cleaned = _NUMBER_LIT_RE.sub("?", cleaned)
     cleaned = _WS_RE.sub(" ", cleaned).strip().rstrip(";").lower()
-    return cleaned
+    return _SPACE_AROUND_OPS_RE.sub(r"\1", cleaned)
 
 
 def fingerprint_id(sql: str) -> str:
@@ -82,6 +84,7 @@ def parse_slow_log_file(log_path: str | Path, *, limit: int = 10) -> dict:
                     "total_latency_ms": 0.0,
                     "max_latency_ms": 0.0,
                     "total_rows_examined": 0,
+                    "sample_sql": raw_sql[:200],
                 },
             )
             entry["count"] += 1
@@ -122,6 +125,7 @@ def parse_slow_log_file(log_path: str | Path, *, limit: int = 10) -> dict:
             "avg_latency_ms": round(item["total_latency_ms"] / count, 2),
             "max_latency_ms": round(item["max_latency_ms"], 2),
             "avg_rows_examined": round(item["total_rows_examined"] / count, 1),
+            "sample_sql": item.get("sample_sql", ""),
         })
 
     duration_ms = round((time.perf_counter() - t0) * 1000.0, 2)
@@ -179,6 +183,7 @@ def run_pt_query_digest(
             "avg_latency_ms": round(float(qt.get("avg", 0.0)) * 1000.0, 2),
             "max_latency_ms": round(float(qt.get("max", 0.0)) * 1000.0, 2),
             "avg_rows_examined": round(float(re_m.get("avg", 0.0)), 1),
+            "sample_sql": fp[:200],
         })
     return {
         "engine": "pt-query-digest",

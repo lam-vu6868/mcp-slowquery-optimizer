@@ -21,7 +21,7 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 
 from mcp_server.dashboard_server import make_dashboard_mcp
 from mcp_server.llm.agent import analyze_query
-from mcp_server.llm.groq import create_groq_client
+from mcp_server.llm.groq import create_gemini_client, create_groq_client
 from mcp_server.llm.prompts import build_analysis_prompt
 from mcp_server.store.audit_log import AuditLog
 from mcp_server.store.proposals import ProposalStore
@@ -61,15 +61,17 @@ def initialize_backend(store_path: Path = DEFAULT_STORE_PATH) -> ProposalStore:
     return store
 
 
-async def load_slow_queries(source: str) -> list[dict]:
-    """Đọc tối đa 10 query từ Tool 1 và giữ nhãn dữ liệu không tin cậy."""
+async def load_slow_queries(source: str, *, limit: int = 10) -> list[dict]:
+    """Đọc tối đa `limit` (1–100) query từ Tool 1 và giữ nhãn dữ liệu không tin cậy."""
     if source not in ("performance_schema", "slow_log"):
         raise ValueError("nguồn slow query không hợp lệ")
-    payload = json.loads(await get_slow_queries(limit=10, source=source))
+    if type(limit) is not int or not 1 <= limit <= 100:
+        raise ValueError("limit phải từ 1 đến 100")
+    payload = json.loads(await get_slow_queries(limit=limit, source=source))
     data = payload.get("data") if isinstance(payload, dict) else None
     rows = (data.get("queries") if payload.get("ok") is True
             and isinstance(data, dict) else None)
-    if not isinstance(rows, list) or len(rows) > 10 or any(
+    if not isinstance(rows, list) or len(rows) > limit or any(
         not isinstance(row, dict)
         or not isinstance(row.get("query_id"), str)
         or not isinstance(row.get("sql_text"), str)
@@ -90,7 +92,8 @@ async def generate_proposals_from_dashboard(
         raise ValueError("SQL không qua AST whitelist")
     build_analysis_prompt(query_id, sql)  # kiểm giới hạn SQL trước khi gọi API
 
-    llm_client = create_groq_client()
+    provider = (os.getenv("LLM_PROVIDER") or "groq").strip().lower()
+    llm_client = create_gemini_client() if provider == "gemini" else create_groq_client()
     params = StdioServerParameters(
         command=sys.executable, args=["-m", "mcp_server.server"],
         cwd=str(Path(__file__).resolve().parents[1]),

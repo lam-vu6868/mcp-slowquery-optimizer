@@ -45,7 +45,7 @@ def test_analysis_prompt_rejects_excessively_long_sql():
 
 def test_system_prompt_states_output_and_trust_boundary():
     """Phiên bản prompt có các quy tắc cốt lõi cho LLM host."""
-    assert PROMPT_VERSION == "v2"
+    assert PROMPT_VERSION == "v3"
     assert "JSON" in SYSTEM_PROMPT
     assert "không tin cậy" in SYSTEM_PROMPT
     assert "Tool 1–5" in SYSTEM_PROMPT

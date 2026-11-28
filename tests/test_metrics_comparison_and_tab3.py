@@ -43,21 +43,21 @@ def test_summarize_rewrite_reports_and_write_csv(tmp_path):
     assert summary["items"][0]["p95_improvement_pct"] == 80.0
 
     rows = build_comparison_rows(rewrite_dir=tmp_path)
-    assert len(rows) == 3
-    assert [r["method"] for r in rows] == ["llm_groq_mcp", "rule_based", "greedy"]
+    assert len(rows) == 2
+    assert [r["method"] for r in rows] == ["llm_groq_mcp", "greedy"]
 
     csv_path = write_comparison_csv(tmp_path / "comparison.csv", rows)
     assert csv_path.is_file()
     with csv_path.open(encoding="utf-8", newline="") as fh:
         loaded = list(csv.DictReader(fh))
-    assert len(loaded) == 3
+    assert len(loaded) == 2
     assert loaded[0]["method"] == "llm_groq_mcp"
     assert loaded[0]["rewrite_passed"] == "1"
 
 
-def test_dashboard_tab3_comparison_renders_without_error():
-    page = Path(__file__).resolve().parents[1] / "dashboard" / "pages" / "3_comparison.py"
+def test_dashboard_tab4_comparison_renders_without_error():
+    page = Path(__file__).resolve().parents[1] / "dashboard" / "pages" / "4_so_sanh.py"
     at = AppTest.from_file(page)
     at.run(timeout=15)
     assert not at.exception
-    assert any("So sánh hiệu năng" in t.value for t in at.title)
+    assert any("So sánh" in t.value for t in at.title)

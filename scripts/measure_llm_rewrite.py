@@ -131,23 +131,33 @@ async def measure_rewrite_with_indexes(
     *, query_id: str, original_sql: str, rewritten_sql: str,
     indexes: list[dict], trial_factory, fk_snapshots: dict | None = None,
     explain=None, benchmark=None, timeout_ms: int | None = None,
+    warmup_runs: int | None = None, measured_runs: int | None = None,
+    allow_no_index: bool = False, progress=None,
 ) -> dict:
     """Đo SQL gốc/OFF rồi rewrite/ON; luôn dọn mọi trial đã bắt đầu.
 
     fk_snapshots: dict {index_name -> snapshot} từ preflight (truyền vào khi
     index có FK risk để nhánh opt-in hoạt động đúng).
     timeout_ms: giới hạn timeout cho mỗi lượt benchmark (1000-60000 ms).
+    warmup_runs / measured_runs: ghi đè số lượt (chế độ "đo nhanh" của Dashboard);
+    nếu bỏ trống dùng config/settings.yaml. Kết quả đo nhanh có `mode="quick"`.
+    allow_no_index: cho phép phương án chỉ rewrite (không có index để tạo).
     """
     report = {
         "query_id": query_id, "candidate_sql_kind": "rewritten",
         "status": "inconclusive", "failure_reason": None,
         "approvable": False, "before": None, "after": None, "index_usage": {},
     }
-    if (not query_id or not indexes or not all(isinstance(item, dict)
+    if (not query_id or (not indexes and not allow_no_index) or not all(
+            isinstance(item, dict)
             and item.get("table") and item.get("index_name") for item in indexes)
             or len({(item["table"], item["index_name"]) for item in indexes}) != len(indexes)
             or (timeout_ms is not None
-                and (type(timeout_ms) is not int or not 1000 <= timeout_ms <= 60000))):
+                and (type(timeout_ms) is not int or not 1000 <= timeout_ms <= 60000))
+            or (warmup_runs is not None
+                and (type(warmup_runs) is not int or not 0 <= warmup_runs <= 10))
+            or (measured_runs is not None
+                and (type(measured_runs) is not int or not 5 <= measured_runs <= 50))):
         report["failure_reason"] = "proposal_context_invalid"
         return report
     if not ast_check(original_sql)[0] or not ast_check(rewritten_sql)[0]:
@@ -159,9 +169,18 @@ async def measure_rewrite_with_indexes(
     if benchmark is None:
         from mcp_server.tools.benchmark import benchmark_query as benchmark
     settings = _settings()
+    warmup = settings["warmup_runs"] if warmup_runs is None else warmup_runs
+    required_runs = settings["measured_runs"] if measured_runs is None else measured_runs
+    report["mode"] = "full" if required_runs >= settings["measured_runs"] else "quick"
+    report["measured_runs"] = required_runs
     started = []
+    _report_progress = progress or (lambda _stage: None)
     try:
-        for proposal in indexes:
+        for idx, proposal in enumerate(indexes, start=1):
+            _report_progress(
+                f"Đang tạo index INVISIBLE tạm ({idx}/{len(indexes)}): "
+                f"{proposal['table']}.{proposal['index_name']}"
+            )
             trial = trial_factory(proposal)
             started.append(trial)  # create() có thể tạo index rồi mới báo lỗi
             snap = (fk_snapshots or {}).get(proposal["index_name"])
@@ -169,12 +188,16 @@ async def measure_rewrite_with_indexes(
 
         for label, sql, enabled in (("before", original_sql, False),
                                     ("after", rewritten_sql, True)):
+            side = "SQL gốc (trước tối ưu)" if not enabled else "đề xuất (sau tối ưu)"
+            _report_progress(
+                f"Đang đo {side}: {warmup} warm-up + {required_runs} lượt..."
+            )
             plan = _tool_data(await explain(
                 sql, mode="estimate", use_invisible_indexes=enabled,
             ))
             bench_kwargs = {
-                "warmup_runs": settings["warmup_runs"],
-                "measured_runs": settings["measured_runs"],
+                "warmup_runs": warmup,
+                "measured_runs": required_runs,
                 "use_invisible_indexes": enabled,
                 "compute_result_hash": True,
             }
@@ -193,7 +216,7 @@ async def measure_rewrite_with_indexes(
                 }
 
         before, after = report["before"], report["after"]
-        if not all(_measurement_complete(item, settings["measured_runs"], before=label)
+        if not all(_measurement_complete(item, required_runs, before=label)
                    for item, label in ((before, True), (after, False))):
             report["failure_reason"] = "measurement_incomplete"
         elif (before["result_hash"] != after["result_hash"]
@@ -208,6 +231,8 @@ async def measure_rewrite_with_indexes(
         report["failure_reason"] = "measurement_error"
         report["error_type"] = type(exc).__name__
     finally:
+        if started:
+            _report_progress("Đang xóa index tạm trên lab 3309...")
         for trial in reversed(started):
             try:
                 trial.drop()
