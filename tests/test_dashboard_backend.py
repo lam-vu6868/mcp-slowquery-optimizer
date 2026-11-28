@@ -22,6 +22,10 @@ from dashboard import backend
 from security.approval import ApprovalTokens
 
 
+def _widget(widgets, label):
+    return next(widget for widget in widgets if widget.label == label)
+
+
 def test_dashboard_store_env_keeps_lab_token_and_audit_separate(tmp_path):
     lab_store = tmp_path / "lab_proposals.sqlite3"
     command = (
@@ -464,21 +468,22 @@ def test_proposals_page_requires_confirmation_before_actions(monkeypatch):
     monkeypatch.setattr(backend, "reject_from_dashboard",
                         lambda actual, proposal_id: events.append(
                             ("reject", actual, proposal_id)))
-    page = Path(backend.__file__).parent / "pages" / "2_proposals.py"
+    page = Path(backend.__file__).parent / "pages" / "6_duyet_va_ap_dung.py"
     at = AppTest.from_file(str(page))
     at.session_state["proposal_store"] = store
     at.run()
     assert not at.exception
-    assert len(at.button) == 2
-    assert at.button[0].disabled and at.button[1].disabled
+    assert _widget(at.button, "Approve").disabled
+    assert _widget(at.button, "Reject").disabled
     assert events == []
 
-    at.checkbox[0].set_value(True).run()
-    assert not at.button[0].disabled and not at.button[1].disabled
-    at.button[0].click().run()
+    _widget(at.checkbox, "Tôi xác nhận thao tác trên MySQL").set_value(True).run()
+    assert not _widget(at.button, "Approve").disabled
+    assert not _widget(at.button, "Reject").disabled
+    _widget(at.button, "Approve").click().run()
     assert events == [("approve", store, "p_abc")]
 
-    at.button[1].click().run()
+    _widget(at.button, "Reject").click().run()
     assert events[-1] == ("reject", store, "p_abc")
 
 
@@ -494,14 +499,16 @@ def test_proposals_page_keeps_approve_unavailable_for_rewrite_or_expired(
     saved = _approval_saved(**changes)
     saved["original_sql"] = "SELECT id FROM orders"
     store = type("Store", (), {"recent_proposals": lambda self: [saved]})()
-    at = AppTest.from_file(str(Path(backend.__file__).parent / "pages" / "2_proposals.py"))
+    at = AppTest.from_file(str(Path(backend.__file__).parent / "pages" / "6_duyet_va_ap_dung.py"))
     at.session_state["proposal_store"] = store
     at.run()
     assert not at.exception
-    assert len(at.button) == button_count
+    action_buttons = [button for button in at.button
+                      if button.label in {"Approve", "Reject"}]
+    assert len(action_buttons) == button_count
     if button_count:
-        at.checkbox[0].set_value(True).run()
-        assert at.button[0].disabled
+        _widget(at.checkbox, "Tôi xác nhận thao tác trên MySQL").set_value(True).run()
+        assert _widget(at.button, "Approve").disabled
 
 
 def test_proposals_page_runs_validation_only_after_confirmation(monkeypatch):
@@ -517,18 +524,18 @@ def test_proposals_page_runs_validation_only_after_confirmation(monkeypatch):
         return {"status": "passed"}
 
     monkeypatch.setattr(backend, "validate_from_dashboard", fake_validate)
-    at = AppTest.from_file(str(Path(backend.__file__).parent / "pages" / "2_proposals.py"))
+    at = AppTest.from_file(str(Path(backend.__file__).parent / "pages" / "6_duyet_va_ap_dung.py"))
     at.session_state["proposal_store"] = store
     at.run()
     assert not at.exception
-    assert at.button[0].disabled
+    assert _widget(at.button, "Chạy Validation").disabled
     assert events == []
 
-    at.text_input[0].set_value("C:/lab/data").run()
-    assert at.button[0].disabled
-    at.checkbox[0].set_value(True).run()
-    assert not at.button[0].disabled
-    at.button[0].click().run()
+    _widget(at.text_input, "Thư mục CSV cho write lab").set_value("C:/lab/data").run()
+    assert _widget(at.button, "Chạy Validation").disabled
+    _widget(at.checkbox, "Tôi xác nhận chạy Validation trên lab").set_value(True).run()
+    assert not _widget(at.button, "Chạy Validation").disabled
+    _widget(at.button, "Chạy Validation").click().run()
     assert events == [(store, "p_abc", Path("C:/lab/data"))]
 
 
@@ -545,11 +552,11 @@ def test_proposals_page_refreshes_state_after_reject(monkeypatch):
         return "dropped"
 
     monkeypatch.setattr(backend, "reject_from_dashboard", fake_reject)
-    at = AppTest.from_file(str(Path(backend.__file__).parent / "pages" / "2_proposals.py"))
+    at = AppTest.from_file(str(Path(backend.__file__).parent / "pages" / "6_duyet_va_ap_dung.py"))
     at.session_state["proposal_store"] = store
     at.run()
-    at.checkbox[0].set_value(True).run()
-    at.button[1].click().run()
+    _widget(at.checkbox, "Tôi xác nhận thao tác trên MySQL").set_value(True).run()
+    _widget(at.button, "Reject").click().run()
     assert not at.exception
-    assert len(at.button) == 0
+    assert not any(button.label in {"Approve", "Reject"} for button in at.button)
     assert at.success[0].value == "Đã dọn index thử."

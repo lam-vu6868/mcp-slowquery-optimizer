@@ -26,6 +26,7 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp_server.llm import agent
 from mcp_server.llm.agent import analyze_query
 from mcp_server.llm.prompts import SYSTEM_PROMPT
+from security.injection_tests.payloads import PAYLOADS
 
 TOOL_NAMES = (
     "get_slow_queries", "get_schema", "get_table_stats",
@@ -109,7 +110,7 @@ async def test_agent_sends_only_five_tools_and_parses_final_index(run_log_dir):
     record = json.loads(next(run_log_dir.glob("*.json")).read_text(encoding="utf-8"))
     assert record["status"] == "success"
     assert record["query_id"] == "q07"
-    assert record["prompt_version"] == "v2"
+    assert record["prompt_version"] == "v3"
     assert record["model"] == LLM_SETTINGS["model"]
     assert re.fullmatch(r"[0-9a-f]{64}", record["sql_sha256"])
     assert record["sql_sha256"] == hashlib.sha256(
@@ -273,6 +274,49 @@ async def test_agent_calls_get_schema_and_uses_result_for_final_index(run_log_di
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("truncated", [False, True])
+async def test_agent_filters_unsafe_schema_table_name_before_groq(run_log_dir, truncated):
+    attack_name = next(item["content"] for item in PAYLOADS if item["id"] == "B05")
+    first = SimpleNamespace(stop_reason="tool_use", content=[SimpleNamespace(
+        type="tool_use", id="call_1", name="get_schema", input={},
+    )])
+    final = SimpleNamespace(stop_reason="end_turn", content=[SimpleNamespace(
+        type="text", text=json.dumps(_index_answer()),
+    )])
+    llm = SimpleNamespace(messages=SimpleNamespace(create=AsyncMock(
+        side_effect=[first, final],
+    )))
+    tool_output = json.dumps({
+        "ok": True, "data": {"tables": [
+            SCHEMA_DATA["tables"][0],
+            {"name": attack_name, "columns": [{"name": "status"}], "indexes": []},
+        ]}, "meta": {"tool": "get_schema", "truncated": truncated},
+    })
+    mcp = _fake_mcp()
+    mcp.call_tool.return_value = SimpleNamespace(
+        content=[SimpleNamespace(type="text", text=tool_output)], is_error=False,
+    )
+
+    result = await analyze_query(
+        "q07", "SELECT * FROM orders", llm_client=llm, mcp_client=mcp,
+        llm_settings=LLM_SETTINGS,
+        schema_data=SCHEMA_DATA if truncated else None,
+    )
+
+    assert result == _index_answer()
+    forwarded = llm.messages.create.call_args_list[1].kwargs["messages"][2]["content"][0]
+    assert [table["name"] for table in json.loads(forwarded["content"])["data"]["tables"]] == [
+        "orders",
+    ]
+    assert attack_name not in forwarded["content"]
+    record = json.loads(next(run_log_dir.glob("*.json")).read_text(encoding="utf-8"))
+    assert record["tool_calls"][0]["filtered_schema_tables"] == 1
+    assert record["tool_calls"][0]["forwarded_sha256"] == hashlib.sha256(
+        forwarded["content"].encode("utf-8")
+    ).hexdigest()
+
+
+@pytest.mark.asyncio
 async def test_agent_refuses_tool_six_even_if_llm_requests_it(run_log_dir):
     """Batch có Tool 6 bị chặn trước khi chạy cả tool hợp lệ đứng trước."""
     tool_uses = [
@@ -295,6 +339,53 @@ async def test_agent_refuses_tool_six_even_if_llm_requests_it(run_log_dir):
     assert record["status"] == "error"
     assert record["error_type"] == "PermissionError"
     assert record["tool_calls"] == []
+
+
+@pytest.mark.asyncio
+async def test_injected_schema_cannot_trigger_tool_six(run_log_dir):
+    """Sau Tool 2, tên B05 bị lọc; yêu cầu Tool 6/token giả không tới MCP."""
+    attack_name = next(item["content"] for item in PAYLOADS if item["id"] == "B05")
+    get_schema = SimpleNamespace(
+        type="tool_use", id="call_schema", name="get_schema", input={},
+    )
+    apply = SimpleNamespace(
+        type="tool_use", id="call_apply", name="apply_optimization",
+        input={"proposal_id": "p_fake", "approval_token": "fake-token"},
+    )
+    llm = SimpleNamespace(messages=SimpleNamespace(create=AsyncMock(side_effect=[
+        SimpleNamespace(stop_reason="tool_use", content=[get_schema]),
+        SimpleNamespace(stop_reason="tool_use", content=[apply]),
+    ])))
+    tool_output = json.dumps({
+        "ok": True, "data": {"tables": [
+            SCHEMA_DATA["tables"][0],
+            {"name": attack_name, "columns": [{"name": "status"}], "indexes": []},
+        ]}, "meta": {"tool": "get_schema", "truncated": False},
+    })
+    mcp = _fake_mcp()
+    mcp.call_tool.return_value = SimpleNamespace(
+        content=[SimpleNamespace(type="text", text=tool_output)], is_error=False,
+    )
+
+    with pytest.raises(PermissionError, match="apply_optimization"):
+        await analyze_query(
+            "q07", "SELECT * FROM orders", llm_client=llm, mcp_client=mcp,
+            llm_settings=LLM_SETTINGS,
+        )
+
+    mcp.call_tool.assert_awaited_once_with("get_schema", {})
+    first_tools = llm.messages.create.call_args_list[0].kwargs["tools"]
+    assert "apply_optimization" not in {tool["name"] for tool in first_tools}
+    second_messages = llm.messages.create.call_args_list[1].kwargs["messages"]
+    schema_sent = second_messages[2]["content"][0]["content"]
+    assert attack_name not in schema_sent
+    assert [table["name"] for table in json.loads(schema_sent)["data"]["tables"]] == [
+        "orders",
+    ]
+    record = json.loads(next(run_log_dir.glob("*.json")).read_text(encoding="utf-8"))
+    assert record["status"] == "error"
+    assert record["error_type"] == "PermissionError"
+    assert [event["name"] for event in record["tool_calls"]] == ["get_schema"]
 
 
 @pytest.mark.asyncio

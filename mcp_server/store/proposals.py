@@ -61,22 +61,36 @@ class ProposalStore:
             conn.commit()
 
     def add(self, query_id: str, original_sql: str, proposal: dict) -> str:
+        return self.add_many(query_id, original_sql, [proposal])[0]
+
+    def add_many(self, query_id: str, original_sql: str,
+                 proposals: list[dict]) -> list[str]:
+        """Lưu cả nhóm đề xuất trong một giao dịch, không giữ nhóm dở dang."""
         if not isinstance(query_id, str) or not query_id.strip():
             raise ValueError("query_id không hợp lệ")
         ok, _ = ast_check(original_sql)
         if not ok:
             raise ValueError("SQL gốc không qua AST whitelist")
-        TrialIndex(proposal)  # kiểm cấu trúc trước khi lưu; chưa gửi DDL
-        proposal_id = f"p_{uuid.uuid4().hex}"
-        payload = json.dumps(proposal, ensure_ascii=False, allow_nan=False)
-        with closing(sqlite3.connect(self.path)) as conn:
-            conn.execute(
+        if not isinstance(proposals, list):
+            raise TypeError("proposals phải là danh sách")
+        rows = []
+        for proposal in proposals:
+            if isinstance(proposal, dict) and proposal.get("type") == "rewrite":
+                if proposal.get("original_query_id") != query_id:
+                    raise ValueError("rewrite không khớp query_id")
+                rewritten_sql = proposal.get("rewritten_sql")
+                if not isinstance(rewritten_sql, str) or not ast_check(rewritten_sql)[0]:
+                    raise ValueError("SQL rewrite không qua AST whitelist")
+            else:
+                TrialIndex(proposal)  # kiểm cấu trúc trước khi lưu; chưa gửi DDL
+            rows.append((f"p_{uuid.uuid4().hex}", query_id, original_sql,
+                         json.dumps(proposal, ensure_ascii=False, allow_nan=False)))
+        with closing(sqlite3.connect(self.path)) as conn, conn:
+            conn.executemany(
                 "INSERT INTO proposals (proposal_id, query_id, original_sql, proposal_json) "
-                "VALUES (?, ?, ?, ?)",
-                (proposal_id, query_id, original_sql, payload),
+                "VALUES (?, ?, ?, ?)", rows,
             )
-            conn.commit()
-        return proposal_id
+        return [row[0] for row in rows]
 
     def get(self, proposal_id: str) -> dict:
         with closing(sqlite3.connect(self.path)) as conn:

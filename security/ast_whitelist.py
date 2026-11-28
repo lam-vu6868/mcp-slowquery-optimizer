@@ -29,7 +29,6 @@ PHỤ TRÁCH: Tình    |    REVIEW: Vũ
 THAM KHẢO: project-management/ROADMAP.md mục 2.2
 """
 import re
-from typing import Tuple
 
 try:
     import sqlglot
@@ -89,12 +88,11 @@ def _contains_executable_comment(sql: str) -> bool:
 def _has_multi_statement(sql: str) -> bool:
     """Chặn `;` nối nhiều statement"""
     stripped = sql.strip()
-    if stripped.endswith(";"):
-        stripped = stripped[:-1]
+    stripped = stripped.removesuffix(";")
     return ";" in stripped
 
 
-def _has_forbidden_keyword(sql: str) -> Tuple[bool, str]:
+def _has_forbidden_keyword(sql: str) -> tuple[bool, str]:
     """Check keyword nguy hiểm bằng text search"""
     sql_upper = sql.upper()
     for kw in FORBIDDEN_KEYWORDS:
@@ -103,7 +101,7 @@ def _has_forbidden_keyword(sql: str) -> Tuple[bool, str]:
     return False, ""
 
 
-def _has_forbidden_function(parsed) -> Tuple[bool, str]:
+def _has_forbidden_function(parsed) -> tuple[bool, str]:
     """Check hàm nguy hiểm bằng AST walk"""
     for node in parsed.walk():
         if isinstance(node, exp.Anonymous):
@@ -116,7 +114,7 @@ def _has_forbidden_function(parsed) -> Tuple[bool, str]:
     return False, ""
 
 
-def _check_table_schemas(parsed) -> Tuple[bool, str]:
+def _check_table_schemas(parsed) -> tuple[bool, str]:
     """Chặn truy cập schema ngoài whitelist"""
     for table in parsed.find_all(exp.Table):
         db = table.db
@@ -142,7 +140,6 @@ def _extract_inner_sql_from_explain(sql: str) -> str:
     """
     s = re.sub(r'^\s*EXPLAIN\s+', '', sql, flags=re.IGNORECASE)
     s = re.sub(r'^FORMAT\s*=\s*\w+\s+', '', s, flags=re.IGNORECASE)
-    s = re.sub(r'^ANALYZE\s+', '', s, flags=re.IGNORECASE)
     s = re.sub(r'^EXTENDED\s+', '', s, flags=re.IGNORECASE)
     return s.strip()
 
@@ -151,7 +148,7 @@ def _extract_inner_sql_from_explain(sql: str) -> str:
 # MAIN FUNCTION
 # ============================================================
 
-def check(sql: str) -> Tuple[bool, str]:
+def check(sql: str) -> tuple[bool, str]:
     """
     Kiểm tra SQL có an toàn không.
 
@@ -187,7 +184,7 @@ def check(sql: str) -> Tuple[bool, str]:
         try:
             inner_parsed = sqlglot.parse_one(inner_sql, dialect="mysql")
             if inner_parsed is None or not isinstance(inner_parsed, ALLOWED_ROOTS):
-                return False, f"EXPLAIN chỉ cho phép SELECT"
+                return False, "EXPLAIN chỉ cho phép SELECT"
             has_func, reason = _has_forbidden_function(inner_parsed)
             if has_func:
                 return False, reason
@@ -195,13 +192,13 @@ def check(sql: str) -> Tuple[bool, str]:
             if not ok:
                 return False, reason
             return True, "OK"
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - parse lỗi phải từ chối
             return False, f"EXPLAIN parse error: {str(e)[:100]}"
 
     # ---- LỚP 3: Parse AST ----
     try:
         parsed = sqlglot.parse_one(sql, dialect="mysql")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - parse lỗi phải từ chối
         return False, f"Parse error: {str(e)[:100]}"
 
     if parsed is None:
