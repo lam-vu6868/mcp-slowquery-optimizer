@@ -13,7 +13,7 @@ LƯU Ý:
     - Bảng tổng kết đọc từ data/metrics/comparison.csv và data/outputs/ (đã đo trước).
     - Nút đo live Consistency Rate gọi LLM qua MCP Tool 1–5 chỉ đọc (không tạo DDL).
 """
-
+# test
 import asyncio
 import csv
 import json
