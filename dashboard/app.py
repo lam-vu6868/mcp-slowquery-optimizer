@@ -31,7 +31,8 @@ if _ROOT not in sys.path:
 
 from dashboard.backend import initialize_backend
 
-st.set_page_config(page_title="MCP Slow Query Optimizer", layout="wide")
+if hasattr(st, "set_page_config"):
+    st.set_page_config(page_title="MCP Slow Query Optimizer", layout="wide")
 
 
 @st.cache_resource
@@ -46,9 +47,15 @@ except Exception:  # noqa: BLE001 - không cho Dashboard nhận việc khi recov
     st.error("Không khôi phục được index thử. Kiểm tra trial pending trước khi tiếp tục.")
     st.stop()
 
-st.title("MCP Slow Query Optimizer")
-st.write(
-    "Chọn một trong 4 trang ở thanh menu bên trái: "
-    "**1. Slow Queries**, **2. Proposals**, **3. Comparison**, **4. Security**."
-)
-st.info("Hệ thống sẵn sàng. LLM chỉ thấy Tool 1–5; Tool 6 chỉ chạy sau khi người dùng duyệt.")
+if hasattr(st, "title"):
+    st.title("MCP Slow Query Optimizer")
+    st.write(
+        "Đi theo **Hành trình của 1 query** ở thanh menu bên trái:\n"
+        "1. **Chọn query chậm** — chạy thử 1 trong 30 query hoặc slow log trên DB chính `3307` (đo ms).\n"
+        "2. **LLM đề xuất** — gửi query cho Groq (qua MCP Tool 1–5 chỉ đọc) sinh index/rewrite.\n"
+        "3. **Chạy thử đề xuất** — đo trước/sau bằng INVISIBLE INDEX trên lab `3309` (Đo nhanh / Đo đầy đủ).\n"
+        "4. **So sánh** — so query vừa chạy (Gốc vs LLM vs Greedy) và so phát hiện (pt-query-digest vs Tool 1).\n"
+        "5. **Bảo mật** — bấm chạy trực tiếp 20 kịch bản Prompt Injection & xem Audit log Tool 6.\n"
+        "6. **Duyệt & áp dụng** — Validation chính thức và Approve (token 1 lần) / Reject."
+    )
+    st.info("DB chính 3307 chỉ đọc; mọi DDL thử chạy tách biệt trên lab 3309.")

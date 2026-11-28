@@ -26,7 +26,7 @@ def test_proposals_page_shows_validation_tradeoff():
         "report": report,
     }
     store = type("Store", (), {"recent_proposals": lambda self: [saved]})()
-    page = Path(backend.__file__).parent / "pages" / "2_proposals.py"
+    page = Path(backend.__file__).parent / "pages" / "6_duyet_va_ap_dung.py"
     at = AppTest.from_file(str(page))
     at.session_state["proposal_store"] = store
     at.run()

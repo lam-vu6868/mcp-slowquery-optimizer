@@ -226,11 +226,84 @@ def make_lab_cost_evaluator() -> Callable[[str, list[dict]], float]:
     return evaluate
 
 
+def evaluate_catalog(
+    queries: list[dict],
+    ground_truth: dict,
+    *,
+    cost_evaluator: Callable[[str, list[dict]], float],
+    max_columns: int = 2,
+    max_indexes: int = 1,
+    output_path: Path | None = None,
+) -> dict:
+    """Chạy greedy cho 18 query nhóm Index (1, 2, 4), lưu tiến độ từng query và chấm khớp chính xác."""
+    from data.metrics.metrics import INDEX_GROUPS, score_index_query
+
+    per_query: list[dict] = []
+    done_by_id: dict[str, dict] = {}
+    if output_path and output_path.is_file():
+        prev = json.loads(output_path.read_text(encoding="utf-8"))
+        for row in prev.get("per_query", []):
+            done_by_id[row["query_id"]] = row
+
+    for item in queries:
+        qid = item["id"]
+        if item["group"] not in INDEX_GROUPS:
+            continue
+        if qid in done_by_id:
+            per_query.append(done_by_id[qid])
+            continue
+        res = greedy_select_indexes(
+            item["sql"],
+            cost_evaluator=cost_evaluator,
+            query_id=qid,
+            max_columns=max_columns,
+            max_indexes=max_indexes,
+        )
+        score = score_index_query(qid, res["proposals"], ground_truth)
+        score["baseline_cost"] = res["baseline_cost"]
+        score["final_cost"] = res["final_cost"]
+        score["cost_reduction_pct"] = res["cost_reduction_pct"]
+        score["proposed_indexes"] = [
+            {"table": p["table"], "columns": p["columns"], "index_name": p["index_name"]}
+            for p in res["proposals"]
+        ]
+        per_query.append(score)
+        if output_path:
+            summary = _build_catalog_summary(per_query)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(
+                json.dumps(summary, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+
+    return _build_catalog_summary(per_query)
+
+
+def _build_catalog_summary(per_query: list[dict]) -> dict:
+    total_proposals = sum(item["index_proposals"] for item in per_query)
+    total_exact = sum(item["exact_matches"] for item in per_query)
+    queries_with_exact = sum(1 for item in per_query if item["exact_matches"] > 0)
+    queries_needing_equiv = sum(1 for item in per_query if item["equivalence_needed"])
+    return {
+        "method": "greedy",
+        "scope": "index_groups_exact_match_diagnostic",
+        "index_group_query_count": len(per_query),
+        "total_index_proposals": total_proposals,
+        "exact_index_matches": total_exact,
+        "queries_with_exact_index": queries_with_exact,
+        "queries_needing_equivalence": queries_needing_equiv,
+        "exact_precision": round(total_exact / total_proposals, 4) if total_proposals else 0.0,
+        "exact_recall": round(queries_with_exact / len(per_query), 4) if per_query else 0.0,
+        "per_query": per_query,
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Chạy baseline greedy theo EXPLAIN query_cost trên validation lab 3309."
     )
-    parser.add_argument("query_id", help="ID query catalog, ví dụ: q07")
+    parser.add_argument("query_id", nargs="?", default=None, help="ID query catalog, ví dụ: q07")
+    parser.add_argument("--catalog", action="store_true", help="Chạy đủ 18 query nhóm Index (1/2/4)")
     parser.add_argument("--max-columns", type=int, default=3)
     parser.add_argument("--max-indexes", type=int, default=2)
     parser.add_argument("--output", "-o", type=Path, default=None)
@@ -238,9 +311,30 @@ def main() -> None:
 
     from data.queries.queries import QUERIES
 
+    if args.catalog:
+        truth_path = Path(__file__).resolve().parents[1] / "queries" / "ground_truth.json"
+        truth = json.loads(truth_path.read_text(encoding="utf-8"))
+        evaluator = make_lab_cost_evaluator()
+        summary = evaluate_catalog(
+            QUERIES,
+            truth,
+            cost_evaluator=evaluator,
+            max_columns=args.max_columns,
+            max_indexes=args.max_indexes,
+            output_path=args.output,
+        )
+        text = json.dumps(summary, indent=2, ensure_ascii=False)
+        if args.output:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(text + "\n", encoding="utf-8")
+            print(f"Đã lưu kết quả greedy catalog: {args.output}")
+        else:
+            print(text)
+        return
+
     catalog = {item["id"]: item for item in QUERIES}
-    if args.query_id not in catalog:
-        parser.error(f"query_id '{args.query_id}' không có trong catalog")
+    if not args.query_id or args.query_id not in catalog:
+        parser.error("cần query_id hợp lệ trong catalog (hoặc dùng --catalog)")
 
     evaluator = make_lab_cost_evaluator()
     result = greedy_select_indexes(

@@ -15,14 +15,14 @@ LƯU Ý:
 
 THAM KHẢO  : docs/api-contract.md (mục 2.3)
 
-TRẠNG THÁI : ĐANG LÀM — prompt phân tích v2; chờ đo đề xuất thật.
+TRẠNG THÁI : ĐANG LÀM — prompt phân tích v3 (bổ sung nguyên tắc covering index và tìm bảng nút thắt).
 """
 
 import json
 
 from mcp_server.utils.sanitize import strip_sql_comments
 
-PROMPT_VERSION = "v2"
+PROMPT_VERSION = "v3"
 MAX_SQL_CHARS = 8_000
 
 SYSTEM_PROMPT = """Bạn phân tích truy vấn MySQL của shopdb và chỉ đưa ra đề xuất.
@@ -32,6 +32,11 @@ Không tạo câu lệnh DDL. Đề xuất index phải là cấu trúc gồm ty
 Mỗi cột trong đề xuất index phải là object, ví dụ "columns":[{"name":"status","order":"ASC"}]. Không dùng mảng tên cột dạng chuỗi.
 Đề xuất rewrite gồm type, original_query_id, rewritten_sql, rationale; rewrite chỉ để đề xuất, không tự áp dụng.
 Giữ nguyên query_id do caller cung cấp; target_query_ids và original_query_id phải dùng cùng ID đó.
+Quy trình phân tích tối ưu MySQL (áp dụng tổng quát):
+1. Luôn gọi get_schema, get_table_stats và explain_query để xác định bảng có số dòng lớn nhất (nút thắt cổ chai) và các index hiện có.
+2. Với truy vấn JOIN kèm GROUP BY / SUM / COUNT, ưu tiên tạo covering index trên bảng lớn: đặt cột lọc bằng (=) hoặc cột JOIN trước, tiếp đến cột lọc khoảng (>, <, BETWEEN), cột ORDER BY, rồi các cột cần đọc trong SELECT / SUM / COUNT (tối đa 5 cột) để MySQL chỉ cần đọc index (Using index).
+3. Không đề xuất index thừa trên bảng nhỏ nếu nút thắt nằm ở bảng lớn hơn nhiều lần; không tạo index trùng hoặc là tiền tố của index đã có.
+4. Với truy vấn có hàm hoặc phép tính bọc cột (non-sargable) hoặc subquery IN/EXISTS, đề xuất cả rewrite SQL (phải bảo toàn chính xác kết quả, tránh làm nhân bản dòng khi đổi subquery sang JOIN) lẫn index đi kèm. Ngược lại, nếu truy vấn đã lọc và JOIN trực tiếp (không có hàm bọc cột trong WHERE/JOIN, không có subquery), chỉ đề xuất index — KHÔNG đề xuất rewrite thừa và không viết subquery GROUP BY toàn bảng lớn trước khi lọc.
 Câu trả lời cuối chỉ là một JSON object, không có Markdown hoặc văn bản kèm theo.
 JSON phải có query_id, diagnosis, proposals (danh sách) và confidence (low, medium hoặc high).
 """

@@ -100,6 +100,7 @@ def build_comparison_rows(
     llm_diag_path: Path | None = None,
     rewrite_dir: Path | None = None,
     rule_based_path: Path | None = None,
+    greedy_path: Path | None = None,
 ) -> list[dict]:
     """Tổng hợp các dòng so sánh trung thực từ bằng chứng hiện có."""
     llm_diag = (
@@ -107,9 +108,9 @@ def build_comparison_rows(
         if llm_diag_path and llm_diag_path.is_file()
         else {}
     )
-    rb_diag = (
-        json.loads(rule_based_path.read_text(encoding="utf-8"))
-        if rule_based_path and rule_based_path.is_file()
+    gr_diag = (
+        json.loads(greedy_path.read_text(encoding="utf-8"))
+        if greedy_path and greedy_path.is_file()
         else {}
     )
     rw = summarize_rewrite_reports(rewrite_dir) if rewrite_dir else {"total": 0, "passed": 0, "pass_rate": None}
@@ -118,10 +119,17 @@ def build_comparison_rows(
     llm_exact_idx = llm_diag.get("exact_index_matches", 9)
     llm_q_exact = llm_diag.get("queries_with_exact_index", 7)
 
-    rb_total_idx = rb_diag.get("total_index_proposals", "")
-    rb_exact_idx = rb_diag.get("exact_index_matches", "")
-    rb_prec = rb_diag.get("exact_precision", "")
-    rb_rec = rb_diag.get("exact_recall", "")
+    gr_total_idx = gr_diag.get("total_index_proposals", "")
+    gr_exact_idx = gr_diag.get("exact_index_matches", "")
+    gr_prec = gr_diag.get("exact_precision", "")
+    gr_rec = gr_diag.get("exact_recall", "")
+    gr_scope = "exact_index_diagnostic_lab_3309" if gr_diag else "pending_lab_run"
+    gr_note = (
+        "Da chay that 18/18 query nhom index tren lab 3309 (max_columns=2, max_indexes=1); "
+        "khong ho tro rewrite SQL; chua do P95 tuong duong"
+        if gr_diag
+        else "Da cai dat data/baseline/greedy.py va pass unit test; chua chay du 18 query tren lab 3309"
+    )
 
     return [
         {
@@ -137,28 +145,16 @@ def build_comparison_rows(
             "notes": "Chua do P95 tuong duong nhom index 1/2/4; rewrite da do that 12/12 tren lab 3309",
         },
         {
-            "method": "rule_based",
-            "scope": "exact_index_diagnostic",
-            "index_proposals": rb_total_idx,
-            "exact_index_matches": rb_exact_idx,
-            "exact_precision": rb_prec,
-            "exact_recall": rb_rec,
-            "rewrite_passed": 0,
-            "rewrite_total": 12,
-            "rewrite_pass_rate": 0.0,
-            "notes": "Luat cung E-R-S (sqlglot); khong ho tro rewrite SQL; chua do P95 tuong duong",
-        },
-        {
             "method": "greedy",
-            "scope": "pending_lab_run",
-            "index_proposals": "",
-            "exact_index_matches": "",
-            "exact_precision": "",
-            "exact_recall": "",
+            "scope": gr_scope,
+            "index_proposals": gr_total_idx,
+            "exact_index_matches": gr_exact_idx,
+            "exact_precision": gr_prec,
+            "exact_recall": gr_rec,
             "rewrite_passed": 0,
             "rewrite_total": 12,
             "rewrite_pass_rate": 0.0,
-            "notes": "Da cai dat data/baseline/greedy.py va pass unit test; chua chay du 18 query tren lab 3309",
+            "notes": gr_note,
         },
     ]
 
@@ -235,6 +231,7 @@ def main() -> None:
             llm_diag_path=root / "data" / "outputs" / "llm_catalog_20261127" / "exact_index_diagnostic.json",
             rewrite_dir=root / "data" / "outputs" / "llm_catalog_20261127",
             rule_based_path=root / "data" / "outputs" / "baseline_rule_based_20261128.json",
+            greedy_path=root / "data" / "outputs" / "baseline_greedy_20261128.json",
         )
         out = write_comparison_csv(args.output, rows)
         print(f"Đã ghi bảng so sánh: {out}")

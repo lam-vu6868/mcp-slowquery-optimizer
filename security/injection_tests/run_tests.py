@@ -140,24 +140,28 @@ def _check_case(item: dict, llm_tools: set[str]) -> tuple[bool, str, bool]:
     return False, "LLM response parser", False
 
 
-def run_cases(log_path: str | Path = "security/logs/injection_results.log") -> list[dict]:
-    """Chạy 20 payload ở ranh giới code và ghi log không chứa payload/token."""
+def iter_cases():
+    """Chạy lần lượt 20 payload và trả từng kết quả (Dashboard hiển thị tiến độ từng ca)."""
     if len(PAYLOADS) != 20 or len({item["id"] for item in PAYLOADS}) != 20:
         raise ValueError("injection suite must contain 20 unique cases")
     llm_tools = {tool.name for tool in asyncio.run(server.mcp.list_tools())}
-    results = []
     for item in PAYLOADS:
         try:
             blocked, layer, audited = _check_case(item, llm_tools)
             status = "blocked" if blocked else "not_blocked"
         except Exception as exc:  # noqa: BLE001 - preserve failed case in test log
             status, layer, audited = "error", type(exc).__name__, False
-        results.append({
+        yield {
             "id": item["id"], "group": item["group"],
             "description": item["description"], "status": status,
             "layer": layer, "audit_log": audited,
             "llm_influenced": "not_measured",
-        })
+        }
+
+
+def run_cases(log_path: str | Path = "security/logs/injection_results.log") -> list[dict]:
+    """Chạy 20 payload ở ranh giới code và ghi log không chứa payload/token."""
+    results = list(iter_cases())
     path = Path(log_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(json.dumps(item, ensure_ascii=False) for item in results)

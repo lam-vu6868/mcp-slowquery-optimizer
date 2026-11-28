@@ -84,6 +84,10 @@ def load_llm_settings(path: str | Path | None = None) -> dict:
     if type(retries) is not int or not 0 <= retries <= 2:
         raise ValueError("llm.json_retry phải là số nguyên từ 0 đến 2")
 
-    return {key: llm[key] for key in (
-        "model", "temperature", "max_tokens", "max_tool_calls_per_query", "json_retry",
-    )}
+    return {
+        "model": model,
+        "temperature": temperature,
+        "max_tokens": llm["max_tokens"],
+        "max_tool_calls_per_query": llm["max_tool_calls_per_query"],
+        "json_retry": retries,
+    }

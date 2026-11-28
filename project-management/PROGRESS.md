@@ -10,6 +10,44 @@
 
 ---
 
+## Nâng cấp Prompt v3 và thêm adapter Gemini Pro ngày 28/11/2026
+
+- Nâng cấp [mcp_server/llm/prompts.py](../mcp_server/llm/prompts.py) lên `PROMPT_VERSION = "v3"`: bổ sung 4 nguyên tắc DBA tổng quát (đọc `get_schema`/`get_table_stats`/`explain_query` tìm bảng nút thắt, ưu tiên covering index trên bảng lớn gồm cột `SELECT`/`SUM`/`COUNT`, tránh index thừa trên bảng nhỏ, giữ nguyên ngữ nghĩa khi rewrite).
+- Thêm adapter Gemini Pro (OpenAI-compatible endpoint) trong [mcp_server/llm/groq.py](../mcp_server/llm/groq.py) (`create_gemini_client()`, `create_llm_client()`), nối vào [dashboard/backend.py](../dashboard/backend.py) theo `LLM_PROVIDER=gemini` và `GEMINI_MODEL` (mặc định `gemini-2.5-pro`), cập nhật `.env.example` và thêm unit test ở [tests/test_gemini_client.py](../tests/test_gemini_client.py).
+- **Kiểm tra:** **387 passed**, Ruff và `git diff --check` pass. Chưa gọi Gemini API thật (chờ người dùng tự điền `GEMINI_API_KEY` vào `.env`).
+
+---
+
+## Thiết kế lại Dashboard 6 trang theo "Hành trình của 1 query" ngày 28/11/2026
+
+- Thay 5 trang cũ bằng 6 trang liên kết qua phiên làm việc (`dashboard/journey.py`, `dashboard/query_runner.py`, `dashboard/lab_jobs.py`, `dashboard/lab_session.py`, `dashboard/detection.py`, `dashboard/render.py`, `scripts/lab_demo_runner.py`):
+  1. `1_chon_query_cham.py`: chọn từ bộ 30 query hoặc slow log, bấm chạy thật trên DB chính `3307` đo ms/rows/EXPLAIN.
+  2. `2_llm_de_xuat.py`: gọi Groq qua MCP Tool 1–5 (chỉ đọc), lưu đề xuất cho query đang làm việc.
+  3. `3_chay_thu_de_xuat.py`: chạy thử đề xuất LLM trên lab `3309` ở tiến trình nền với 2 chế độ **Đo nhanh** (1 warm-up + 3 lượt, có nhãn chưa chính thức) và **Đo đầy đủ** (3 warm-up + 20 lượt).
+  4. `4_so_sanh.py`: tab chính chỉ hiển thị dữ liệu của query vừa chạy (**Gốc vs LLM vs Greedy**, có nút chạy Greedy thật); tab 2 so sánh **pt-query-digest vs Tool 1** chạy trực tiếp; tab 3 hiển thị bảng 30 query đã đo sẵn (ghi rõ nhãn).
+  5. `5_bao_mat.py`: nút **Chạy 20 kịch bản Prompt Injection** chạy trực tiếp từng ca qua `iter_cases()` kèm lớp chặn + Audit log Tool 6.
+  6. `6_duyet_va_ap_dung.py`: Validation chính thức & Approve/Reject (ô CSV write lab tự điền `D:\labt2\data` trong mục Nâng cao).
+- Bỏ `rule_based` khỏi UI và `data/metrics/comparison.csv` (giữ code/test trong repo), giữ đúng 2 baseline theo yêu cầu GVHD (`pt-query-digest` + `Greedy`).
+- **Kiểm tra:** **384 passed**, Ruff sạch 100%, giữ nguyên guard an toàn (DB `3307` chỉ đọc, DDL thử chỉ trên lab `3309`).
+
+---
+
+## Hoàn tất bản thảo Báo cáo đồ án và Dàn ý Slide/Demo ngày 28/11/2026
+
+- Tạo [reports/BAO_CAO_DO_AN.md](../reports/BAO_CAO_DO_AN.md) (5 chương đầy đủ: kiến trúc MCP, bảo mật 6 lớp, thực nghiệm 30 query, kết quả đo thật 12/12 Rewrite = 8/12 đạt 66,7%, bảng `comparison.csv` 3 phương pháp, case study `q07` kèm trade-off INSERT/UPDATE, phân tích lỗi `q13`/`q15`/`q30`, 20/20 kịch bản Prompt Injection và giới hạn trung thực).
+- Tạo [reports/SLIDE_VA_KICH_BAN_DEMO.md](../reports/SLIDE_VA_KICH_BAN_DEMO.md) (dàn ý 12 slide bảo vệ, kịch bản demo trực tiếp 5 phút qua 4 tab Dashboard và 4 câu hỏi phản biện trọng tâm).
+- Cập nhật trạng thái Giai đoạn 9 (Báo cáo + Demo) trong bảng tổng quan sang 🟡 Đang làm (đã có bản thảo báo cáo, dàn ý slide và kịch bản demo).
+
+---
+
+## Chạy thật baseline greedy 18/18 query trên lab 3309 và cập nhật comparison.csv ngày 28/11/2026
+
+- Thêm `--catalog` vào [data/baseline/greedy.py](../data/baseline/greedy.py) và chạy thật trên validation lab `3309` cho đủ **18/18 query nhóm Index (`1/2/4`)** (`--max-columns 2 --max-indexes 1`): sinh **11 đề xuất index** trên 11/18 query (7 query không tìm được index 1–2 cột giảm `query_cost` ≥ 5%), **0/11 khớp cấu trúc chính xác** (do đáp án ground truth đa số là covering index 3–4 cột gồm cả cột `SELECT`). Bằng chứng lưu ở `data/outputs/baseline_greedy_20261128.json` (gitignored).
+- Kiểm độc lập sau chạy: lab `3309` `idx_*` trống, `orders` vẫn `1.500.000` dòng; DB chính `3307` không bị chạm.
+- Cập nhật [data/metrics/metrics.py](../data/metrics/metrics.py) và xuất lại [data/metrics/comparison.csv](../data/metrics/comparison.csv) đầy đủ số liệu thật cho cả 3 phương pháp (`llm_groq_mcp`, `rule_based`, `greedy`).
+
+---
+
 ## Cài đặt Tab 4 Security (4_security.py) ngày 28/11/2026
 
 - Cài đặt Tab 4 [dashboard/pages/4_security.py](../dashboard/pages/4_security.py): đọc bảng 20 kịch bản Prompt Injection từ [security/injection_report.md](../security/injection_report.md) (hiển thị tổng số ca bị chặn `20/20`, số lớp phòng thủ và bảng đầy đủ cột *Lớp chặn*) cùng bảng audit log Tool 6 và bộ đếm `rejected`/`TOKEN_INVALID` từ SQLite audit log.
@@ -329,8 +367,8 @@
 |  5  | Validation Layer                                     | 🟡 Đang làm | Hải              |           22/10            |
 |  6  | Tool 6 + approval token + 20 injection               | 🟡 Đang làm | Tình             |           27/10            |
 |  7  | Metrics + Baseline                                   | 🟡 Chấm mẫu q07; baseline 30/30, còn metric toàn bộ | Tường · Hải | 03/11 |
-|  8  | Dashboard 4 tab                                      |     ⬜      | Tình             |           10/11            |
-|  9  | Báo cáo + Demo                                       |     ⬜      | Cả nhóm          |       17/11 · 01/12        |
+|  8  | Dashboard 4 tab                                      | 🟡 Đã có code cả 4 tab + AppTest | Tình             |           10/11            |
+|  9  | Báo cáo + Demo                                       | 🟡 Đã có bản thảo báo cáo + dàn ý slide/demo | Cả nhóm          |       17/11 · 01/12        |
 
 ---
 

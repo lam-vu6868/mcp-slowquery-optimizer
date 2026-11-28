@@ -164,7 +164,7 @@ def test_proposals_page_can_request_generation_when_store_is_empty(monkeypatch):
 
     monkeypatch.setattr(backend, "generate_proposals_from_dashboard", generate,
                         raising=False)
-    page = Path(backend.__file__).parent / "pages" / "2_proposals.py"
+    page = Path(backend.__file__).parent / "pages" / "2_llm_de_xuat.py"
     at = AppTest.from_file(str(page))
     at.session_state["proposal_store"] = store
     at.run()

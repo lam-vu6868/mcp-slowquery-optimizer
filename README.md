@@ -89,7 +89,7 @@ flowchart TD
 | Tool 6 + approval token                | 🟡 Approve đã thử trên trình duyệt với lab riêng; chưa chạy 20 injection hoặc áp dụng trên DB chính |
 | 20 Prompt Injection                    | 🟡 20/20 ca ranh giới code bị chặn; tên bảng B05 đã lọc trước Groq, chưa kiểm đủ end-to-end |
 | Dashboard                              | 🟡 Trang Slow Query đã đọc DB chính; Groq/MCP lưu 3 đề xuất q07, một index đã qua Validation trên lab riêng rồi được dọn; trang duyệt đã hiển thị P95/chi phí ghi/dung lượng từ report |
-| Báo cáo + Demo                         | ⬜ Chưa bắt đầu |
+| Báo cáo + Demo                         | 🟡 Đã có bản thảo [BAO_CAO_DO_AN.md](reports/BAO_CAO_DO_AN.md) & [SLIDE_VA_KICH_BAN_DEMO.md](reports/SLIDE_VA_KICH_BAN_DEMO.md) |
 
 **Chú thích:** ✅ Done | 🟡 Đang làm | ⬜ Chưa làm | 🔴 Trễ hạn
 

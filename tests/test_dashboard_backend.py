@@ -468,7 +468,7 @@ def test_proposals_page_requires_confirmation_before_actions(monkeypatch):
     monkeypatch.setattr(backend, "reject_from_dashboard",
                         lambda actual, proposal_id: events.append(
                             ("reject", actual, proposal_id)))
-    page = Path(backend.__file__).parent / "pages" / "2_proposals.py"
+    page = Path(backend.__file__).parent / "pages" / "6_duyet_va_ap_dung.py"
     at = AppTest.from_file(str(page))
     at.session_state["proposal_store"] = store
     at.run()
@@ -499,7 +499,7 @@ def test_proposals_page_keeps_approve_unavailable_for_rewrite_or_expired(
     saved = _approval_saved(**changes)
     saved["original_sql"] = "SELECT id FROM orders"
     store = type("Store", (), {"recent_proposals": lambda self: [saved]})()
-    at = AppTest.from_file(str(Path(backend.__file__).parent / "pages" / "2_proposals.py"))
+    at = AppTest.from_file(str(Path(backend.__file__).parent / "pages" / "6_duyet_va_ap_dung.py"))
     at.session_state["proposal_store"] = store
     at.run()
     assert not at.exception
@@ -524,7 +524,7 @@ def test_proposals_page_runs_validation_only_after_confirmation(monkeypatch):
         return {"status": "passed"}
 
     monkeypatch.setattr(backend, "validate_from_dashboard", fake_validate)
-    at = AppTest.from_file(str(Path(backend.__file__).parent / "pages" / "2_proposals.py"))
+    at = AppTest.from_file(str(Path(backend.__file__).parent / "pages" / "6_duyet_va_ap_dung.py"))
     at.session_state["proposal_store"] = store
     at.run()
     assert not at.exception
@@ -552,7 +552,7 @@ def test_proposals_page_refreshes_state_after_reject(monkeypatch):
         return "dropped"
 
     monkeypatch.setattr(backend, "reject_from_dashboard", fake_reject)
-    at = AppTest.from_file(str(Path(backend.__file__).parent / "pages" / "2_proposals.py"))
+    at = AppTest.from_file(str(Path(backend.__file__).parent / "pages" / "6_duyet_va_ap_dung.py"))
     at.session_state["proposal_store"] = store
     at.run()
     _widget(at.checkbox, "Tôi xác nhận thao tác trên MySQL").set_value(True).run()

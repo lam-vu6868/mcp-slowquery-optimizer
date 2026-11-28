@@ -110,7 +110,7 @@ async def test_agent_sends_only_five_tools_and_parses_final_index(run_log_dir):
     record = json.loads(next(run_log_dir.glob("*.json")).read_text(encoding="utf-8"))
     assert record["status"] == "success"
     assert record["query_id"] == "q07"
-    assert record["prompt_version"] == "v2"
+    assert record["prompt_version"] == "v3"
     assert record["model"] == LLM_SETTINGS["model"]
     assert re.fullmatch(r"[0-9a-f]{64}", record["sql_sha256"])
     assert record["sql_sha256"] == hashlib.sha256(
