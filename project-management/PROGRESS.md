@@ -10,6 +10,119 @@
 
 ---
 
+## Xuất comparison.csv và cài đặt Tab 3 Comparison ngày 28/11/2026
+
+- Mở rộng [data/metrics/metrics.py](../data/metrics/metrics.py): thêm `summarize_rewrite_reports()`, `build_comparison_rows()`, `write_comparison_csv()` và CLI `--build-comparison`; đã tạo [data/metrics/comparison.csv](../data/metrics/comparison.csv) gồm 3 dòng (`llm_groq_mcp`, `rule_based`, `greedy`) ghi trung thực phạm vi hiện tại (Rewrite 8/12 = 66,7% đo thật; Index nhóm 1/2/4 mới khớp chính xác, chưa đo P95 tương đương; `greedy` chưa chạy lab).
+- Cài đặt Tab 3 [dashboard/pages/3_comparison.py](../dashboard/pages/3_comparison.py): hiển thị bảng `comparison.csv` (kèm ghi chú `pt-query-digest` không đề xuất index), metric tổng quan Rewrite, bảng chi tiết P95/cost/rows examined và biểu đồ cột P95 trước vs sau theo từng query.
+- Thêm unit test + Streamlit AppTest ở [tests/test_metrics_comparison_and_tab3.py](../tests/test_metrics_comparison_and_tab3.py). Chạy `pytest tests/`: **378 passed**, Ruff pass. Chưa mở Tab 3 trên trình duyệt thật.
+
+---
+
+## Cài đặt hoàn chỉnh 3 module baseline (rule-based, greedy, pt-query-digest) ngày 28/11/2026
+
+- **Rule-based:** [data/baseline/rule_based.py](../data/baseline/rule_based.py) (luật cứng `equality -> range -> ORDER BY` dùng `sqlglot`, giới hạn ≤5 cột, bỏ tiền tố PK/UNIQUE/FK mặc định) + 7 unit test ở [tests/test_rule_based_baseline.py](../tests/test_rule_based_baseline.py). Chạy thử trên 18 query nhóm Index (1/2/4): sinh **24 đề xuất index**, **0/24 khớp cấu trúc chính xác** (báo cáo `data/outputs/baseline_rule_based_20261128.json`, gitignored).
+- **Greedy:** [data/baseline/greedy.py](../data/baseline/greedy.py) (chọn tập index tham lam theo mức giảm `query_cost` từ EXPLAIN, hỗ trợ dependency injection cho unit test và `make_lab_cost_evaluator()` chỉ mở trên lab `3309` có marker + tự `drop()`). Chưa chạy trên lab MySQL thật.
+- **pt-query-digest:** [data/baseline/pt_query_digest.py](../data/baseline/pt_query_digest.py) (gọi `pt-query-digest --output json` nếu có trên hệ thống, fallback parser slow query log chuẩn MySQL bằng Python + hàm `compare_top_n()` so sánh overlap/Jaccard và thời gian phân tích với Tool 1). Chưa chạy trên file slow log thật của container.
+- Thêm 5 unit test cho `greedy` và `pt_query_digest` ở [tests/test_greedy_and_pt_digest_baseline.py](../tests/test_greedy_and_pt_digest_baseline.py).
+- **Kiểm tra:** **376 passed**, Ruff và `git diff --check` pass; không kết nối DB thật trong lượt này.
+
+---
+
+## Đo 3 query cuối nhóm 5 (q28, q29, q30) — tổng hợp 12/12 nhóm Rewrite ngày 28/11/2026
+
+- **Đo thật tuần tự `q28`, `q29`, `q30` trên lab 3309 (`--timeout-ms 60000`, 3 warm-up + 20 lượt mỗi phía, `approvable=false`):**
+  - **`q28` (`passed`):** hash `sha256:d4d9…b1fd` và 1 dòng khớp, 0 timeout; P95 **19.660,73 → 6.797,78 ms** (giảm **65,42%**), P50 19.329,42 → 6.552,13 ms; dùng `idx_orders_customer_status`, bỏ qua `idx_addresses_city`.
+  - **`q30` (`failed / result_changed`):** 0 timeout, cùng 1 dòng nhưng **hash kết quả khác nhau** (`sha256:e04f…4ba` ≠ `sha256:e764…09d`, P95 cũng chỉ giảm 10,17%: 43.029,94 → 38.652,05 ms); dùng `idx_addresses_city_customer`, bỏ qua `idx_order_items_price_order`. Minh chứng trực tiếp vai trò kiểm tra tương đương kết quả bằng hash để chặn SQL rewrite sai ngữ nghĩa.
+  - **`q29` (đo lại riêng, không sleep — `inconclusive / measurement_error`, `error_type=ValueError`):** bước `before` (SQL gốc) chạy ổn định 20 lượt, 0 timeout, P95 **32.537,87 ms** (2 dòng), nhưng bước `after` (SQL rewrite + 2 index LLM) chạy ~20 phút và có lượt chạm trần `timeout_ms=60000` nên không đạt ngưỡng đo hợp lệ (chậm hơn SQL gốc gần ≥2×).
+- **Chốt toàn bộ 12/12 nhóm Rewrite (nhóm 3 & 5):**
+  - **8/12 đạt cả (a) hash khớp + (b) P95 giảm ≥20% = 66,7%** (vượt mức tối thiểu ≥60% của ROADMAP): `q14`, `q16`, `q17`, `q18` (nhóm 3: 4/6) và `q25`, `q26`, `q27`, `q28` (nhóm 5: 4/6).
+  - **4/12 không đạt:** `q13`, `q15` (`failed / p95_below_threshold`, P95 chậm hơn >2× dù `query_cost` giảm), `q30` (`failed / result_changed`, sai kết quả), và `q29` (`inconclusive / measurement_error` do rewrite vượt trần timeout 60s trong khi SQL gốc 32,5s không timeout).
+  - Các report nằm trong `data/outputs/llm_catalog_20261127/q*_rewrite_measure.json` (gitignored).
+- **Dọn dẹp:** kiểm độc lập sau cả batch và lượt đo lại `q29`: lab 3309 `idx_*` trống, `orders` vẫn 1.500.000 dòng; DB chính 3307 không bị chạm.
+- Bước tiếp: đo tương đương nhóm Index 1/2/4 (16 query có index khác đáp án) để chốt Precision/Recall cuối của LLM, và chạy/hoàn thiện baseline `greedy`, `rule_based`, `pt_query_digest` để tạo `data/metrics/comparison.csv`.
+
+---
+
+## Đo thật 3 query đầu nhóm 5 (q25, q26, q27) trên validation lab ngày 28/11/2026
+
+- **Đo thật tuần tự `q25`, `q26`, `q27` trên lab 3309 (`--timeout-ms 60000`, 3 warm-up + 20 lượt mỗi phía, 0 timeout, `approvable=false`):** cả **3/3 đều `passed`**:
+  - **`q25` (`passed`):** hash `sha256:2977…86f3` và 5 dòng khớp; P95 **50.691,77 → 17.184,15 ms** (giảm **66,10%**), P50 47.596,60 → 15.994,52 ms; dùng `idx_orders_customer_total`, bỏ qua `idx_orders_status`. (`query_cost` tăng 144.108 → 2.873.800 nhưng P95 giảm mạnh — cùng với `q13`/`q15` khẳng định cần đo P95 thực tế thay vì chỉ nhìn cost).
+  - **`q26` (`passed`):** hash `sha256:0921…2d7f` và 2 dòng khớp; P95 **16.867,46 → 12.516,95 ms** (giảm **25,79%**), P50 16.568,89 → 10.932,32 ms; dùng **cả 2 index LLM** (`idx_order_items_order_product_qty`, `idx_orders_status_id`).
+  - **`q27` (`passed`, nhánh FK opt-in):** hash `sha256:7b11…2262` và 5 dòng khớp; P95 **33.871,04 → 4.436,66 ms** (giảm **86,90%**), P50 32.924,86 → 4.351,22 ms; dùng index duy nhất `idx_order_items_orderid_quantity`, cleanup FK không lỗi.
+- **Tổng tiến độ nhóm rewrite (nhóm 3 & 5):** đã đo **9/12**, trong đó **7/9 `passed`** (`q14`, `q16`, `q17`, `q18`, `q25`, `q26`, `q27`) và **2/9 `failed`** (`q13`, `q15`). Report ở `data/outputs/llm_catalog_20261127/q25_rewrite_measure.json`, `q26_rewrite_measure.json`, `q27_rewrite_measure.json` (gitignored).
+- **Dọn dẹp:** kiểm độc lập sau batch: lab 3309 `idx_*` trống, `orders` vẫn 1.500.000 dòng; DB chính 3307 không bị chạm.
+- Bước tiếp: đo 3 query cuối nhóm 5 (`q28`, `q29`, `q30`) trên lab 3309 để chốt Metric Rewrite 12/12.
+
+---
+
+## Hoàn tất đo nhóm 3 (q13–q18) trên validation lab ngày 28/11/2026
+
+- **Đo thật tuần tự `q13`, `q15`, `q17` trên lab 3309 (`--timeout-ms 60000`, 3 warm-up + 20 lượt mỗi phía, 0 timeout, `approvable=false`):**
+  - **`q17` (`passed`):** hash `sha256:b2e0…4583` và 5 dòng khớp; P95 **54.113,26 → 2.686,19 ms** (giảm **95,04%**), P50 49.214,14 → 2.485,99 ms, query_cost 2.484.011,18 → 308.933,72; dùng đúng index duy nhất `idx_order_items_product_price_qty`.
+  - **`q13` (`failed / p95_below_threshold`):** hash `sha256:9bd6…4e50` và 5 dòng khớp, query_cost giảm 3.353.713 → 1.646.418 nhưng **P95 tăng 20.432,37 → 54.047,83 ms** (chậm hơn 2,65×); chỉ dùng `idx_orders_order_date_id`, bỏ qua `idx_products_category_id`.
+  - **`q15` (`failed / p95_below_threshold`):** hash `sha256:8ec4…41ce` và 5 dòng khớp, query_cost giảm 4.252.977 → 1.598.562 nhưng **P95 tăng 25.800,39 → 54.102,93 ms** (chậm hơn 2,10×); chỉ dùng `idx_orders_date_id`, bỏ qua `idx_products_category_id`.
+- **Tổng hợp nhóm 3 (non-sargable, 6/6 đã đo):** **4/6 `passed`** (`q14`, `q16`, `q17`, `q18` — đạt 66,7%), **2/6 `failed`** (`q13`, `q15` — minh chứng rõ việc chỉ tin EXPLAIN `query_cost` mà không đo P95 thật sẽ lọt đề xuất gây thoái hóa hiệu năng). Report ở `data/outputs/llm_catalog_20261127/q13_rewrite_measure.json`, `q15_rewrite_measure.json`, `q17_rewrite_measure.json` (gitignored).
+- **Dọn dẹp:** kiểm độc lập sau batch: lab 3309 `idx_*` trống, `orders` vẫn 1.500.000 dòng; DB chính 3307 không bị chạm.
+- Bước tiếp: đo 6 query nhóm 5 (`q25`–`q30`) trên lab 3309 để hoàn tất 12/12 nhóm rewrite.
+
+---
+
+## Thêm `--timeout-ms`, đo lại q16 đạt và dry-run đủ 12/12 rewrite ngày 28/11/2026
+
+- **Sửa `scripts/measure_llm_rewrite.py`:** thêm tham số `--timeout-ms` (1000–60000 ms, khớp giới hạn `benchmark_query`) và ghi `error_type` khi gặp lỗi đo (không ghi SQL); thêm unit test tương ứng trong `tests/test_measure_llm_rewrite.py`. Chạy lại toàn bộ test: **364 passed**, Ruff và `git diff --check` pass.
+- **Đo lại q16 trên lab 3309 (`--timeout-ms 60000`):** xác nhận nguyên nhân lượt trước là SQL gốc chạm timeout mặc định 30s. Report mới đạt `status=passed`, `approvable=false` (3 warm-up + 20 lượt mỗi phía, 0 timeout): hash `sha256:2030…c6ed` và 2 dòng kết quả khớp; P95 **49.259,97 → 16.159,94 ms** (giảm **67,19%**), P50 46.756,45 → 15.313,47 ms, số dòng xét 5.490.006 → 2.070.004, query_cost 4.999.766,46 → 1.843.620,80. EXPLAIN của rewrite dùng **cả 2 index LLM** (`idx_order_items_order_product_qty_price` và `idx_orders_status`). Report ở `data/outputs/llm_catalog_20261127/q16_rewrite_measure.json` (gitignored).
+- **Dọn dẹp sau ngắt server giữa chừng:** lượt chạy đầu sau restart bị ngắt khi đang benchmark và để sót 2 index thử INVISIBLE; đã dọn sạch bằng `TrialIndex.recover_drop()` đối chiếu khớp snapshot FK trước khi chạy lại. Sau lượt đo đạt, kiểm độc lập lab 3309: `idx_*` trống, `orders` vẫn 1.500.000 dòng; DB chính 3307 không bị chạm.
+- **Dry-run 9 query rewrite còn lại (chỉ đọc, không DDL):** `q13`, `q15`, `q17`, `q25`, `q26`, `q27`, `q28`, `q29`, `q30` đều **9/9 `dry_run` pass** và đã lưu snapshot FK/index (kể cả `q27` nhờ nhánh FK opt-in). Tổng nhóm rewrite hiện có **12/12 dry-run pass**, **3/12 đã đo thật và 3/3 đạt** (`q14`, `q16`, `q18`).
+- Bước tiếp: đo thật tuần tự 9 query rewrite còn lại (`q13`, `q15`, `q17`, `q25`–`q30`) trên lab 3309 với `--timeout-ms 60000`, sau đó đo tương đương nhóm index 1/2/4 để tổng hợp Metrics và `comparison.csv`.
+
+---
+
+## Đo thật rewrite q16, q18 và chốt Ground Truth ngày 28/11/2026
+
+- **Chốt Ground Truth:** người dùng (đóng vai cả 4 thành viên) xác nhận `data/queries/ground_truth.json` (30/30 đã đạt `verify_ground_truth --check`) đã hoàn tất review và được GVHD đồng ý. Chuyển trạng thái Giai đoạn 2 sang ✅ Done.
+- **Đo thật q18 trên lab 3309:** `--dry-run` lưu snapshot 2 index (`idx_orders_status`, `idx_order_items_prod_order_qty_price`); đo thật (3 warm-up + 20 lượt mỗi phía) đạt `status=passed`, `approvable=false`. Hash `sha256:2d25…74e` và 2 dòng kết quả khớp, 0 timeout; P95 **26.278,30 → 10.544,77 ms** (giảm **59,87%**), P50 25.130,18 → 9.413,56 ms, số dòng xét 8.390.006 → 1.530.006, query_cost 5.266.195,56 → 2.514.270,10. EXPLAIN dùng `idx_order_items_prod_order_qty_price`, **không dùng** `idx_orders_status`. Report ở `data/outputs/llm_catalog_20261127/q18_rewrite_measure.json` (gitignored).
+- **Đo thật q16 trên lab 3309:** `--dry-run` pass (`idx_order_items_order_product_qty_price`, `idx_orders_status`), nhưng đo thật dừng ở bước benchmark SQL gốc sau ~30 giây với `status=inconclusive`, `failure_reason=measurement_error` (khả năng cao chạm `timeout_ms=30000` mặc định ở lượt warm-up, giống mức ~25–27 s của q14/q18). Report ở `data/outputs/llm_catalog_20261127/q16_rewrite_measure.json` (gitignored).
+- **Dọn dẹp:** kiểm độc lập sau cả q16 và q18: lab 3309 không còn index `idx*`, `orders` vẫn 1.500.000 dòng; không đụng DB chính 3307.
+- Bước tiếp: bổ sung `--timeout-ms` (tối đa 60000 ms theo giới hạn `benchmark_query`) và ghi mã lỗi ngắn trong `scripts/measure_llm_rewrite.py` để đo lại q16 và chạy nốt nhóm rewrite (q13, q15, q17, q25–q30).
+
+---
+
+## Đo thật rewrite + tập index LLM cho q14 trên validation lab ngày 28/11/2026
+
+- **Test:** sửa 5 test fail trong `tests/test_measure_llm_rewrite.py` (mock `Trial` thiếu tham số `fk_snapshot`, không sửa code chính). Chạy lại: **363 passed**, Ruff và `git diff --check` pass.
+- **Dry-run (không DDL):** bật `mcp_validation_lab_db` (3309); marker `mcp-validation-lab-v1` hợp lệ, snapshot FK/index của 2 index q14 lưu ở `data/outputs/llm_catalog_20261127/q14.snapshot.json` (gitignored). Lab 3309 từng từ chối kết nối khi container chưa chạy; không dùng DB chính 3307.
+- **Đo thật (được người dùng cho phép):** `python -m scripts.measure_llm_rewrite q14 ...` tạo cả 2 index LLM INVISIBLE (`addresses(customer_id, city)` và `orders(order_date, customer_id, total_amount)`), đo SQL gốc (tắt index invisible) và SQL rewrite (bật), mỗi phía 3 warm-up + 20 lượt. Report `status=passed`, `approvable=false`: hash `sha256:0ebf…9ae0` và 5 dòng kết quả bằng nhau, 0 timeout; P95 **27.121,31 → 449,14 ms** (giảm **98,34%**), P50 25.694,8 → 355,9 ms, số dòng xét 2.564.717 → 258.839, query_cost 1.260.931,91 → 118.212,10. EXPLAIN của rewrite dùng index `orders`, **không dùng** index phụ `addresses` (index phụ này không đóng góp cho q14).
+- **Lưu ý khi diễn giải:** baseline lượt này (P95 ~27 s) chậm hơn nhiều so với bằng chứng ground truth cũ (4.605,85 ms), nên không so thẳng số tuyệt đối giữa hai lượt đo; tỉ lệ giảm vẫn vượt ngưỡng ≥20%. Nguyên nhân chênh lệch chưa tìm (có thể do trạng thái cache/tài nguyên máy sau khi container khởi động lại). Query không có ORDER BY nên hash tính sau khi sắp xếp.
+- **Dọn dẹp:** kiểm độc lập sau đo: lab 3309 không còn index `idx*`, `orders` vẫn 1.500.000 dòng. Report ở `data/outputs/llm_catalog_20261127/q14_rewrite_measure.json` (gitignored). Chưa Approve/cấp token; chưa đo q16/q18/q27 hay index tương đương nhóm 1/2/4; ground truth vẫn chờ Hải review/GVHD ký; Metrics chưa Done.
+- Bước tiếp: đo tiếp q16 và q18 (q27 cần nhánh FK riêng), rồi các index khác đáp án của nhóm 1/2/4.
+
+---
+
+## Thêm CLI và snapshot bền vững vào measure_llm_rewrite.py ngày 27/11/2026
+
+- Hoàn thiện [scripts/measure_llm_rewrite.py](../scripts/measure_llm_rewrite.py): thêm `save_preflight_snapshot()` / `load_preflight_snapshot()` ghi/đọc JSON trạng thái FK+index trước DDL (ghi đè nếu chạy lại, tránh dùng snapshot cũ sai); thêm `_build_parser()` và `main()` cho CLI với 3 tham số (`query_id`, `store_path`, `--dry-run`, `--output`, `--snapshot`).
+- `--dry-run`: chỉ chạy `load_saved_rewrite()` → `preflight_validation_lab()` → `save_preflight_snapshot()`, không tạo DDL; in JSON `status=dry_run` và đường snapshot. `--snapshot` cho phép chỉ định đường lưu (mặc định `<store>.snapshot.json`).
+- Thêm 5 test mới trong [tests/test_measure_llm_rewrite.py](../tests/test_measure_llm_rewrite.py): roundtrip lưu/đọc snapshot, ghi đè snapshot, thiếu file raise, `main()` với `--dry-run` và giả lập catalog + preflight, kiểm parser argument. **363 passed**, Ruff pass (2 lỗi import order đã tự fix). Không tạo/xóa index hoặc kết nối DB thật trong lượt này.
+- Bước tiếp: bật `mcp_validation_lab_db` (3309), kiểm marker thật, chạy `--dry-run` trên lab rồi mới chạy đo thật với q14.
+
+---
+
+## Kiểm chứng đọc MySQL 3307 và bộ test ngày 27/11/2026
+
+- Chạy lại toàn bộ `pytest tests/`: **358 passed** (bao gồm `tests/test_measure_llm_rewrite.py` dùng trial/tool giả). `scripts.verify_ground_truth --check` đạt **30/30 PASS**; `security.injection_tests.run_tests` đạt **20/20 blocked** ở ranh giới code.
+- Kiểm Docker và DB chính `3307` (`mcp_mysql_db` healthy): gọi trực tiếp Tool 1–4 (`get_slow_queries`, `get_schema(tables=['orders'])`, `get_table_stats('orders')`, `explain_query` estimate trên `q14`) bằng `readonly_user` đều `ok=true` (`orders` ước lượng `1.494.969` dòng, `q14` có `query_cost=1668841.22`). `load_saved_rewrite()` đọc `data/outputs/llm_catalog_20261127/q14.sqlite3` xác nhận khớp SQL catalog (1 rewrite + 2 index trên `addresses` và `orders`).
+- Hai container lab `mcp_validation_lab_db` (`3309`) và `mcp_write_lab_db` (`3308`) vẫn `Exited`, nên chưa kiểm marker thật, chưa chạy DDL hay đo P95 trên lab trong lượt này; không sửa dữ liệu/index trên DB chính và giữ nguyên trạng thái các chặng.
+
+---
+
+## Phép đo offline rewrite + tập index LLM ngày 27/11/2026
+
+- Thêm `scripts/measure_llm_rewrite.py` làm lõi đo thử bằng dependency injection, chưa có CLI hoặc kết nối lab. Hàm kiểm AST SQL gốc/rewrite trước khi tạo trial; tạo đủ tập index INVISIBLE do caller cấp, đo SQL gốc khi `use_invisible_indexes=off` và SQL rewrite khi `on`, đối chiếu hash/số dòng, số lượt, timeout và ngưỡng P95 từ config. Report ghi index nào xuất hiện trong EXPLAIN của rewrite và luôn `approvable=false`; dù phép đo rewrite đạt cũng không cấp token Tool 6.
+- Hàm dọn mọi trial đã bắt đầu theo thứ tự ngược, kể cả khi tạo index hoặc phép đo lỗi; lỗi dọn trả `inconclusive/cleanup_failed`. Test dùng trial/tool giả, chưa tạo/drop index trên MySQL. Bước sau mới nối store proposal với lab 3309, kiểm marker, snapshot FK/index và đường cleanup trước DDL thật; q14 là ca đầu tiên để đo thêm index phụ chưa được bằng chứng cũ bao phủ.
+- Bước tiếp: thêm loader chỉ nhận đúng một rewrite cùng toàn bộ index từ SQLite đã tồn tại và đối chiếu SQL catalog; đọc q14 thật xác nhận 1 rewrite + 2 index, không in SQL. Preflight mới từ chối host/port/schema/user sai hoặc marker lab sai, rồi đọc snapshot FK/index và kiểm schema cho từng trial bằng quyền đọc. Test giả đạt; chưa lưu snapshot bền vững hoặc nối preflight với DDL. Cổng lab 3309 và write lab 3308 đều đóng trong lượt này; Docker daemon không truy cập được nên chưa thể kiểm marker thật hay đo MySQL.
+
+---
+
 ## Điểm dừng để tiếp tục ở chat sau (27/11/2026)
 
 - **Chặng hiện tại:** thu proposal LLM đã đủ **30/30 query catalog, 85 proposal** qua Groq/MCP Tool 1–5 với DB chính quyền đọc. Manifest đối chiếu SQL catalog và run thành công ở `data/outputs/llm_catalog_20261127/manifest_30_query_summary.json` (gitignored). Chẩn đoán index chỉ là **9/37 khớp cấu trúc chính xác** trong 18 query nhóm 1/2/4; chưa có Precision/Recall, Consistency, FPR hay metric rewrite chính thức. Ground truth 30/30 đạt phép đo lab cũ nhưng vẫn chờ Hải review/GVHD ký.
@@ -203,7 +316,7 @@
 |  0  | Setup môi trường                                     |   ✅ Done   | Vũ               |           28/09            |
 | 0b  | Thiết kế (`api-contract.md`, `architecture.md`) | ✅ Contract v2 đã chốt; triển khai theo từng chặng | Vũ | 06/10 |
 |  1  | CSDL 5 bảng, tổng 5M records                         |   ✅ Đã nạp/kiểm tra   | Hải              |           05/10            |
-|  2  | 30 query + ground truth                              | 🟡 Đạt đo kiểm chứng; chờ review/ký | Tường | 06/10 (draft) · 20/10 (ký) |
+|  2  | 30 query + ground truth                              | ✅ Done (đã đo kiểm chứng & GVHD đồng ý) | Tường | 06/10 (draft) · 20/10 (ký) |
 |  3  | Tool 1–5 MCP                                         | 🟡 Đang làm | Vũ · Hải · Tường |           13/10            |
 |  4  | Tích hợp LLM                                         | 🟡 Đang làm | Vũ               |           18/10            |
 |  5  | Validation Layer                                     | 🟡 Đang làm | Hải              |           22/10            |

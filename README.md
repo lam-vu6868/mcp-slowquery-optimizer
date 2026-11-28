@@ -78,7 +78,7 @@ flowchart TD
 | Setup môi trường                       |     ✅ Done     |
 | Thiết kế contract v2 + architecture | ✅ Contract v2 đã chốt ngày 25/11; triển khai vẫn theo từng chặng |
 | CSDL 5 bảng, tổng 5M dòng              |     ✅ Đã nạp và kiểm tra     |
-| 30 query + ground truth                | 🟡 30 đáp án đạt đo kiểm chứng; chờ Hải review/GVHD ký |
+| 30 query + ground truth                | ✅ Done (30/30 đạt kiểm chứng & GVHD đồng ý) |
 | AST whitelist + 47 unit tests          |     ✅ Done     |
 | Tool 4 `explain_query`                 |     ✅ Done     |
 | Tool 5 `benchmark_query`               |     ✅ Done     |
@@ -94,6 +94,8 @@ flowchart TD
 **Chú thích:** ✅ Done | 🟡 Đang làm | ⬜ Chưa làm | 🔴 Trễ hạn
 
 Các mốc dưới đây giữ theo thời điểm thực hiện; trạng thái mới nhất xem [PROGRESS.md](project-management/PROGRESS.md) ngày 27/11/2026.
+
+**Cập nhật 28/11/2026:** Ground truth 30/30 đã được chốt và GVHD đồng ý. `scripts/measure_llm_rewrite.py` (`--timeout-ms 60000`, 20 lượt mỗi phía, `approvable=false`, đã dọn index thử) đã chốt đủ **12/12 query nhóm Rewrite** trên validation lab 3309: **8/12 đạt (66,7%**, vượt ngưỡng tối thiểu 60%: `q14`, `q16`, `q17`, `q18`, `q25`, `q26`, `q27`, `q28`) và **4/12 không đạt** (`q13`/`q15` P95 tăng >2× dù `query_cost` giảm; `q30` `result_changed` sai hash kết quả; `q29` rewrite chạm trần timeout 60s trong khi SQL gốc 32,5s ổn định). **364 unit tests pass.** Xem [PROGRESS.md](project-management/PROGRESS.md).
 
 **Điểm dừng 27/11/2026:** Đã lưu proposal Groq/MCP cho đủ 30 query trong các SQLite ở `data/outputs/` (gitignored); manifest `data/outputs/llm_catalog_20261127/manifest_30_query_summary.json` xác nhận 85 proposal và SQL gốc khớp catalog. Riêng q14, rewrite LLM cùng cây cú pháp và một index khớp cặp đã đo ở lab: hash/số dòng bằng nhau, P95 4605,85 → 668,61 ms qua 20 lượt mỗi phía. **Index phụ q14 chưa đo; các metric tổng chưa tính.** Ground truth còn chờ Hải review/GVHD ký. Validation hiện chỉ đo index trên SQL gốc; bước tiếp theo là phép đo offline cho rewrite cùng tập index LLM. Lab 3309/3308 đang dừng, không có DDL mới trên DB chính. Code batch mới và test đang chưa commit; xem mục đầu [PROGRESS.md](project-management/PROGRESS.md) và kiểm `git status` khi quay lại.
 
