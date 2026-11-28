@@ -18,6 +18,7 @@ import asyncio
 import csv
 import json
 import sys
+from collections import Counter
 from pathlib import Path
 
 import streamlit as st
@@ -32,6 +33,7 @@ from mcp.client.stdio import stdio_client
 from data.metrics.metrics import (
     compute_consistency_rate,
     compute_false_positive_rate,
+    proposal_set_signature,
     summarize_rewrite_reports,
 )
 from data.queries.queries import QUERIES
@@ -84,7 +86,24 @@ def _unwrap_error(exc: BaseException) -> BaseException:
     return exc
 
 
-async def _run_consistency_async(query_id: str, sql: str, runs: int, on_step) -> dict:
+def _save_consistency_result(entry: dict) -> None:
+    """Lưu thêm hoặc cập nhật kết quả Consistency 5 lần của query vào file JSON cục bộ."""
+    existing: list[dict] = []
+    if CONSISTENCY_JSON.is_file():
+        data = json.loads(CONSISTENCY_JSON.read_text(encoding="utf-8"))
+        existing = [q for q in data.get("queries", []) if q.get("query_id") != entry["query_id"]]
+    existing.append(entry)
+    existing.sort(key=lambda item: item["query_id"])
+    avg = round(sum(q["consistency_rate"] for q in existing) / len(existing), 4)
+    CONSISTENCY_JSON.parent.mkdir(parents=True, exist_ok=True)
+    CONSISTENCY_JSON.write_text(
+        json.dumps({"runs_per_query": 5, "avg_consistency_rate": avg, "queries": existing},
+                   ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+async def _run_consistency_async(query_id: str, sql: str, runs: int, on_progress) -> dict:
     client = create_llm_client()
     params = StdioServerParameters(
         command=sys.executable, args=["-m", "mcp_server.server"], cwd=str(ROOT),
@@ -99,7 +118,10 @@ async def _run_consistency_async(query_id: str, sql: str, runs: int, on_step) ->
             await session.initialize()
             for idx in range(1, runs + 1):
                 if idx > 1:
+                    on_progress((idx - 1) / runs,
+                                f"Đang giãn cách 18 giây trước lần {idx}/{runs} (tránh giới hạn Groq)...")
                     await asyncio.sleep(18)
+                on_progress((idx - 0.5) / runs, f"Đang chạy lần {idx}/{runs} cho {query_id}...")
                 for attempt in range(4):
                     try:
                         res = await analyze_query(
@@ -110,6 +132,8 @@ async def _run_consistency_async(query_id: str, sql: str, runs: int, on_step) ->
                         err_name = type(_unwrap_error(exc)).__name__
                         if err_name not in ("RateLimitError", "BadRequestError") or attempt == 3:
                             raise
+                        on_progress((idx - 0.5) / runs,
+                                    f"Lần {idx}/{runs} gặp {err_name}, đang chờ 20s thử lại ({attempt + 1}/3)...")
                         await asyncio.sleep(20)
                 proposals = res.get("proposals") or []
                 all_runs.append(proposals)
@@ -119,18 +143,22 @@ async def _run_consistency_async(query_id: str, sql: str, runs: int, on_step) ->
                     "Phương án LLM đưa ra": _describe_proposals(proposals),
                     "Độ tin cậy": res.get("confidence", ""),
                 })
-                on_step(idx, runs)
+                on_progress(idx / runs, f"Hoàn tất lần {idx}/{runs} cho {query_id}")
     finally:
         await client.close()
     summary = compute_consistency_rate(all_runs)
-    return {"query_id": query_id, **summary, "details": details}
+    sigs = [proposal_set_signature(x) for x in all_runs]
+    top_sig = Counter(sigs).most_common(1)[0][0]
+    top_proposal = _describe_proposals(all_runs[sigs.index(top_sig)])
+    _save_consistency_result({"query_id": query_id, **summary, "top_proposal": top_proposal})
+    return {"query_id": query_id, **summary, "top_proposal": top_proposal, "details": details}
 
 
 def _run_consistency_live(query_id: str, sql: str, runs: int = 5) -> dict:
-    bar = st.progress(0, text=f"Đang chạy lặp 0/{runs} cho {query_id}...")
+    bar = st.progress(0, text=f"Đang khởi động đo 5 lần cho {query_id} (~2 phút)...")
     return asyncio.run(_run_consistency_async(
         query_id, sql, runs,
-        on_step=lambda i, n: bar.progress(i / n, text=f"Hoàn tất lần {i}/{n} cho {query_id}"),
+        on_progress=lambda ratio, msg: bar.progress(min(max(ratio, 0.0), 1.0), text=msg),
     ))
 
 
