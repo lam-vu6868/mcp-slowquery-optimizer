@@ -10,6 +10,13 @@
 
 ---
 
+## Cài đặt Tab 4 Security (4_security.py) ngày 28/11/2026
+
+- Cài đặt Tab 4 [dashboard/pages/4_security.py](../dashboard/pages/4_security.py): đọc bảng 20 kịch bản Prompt Injection từ [security/injection_report.md](../security/injection_report.md) (hiển thị tổng số ca bị chặn `20/20`, số lớp phòng thủ và bảng đầy đủ cột *Lớp chặn*) cùng bảng audit log Tool 6 và bộ đếm `rejected`/`TOKEN_INVALID` từ SQLite audit log.
+- Thêm Streamlit AppTest ở [tests/test_tab4_security.py](../tests/test_tab4_security.py): **379 passed**, Ruff và `git diff --check` pass. Cả 4 tab trong `dashboard/pages/` nay đều đã có code và AppTest; chưa mở kiểm tra Tab 3/Tab 4 trên trình duyệt thật.
+
+---
+
 ## Xuất comparison.csv và cài đặt Tab 3 Comparison ngày 28/11/2026
 
 - Mở rộng [data/metrics/metrics.py](../data/metrics/metrics.py): thêm `summarize_rewrite_reports()`, `build_comparison_rows()`, `write_comparison_csv()` và CLI `--build-comparison`; đã tạo [data/metrics/comparison.csv](../data/metrics/comparison.csv) gồm 3 dòng (`llm_groq_mcp`, `rule_based`, `greedy`) ghi trung thực phạm vi hiện tại (Rewrite 8/12 = 66,7% đo thật; Index nhóm 1/2/4 mới khớp chính xác, chưa đo P95 tương đương; `greedy` chưa chạy lab).

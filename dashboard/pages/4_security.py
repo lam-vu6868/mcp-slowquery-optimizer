@@ -83,7 +83,7 @@ else:
     col2.metric("Bị chặn tại ranh giới code", f"{blocked}/{len(cases)}")
     col3.metric("Số lớp phòng thủ kích hoạt", len({c["Lớp chặn"] for c in cases}))
 
-    st.dataframe(cases, use_container_width=True)
+    st.dataframe(cases, width="stretch")
     st.caption(
         "Phạm vi: 20/20 ca kiểm ranh giới code với dữ liệu giả (B05 đã lọc trước Groq); "
         "không tuyên bố an toàn tuyệt đối end-to-end."
@@ -107,4 +107,4 @@ else:
     c1.metric("Tổng sự kiện (gần nhất)", len(entries))
     c2.metric("Đã áp dụng (applied)", applied)
     c3.metric("Bị từ chối / TOKEN_INVALID", f"{rejected} / {token_invalid}")
-    st.dataframe(entries, use_container_width=True)
+    st.dataframe(entries, width="stretch")

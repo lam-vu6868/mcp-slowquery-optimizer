@@ -17,13 +17,17 @@ TRẠNG THÁI : ĐÃ CÀI ĐẶT — hiển thị comparison.csv và biểu đ�
 """
 
 import csv
+import sys
 from pathlib import Path
 
 import streamlit as st
 
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from data.metrics.metrics import summarize_rewrite_reports
 
-ROOT = Path(__file__).resolve().parents[2]
 COMPARISON_CSV = ROOT / "data" / "metrics" / "comparison.csv"
 REWRITE_REPORT_DIR = ROOT / "data" / "outputs" / "llm_catalog_20261127"
 
@@ -34,7 +38,7 @@ if COMPARISON_CSV.is_file():
     with COMPARISON_CSV.open(encoding="utf-8", newline="") as fh:
         rows = list(csv.DictReader(fh))
     if rows:
-        st.dataframe(rows, use_container_width=True)
+        st.dataframe(rows, width="stretch")
     else:
         st.info("File comparison.csv chưa có dữ liệu.")
 else:
@@ -56,7 +60,7 @@ else:
     rate_pct = f"{summary['pass_rate'] * 100:.1f}%" if summary["pass_rate"] is not None else "N/A"
     col4.metric("Tỉ lệ đạt Rewrite", rate_pct)
 
-    st.dataframe(summary["items"], use_container_width=True)
+    st.dataframe(summary["items"], width="stretch")
 
     chart_rows = {
         item["query_id"]: {

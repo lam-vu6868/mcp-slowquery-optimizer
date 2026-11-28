@@ -19,12 +19,21 @@ TRẠNG THÁI : ĐANG LÀM — tạo proposal từ LLM, Validation trên lab, Ap
 
 import asyncio
 import math
+import sys
 import time
 from pathlib import Path
 
 import streamlit as st
 
-from dashboard.backend import (
+_ROOT = str(Path(__file__).resolve().parents[2])
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+
+_ROOT = str(Path(__file__).resolve().parents[2])
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+
+from dashboard.backend import (  # noqa: E402
     apply_from_dashboard,
     generate_proposals_from_dashboard,
     initialize_backend,

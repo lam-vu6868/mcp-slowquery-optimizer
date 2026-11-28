@@ -17,10 +17,20 @@ TRẠNG THÁI : ĐANG LÀM — đọc Tool 1, hiển thị top query và chuyể
 """
 
 import asyncio
+import sys
+from pathlib import Path
 
 import streamlit as st
 
-from dashboard.backend import load_slow_queries
+_ROOT = str(Path(__file__).resolve().parents[2])
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+
+_ROOT = str(Path(__file__).resolve().parents[2])
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+
+from dashboard.backend import load_slow_queries  # noqa: E402
 
 st.title("Slow Query")
 source = st.selectbox("Nguồn dữ liệu", ["performance_schema", "slow_log"])

@@ -20,9 +20,18 @@ THAM KHẢO  : docs/api-contract.md, dashboard/pages/
 TRẠNG THÁI : ĐANG LÀM — giữ store đã recovery cho backend Validation; giao diện 4 tab chưa cài đặt.
 """
 
+import sys
+from pathlib import Path
+
 import streamlit as st
 
+_ROOT = str(Path(__file__).resolve().parents[1])
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+
 from dashboard.backend import initialize_backend
+
+st.set_page_config(page_title="MCP Slow Query Optimizer", layout="wide")
 
 
 @st.cache_resource
@@ -36,3 +45,10 @@ try:
 except Exception:  # noqa: BLE001 - không cho Dashboard nhận việc khi recovery lỗi
     st.error("Không khôi phục được index thử. Kiểm tra trial pending trước khi tiếp tục.")
     st.stop()
+
+st.title("MCP Slow Query Optimizer")
+st.write(
+    "Chọn một trong 4 trang ở thanh menu bên trái: "
+    "**1. Slow Queries**, **2. Proposals**, **3. Comparison**, **4. Security**."
+)
+st.info("Hệ thống sẵn sàng. LLM chỉ thấy Tool 1–5; Tool 6 chỉ chạy sau khi người dùng duyệt.")
