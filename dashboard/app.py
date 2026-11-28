@@ -56,6 +56,7 @@ if hasattr(st, "title"):
         "3. **Chạy thử đề xuất** — đo trước/sau bằng INVISIBLE INDEX trên lab `3309` (Đo nhanh / Đo đầy đủ).\n"
         "4. **So sánh** — so query vừa chạy (Gốc vs LLM vs Greedy) và so phát hiện (pt-query-digest vs Tool 1).\n"
         "5. **Bảo mật** — bấm chạy trực tiếp 20 kịch bản Prompt Injection & xem Audit log Tool 6.\n"
-        "6. **Duyệt & áp dụng** — Validation chính thức và Approve (token 1 lần) / Reject."
+        "6. **Duyệt & áp dụng** — Validation chính thức và Approve (token 1 lần) / Reject.\n"
+        "7. **Đánh giá LLM & Tổng kết 30 query** — Precision, Recall, False Positive Rate, Consistency Rate (5 lần lặp) và biểu đồ tổng kết."
     )
     st.info("DB chính 3307 chỉ đọc; mọi DDL thử chạy tách biệt trên lab 3309.")

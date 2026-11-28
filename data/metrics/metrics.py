@@ -26,6 +26,7 @@ TRẠNG THÁI : ĐANG LÀM — chấm khớp index chính xác, tổng hợp rew
 import argparse
 import csv
 import json
+from collections import Counter
 from pathlib import Path
 
 INDEX_GROUPS = {1, 2, 4}
@@ -157,6 +158,46 @@ def build_comparison_rows(
             "notes": gr_note,
         },
     ]
+
+
+def compute_false_positive_rate(total_proposals: int, matched_proposals: int) -> float | None:
+    """Tỉ lệ đề xuất index không khớp / dư thừa trên tổng số đề xuất index."""
+    if total_proposals <= 0:
+        return None
+    false_positives = max(0, total_proposals - matched_proposals)
+    return round(false_positives / total_proposals, 4)
+
+
+def proposal_set_signature(proposals: list[dict]) -> tuple:
+    """Chuyển danh sách đề xuất của 1 lượt chạy thành chữ ký chuẩn hóa để đo độ ổn định."""
+    sigs: list[tuple] = []
+    for p in proposals:
+        ptype = p.get("type")
+        if ptype == "index":
+            cols = tuple(
+                (c.get("name", ""), c.get("order", "ASC"))
+                for c in p.get("columns", [])
+                if isinstance(c, dict)
+            )
+            sigs.append(("index", p.get("table", ""), cols))
+        elif ptype == "rewrite":
+            norm_sql = " ".join((p.get("rewritten_sql") or "").split()).lower()
+            sigs.append(("rewrite", norm_sql))
+    return tuple(sorted(sigs))
+
+
+def compute_consistency_rate(runs: list[list[dict]]) -> dict:
+    """Đo Consistency Rate qua nhiều lượt chạy cùng 1 prompt (chuẩn 5 lượt)."""
+    if not runs:
+        return {"runs": 0, "most_common_count": 0, "consistency_rate": None, "unique_outputs": 0}
+    counts = Counter(proposal_set_signature(run) for run in runs)
+    top_count = counts.most_common(1)[0][1]
+    return {
+        "runs": len(runs),
+        "most_common_count": top_count,
+        "consistency_rate": round(top_count / len(runs), 4),
+        "unique_outputs": len(counts),
+    }
 
 
 def _expected_indexes(answer: dict) -> list[dict]:

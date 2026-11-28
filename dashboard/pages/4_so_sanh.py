@@ -3,9 +3,9 @@ dashboard/pages/4_so_sanh.py
 ----------------------------
 
 CHỨC NĂNG :
-    TRANG 4 — So sánh. Tab 1 chỉ hiện dữ liệu của query VỪA CHẠY (gốc vs LLM vs Greedy,
+    TRANG 4 — So sánh trực tiếp (live). Tab 1 so query VỪA CHẠY (gốc vs LLM vs Greedy,
     mỗi bên có nút chạy thật). Tab 2 so sánh khâu phát hiện: pt-query-digest vs Tool 1.
-    Tab 3 là kết quả 30 query đã đo sẵn (ghi rõ "đã đo trước").
+    Phần báo cáo tổng kết 30 query & chỉ số LLM nằm ở Trang 7.
 
 PHỤ TRÁCH  : Tình · Tường    |    REVIEW: Hải
 
@@ -14,7 +14,7 @@ LƯU Ý:
     - pt-query-digest không đề xuất index nên không nằm trong bảng Precision/Recall.
 """
 
-import csv
+import asyncio
 import sys
 from pathlib import Path
 
@@ -23,8 +23,6 @@ import streamlit as st
 _ROOT = str(Path(__file__).resolve().parents[2])
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
-
-import asyncio
 
 from dashboard.backend import DEFAULT_STORE_PATH, load_slow_queries
 from dashboard.detection import (
@@ -41,11 +39,8 @@ from dashboard.journey import (
 )
 from dashboard.lab_jobs import job_status, lab_port_open, running_job_ids, start_job
 from dashboard.render import render_measure_result
-from data.metrics.metrics import summarize_rewrite_reports
 
 ROOT = Path(_ROOT)
-COMPARISON_CSV = ROOT / "data" / "metrics" / "comparison.csv"
-REWRITE_REPORT_DIR = ROOT / "data" / "outputs" / "llm_catalog_20261127"
 SLOW_EXPORT = ROOT / "data" / "outputs" / "dashboard_jobs" / "slow_log_export.log"
 
 
@@ -75,11 +70,10 @@ def _greedy_panel(job_id: str) -> None:
         render_measure_result(status["result"])
 
 
-st.title("4. So sánh kết quả")
-tab_live, tab_detect, tab_saved = st.tabs([
+st.title("4. So sánh với Baseline")
+tab_live, tab_detect = st.tabs([
     "Query vừa chạy (gốc vs LLM vs Greedy)",
     "Phát hiện query chậm (pt-query-digest vs Tool 1)",
-    "Đã đo sẵn 30 query",
 ])
 
 with tab_live:
@@ -176,29 +170,3 @@ with tab_detect:
         left.dataframe(found["pt"], hide_index=True, width="stretch")
         right.write("**Top query theo Tool 1**")
         right.dataframe(found["tool1"], hide_index=True, width="stretch")
-
-with tab_saved:
-    st.warning("Đây là kết quả ĐÃ ĐO TRƯỚC trên lab 3309 (không chạy lại ở trang này).")
-    if COMPARISON_CSV.is_file():
-        with COMPARISON_CSV.open(encoding="utf-8", newline="") as fh:
-            saved_rows = list(csv.DictReader(fh))
-        st.dataframe(saved_rows, width="stretch")
-    else:
-        st.info("Chưa có data/metrics/comparison.csv. Chạy `python -m data.metrics.metrics --build-comparison`.")
-    st.caption("pt-query-digest không đề xuất index nên không nằm trong bảng Precision/Recall.")
-    summary = summarize_rewrite_reports(REWRITE_REPORT_DIR)
-    if summary["total"]:
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Tổng query Rewrite đã đo", summary["total"])
-        c2.metric("Đạt", summary["passed"])
-        c3.metric("Không đạt", summary["failed"])
-        c4.metric("Tỉ lệ đạt",
-                  f"{summary['pass_rate'] * 100:.1f}%" if summary["pass_rate"] is not None else "N/A")
-        st.dataframe(summary["items"], width="stretch")
-        chart_rows = [item for item in summary["items"]
-                      if item["before_p95_ms"] is not None and item["after_p95_ms"] is not None]
-        if chart_rows:
-            st.bar_chart({"query_id": [i["query_id"] for i in chart_rows],
-                          "P95 trước (ms)": [i["before_p95_ms"] for i in chart_rows],
-                          "P95 sau (ms)": [i["after_p95_ms"] for i in chart_rows]},
-                         x="query_id", y=["P95 trước (ms)", "P95 sau (ms)"])

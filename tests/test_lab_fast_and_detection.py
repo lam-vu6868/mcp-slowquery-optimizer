@@ -13,7 +13,21 @@ from pathlib import Path
 
 from dashboard.detection import group_tool1_rows, read_slow_log_table
 from dashboard.lab_jobs import MODES
+from data.metrics.metrics import compute_consistency_rate, compute_false_positive_rate
 from scripts.lab_demo_runner import _default_fast_measure, run_measure
+
+
+def test_false_positive_and_consistency_metrics():
+    assert compute_false_positive_rate(37, 9) == round(28 / 37, 4)
+    assert compute_false_positive_rate(0, 0) is None
+
+    idx_a = [{"type": "index", "table": "orders", "columns": [{"name": "status", "order": "ASC"}]}]
+    idx_b = [{"type": "index", "table": "orders", "columns": [{"name": "order_date", "order": "ASC"}]}]
+    res = compute_consistency_rate([idx_a, idx_a, idx_a, idx_a, idx_b])
+    assert res["runs"] == 5
+    assert res["most_common_count"] == 4
+    assert res["consistency_rate"] == 0.8
+    assert res["unique_outputs"] == 2
 
 
 def test_group_tool1_rows_merges_duplicate_fingerprints():
